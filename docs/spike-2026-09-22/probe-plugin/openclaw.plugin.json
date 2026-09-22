@@ -1,0 +1,17 @@
+{
+  "id": "spike-probe",
+  "name": "Spike Probe Plugin",
+  "description": "Probe plugin for Refine-Cycle OpenClaw spike",
+  "version": "1.0.0",
+  "activation": {
+    "onStartup": true
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  },
+  "contracts": {
+    "tools": ["spike_model_call"]
+  }
+}
