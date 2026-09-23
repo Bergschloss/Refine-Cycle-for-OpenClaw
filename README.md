@@ -52,4 +52,4 @@ Two corrections to the design came out of it: read history straight from SQLite 
 | Port or rebuild | [docs/RESEARCH-port-feasibility.md](docs/RESEARCH-port-feasibility.md) |
 | Code | none yet |
 
-Next: the first milestone — the loop end to end on one host, measurable, with nothing from the "not built" list above.
+Next: [the first milestone](docs/MILESTONE-1.md) — the loop end to end on one host, measurable, with nothing from the "not built" list above.
