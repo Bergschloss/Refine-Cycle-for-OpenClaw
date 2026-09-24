@@ -12,6 +12,7 @@
  * user did not ask for.
  */
 
+import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { formatBlock, type Block } from "./core/injection.ts";
@@ -19,6 +20,7 @@ import { sqliteHistory, agentDatabasePath } from "./host/history.ts";
 import { readSources } from "./host/sources.ts";
 import { activeLessons, allLessons, setStatus } from "./lessons.ts";
 import { processSession, recordExposure, report, type Llm } from "./pipeline.ts";
+import { replay } from "./replay.ts";
 import { readSettings } from "./settings.ts";
 import { FileStore } from "./store.ts";
 
@@ -219,6 +221,25 @@ export default function register(api: PluginApi): void {
       root.command("disable <id>").description("Stop injecting a lesson").action((id) => console.log(control(`disable ${String(id)}`)));
       root.command("delete <id>").description("Delete a lesson (kept as a tombstone)").action((id) => console.log(control(`delete ${String(id)}`)));
       root.command("report").description("What the learning loop decided, by rule").action(() => console.log(control("report")));
+      root
+        .command("replay <corpus> <storeDir> [sourcesDir]")
+        .description("Measurement: run the loop over a recorded corpus (JSONL) into a separate store")
+        .action(async (corpus, storeDir, sourcesDir) => {
+          const dir = typeof sourcesDir === "string" ? sourcesDir : undefined;
+          const result = await replay({
+            corpusFile: String(corpus),
+            storeDir: String(storeDir),
+            llm,
+            // Every top-level .md in the directory is an instruction file, plus skills/**/SKILL.md.
+            sources: dir
+              ? readSources(dir, fs.readdirSync(dir).filter((name) => name.endsWith(".md")), [path.join(dir, "skills")])
+              : [],
+            // One run, many sessions: the daily cap is for live use, not the harness.
+            settings: { ...settings, maxModelCallsPerDay: 100_000 },
+            log: (message) => console.log(message),
+          });
+          console.log(JSON.stringify({ ...result, lessons: result.lessons.length }, null, 2));
+        });
     },
     {
       commands: ["refine-cycle"],
