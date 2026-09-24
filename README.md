@@ -2,7 +2,7 @@
 
 An OpenClaw plugin that learns from the agent's own repeated failures: it looks across past sessions, finds the mistakes that keep coming back, writes one small lesson, puts that lesson in front of the agent in later sessions, and afterwards checks whether the failure stopped.
 
-Private, and not yet built. This repository currently holds the design and the research it rests on.
+Private, in progress: milestone 1 (the loop end to end) is being built. See [Status](#status).
 
 ## Where this comes from
 
@@ -50,6 +50,30 @@ Two corrections to the design came out of it: read history straight from SQLite 
 | Design | [docs/ARCHITECTURE-DRAFT-2026-09-22.md](docs/ARCHITECTURE-DRAFT-2026-09-22.md), to be revised with the two corrections |
 | Can a plugin inject lessons at all | [docs/RESEARCH-lesson-injection.md](docs/RESEARCH-lesson-injection.md) |
 | Port or rebuild | [docs/RESEARCH-port-feasibility.md](docs/RESEARCH-port-feasibility.md) |
-| Code | none yet |
+| Code | [milestone 1](docs/MILESTONE-1.md) steps 1–11 written and unit-tested; the real-host run is next |
 
-Next: [the first milestone](docs/MILESTONE-1.md) — the loop end to end on one host, measurable, with nothing from the "not built" list above.
+## Layout
+
+- `src/plugin.ts` — the only file that knows OpenClaw: hooks, the background queue, `/refine` and `openclaw refine-cycle`.
+- `src/pipeline.ts` — the learning loop for one ended turn, host-independent.
+- `src/core/` — pure functions: the fingerprint (a line-for-line port of the Hermes `patterns.py`, pinned by a 382-row golden corpus recorded from the Python original), failure extraction, the refusal rules, the already-covered check, the injected block, the proposal and its validation.
+- `src/store.ts`, `src/lessons.ts` — atomic JSON files with `$v`, and the journal that makes lesson changes crash-safe.
+- `src/host/` — reading the agent's SQLite history (read-only) and its skills and instruction files.
+- `scripts/drift-check.ts` — compares what the tests assume about OpenClaw with a live install.
+
+`npm test` runs everything on Node 24+ with no dependencies.
+
+## Installing it for a test
+
+Point OpenClaw at the checkout and grant it both hook permissions, in `openclaw.json`. Both are required: OpenClaw calls `before_prompt_build` and `agent_end` for a non-bundled plugin only with `allowConversationAccess`, and applies its prompt changes only with `allowPromptInjection`.
+
+```json
+"plugins": {
+  "load": { "paths": ["/path/to/Refine-Cycle-for-OpenClaw"] },
+  "entries": {
+    "refine-cycle": { "enabled": true, "hooks": { "allowPromptInjection": true, "allowConversationAccess": true }, "config": {} }
+  }
+}
+```
+
+The plugin keeps its data in `<OpenClaw state dir>/plugin-data/refine-cycle/` and reads the agent's history from `<state dir>/agents/<agent>/agent/openclaw-agent.sqlite`.  Without the conversation-access grant the plugin does nothing and says so in the log.

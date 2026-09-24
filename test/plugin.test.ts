@@ -11,12 +11,13 @@ import { tempDir, Transcript } from "./helpers.ts";
 
 type Handler = (event: unknown, ctx: Record<string, unknown>) => unknown;
 
-function fakeApi(stateDir: string, complete?: (params: Record<string, unknown>) => Promise<{ text: string }>) {
+function fakeApi(stateDir: string, complete?: (params: Record<string, unknown>) => Promise<{ text: string }>, grant = true) {
   const hooks = new Map<string, { handler: Handler; timeoutMs?: number }>();
   const commands = new Map<string, (ctx: { args?: string }) => unknown>();
   const logs: string[] = [];
   const api: PluginApi = {
     id: "refine-cycle",
+    config: { plugins: { entries: { "refine-cycle": { hooks: { allowConversationAccess: grant } } } } },
     pluginConfig: {},
     logger: { info: (m) => logs.push(m), warn: (m) => logs.push(`WARN ${m}`) },
     runtime: { state: { resolveStateDir: () => stateDir }, llm: complete ? { complete } : {} },
@@ -61,6 +62,13 @@ test("the prompt hook injects active lessons with a short timeout, and nothing w
   }, new Date());
   const result = prompt.handler({}, { sessionId: "s1" }) as { prependContext: string };
   assert.match(result.prependContext, /When calling cron_add, give five fields\./);
+});
+
+test("without the conversation-access grant the log says why nothing happens", () => {
+  const withGrant = fakeApi(tempDir());
+  assert.ok(!withGrant.logs.some((line) => line.includes("allowConversationAccess")));
+  const without = fakeApi(tempDir(), undefined, false);
+  assert.ok(without.logs.some((line) => line.startsWith("WARN") && line.includes("allowConversationAccess")));
 });
 
 test("an unusable store means no injection, no learning, and no thrown error", () => {

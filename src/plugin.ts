@@ -44,6 +44,7 @@ interface CliCommand {
 
 export interface PluginApi {
   id: string;
+  config?: { plugins?: { entries?: Record<string, { hooks?: { allowConversationAccess?: boolean } } | undefined> } };
   pluginConfig?: Record<string, unknown>;
   logger?: { info?: (message: string) => void; warn?: (message: string) => void };
   runtime?: {
@@ -82,6 +83,15 @@ export default function register(api: PluginApi): void {
   if (!settings.enabled) {
     log("disabled in settings");
     return;
+  }
+
+  // OpenClaw only calls before_prompt_build and agent_end for a non-bundled plugin
+  // the user has granted conversation access; without it the plugin is inert.
+  if (api.config?.plugins?.entries?.[api.id]?.hooks?.allowConversationAccess !== true) {
+    warn(
+      `needs plugins.entries.${api.id}.hooks.allowConversationAccess = true in openclaw.json; ` +
+        "until then OpenClaw does not call its hooks, so nothing is learned or injected",
+    );
   }
 
   const stateDir = resolveStateDir(api);
