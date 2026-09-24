@@ -7,6 +7,8 @@
  *
  *   node --experimental-strip-types scripts/drift-check.ts <path to openclaw-agent.sqlite>
  *
+ * The schema must match one of the recorded versions (test/fixtures/openclaw-*.json).
+ *
  * Read-only. Prints what differs and exits 1 if anything does.
  */
 
@@ -15,17 +17,27 @@ import fs from "node:fs";
 
 const file = process.argv[2];
 if (!file) {
-  console.error("usage: drift-check.ts <openclaw-agent.sqlite> [fixture.json]");
+  console.error("usage: drift-check.ts <openclaw-agent.sqlite>");
   process.exit(2);
 }
-const fixturePath = process.argv[3] ?? new URL("../test/fixtures/openclaw-2026.9.5.json", import.meta.url);
-const fixture = JSON.parse(fs.readFileSync(fixturePath, "utf8"));
+const fixtureDir = new URL("../test/fixtures/", import.meta.url);
+const fixtures = fs
+  .readdirSync(fixtureDir)
+  .filter((name) => /^openclaw-.*\.json$/.test(name))
+  .sort()
+  .map((name) => ({ name, ...JSON.parse(fs.readFileSync(new URL(name, fixtureDir), "utf8")) }));
+/** The newest recorded version, for the row-shape comparison. */
+const fixture = fixtures[fixtures.length - 1];
 const db = new DatabaseSync(file, { readOnly: true });
 const problems: string[] = [];
 
 const ddl = (db.prepare("SELECT sql FROM sqlite_master WHERE name = 'transcript_events'").get() as { sql?: string } | undefined)?.sql;
 if (!ddl) problems.push("table transcript_events is missing");
-else if (ddl !== fixture.transcriptEventsDdl) problems.push(`transcript_events schema changed:\n${ddl}`);
+else {
+  const known = fixtures.find((f) => f.transcriptEventsDdl === ddl);
+  if (known) console.log(`schema matches ${known.name}`);
+  else problems.push(`transcript_events schema matches no recorded version:\n${ddl}`);
+}
 
 function keysOf(value: unknown): string[] {
   return value && typeof value === "object" ? Object.keys(value).sort() : [];
@@ -38,6 +50,7 @@ function sample(role: string, extra = ""): Record<string, unknown> | null {
   return row?.event_json ? JSON.parse(row.event_json) : null;
 }
 
+// Compressed rows (2026.9.6+) have no event_json; the plain ones are enough to compare shapes.
 const error = sample("toolResult", "AND json_extract(event_json, '$.message.isError') = 1");
 if (!error) {
   problems.push("no failed tool result in this database to compare (run a session with a failing tool first)");

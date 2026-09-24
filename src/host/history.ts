@@ -9,6 +9,7 @@
 
 import { DatabaseSync } from "node:sqlite";
 import path from "node:path";
+import zlib from "node:zlib";
 import type { TranscriptRow } from "../core/failures.ts";
 import type { History } from "../pipeline.ts";
 
@@ -25,19 +26,35 @@ function withDatabase<T>(file: string, body: (db: DatabaseSync) => T): T {
   }
 }
 
+function hasColumn(db: DatabaseSync, column: string): boolean {
+  return db.prepare("SELECT 1 FROM pragma_table_info('transcript_events') WHERE name = ?").get(column) !== undefined;
+}
+
+/**
+ * Since OpenClaw 2026.9.6 a large event is stored zstd-compressed in
+ * `event_zstd` with `event_json` NULL; earlier versions have only `event_json`.
+ */
+function eventText(row: { event_json: string | null; event_zstd?: Uint8Array | null }): string | null {
+  if (typeof row.event_json === "string") return row.event_json;
+  if (row.event_zstd) return zlib.zstdDecompressSync(row.event_zstd).toString("utf8");
+  return null;
+}
+
 export function sqliteHistory(file: string): History {
   return {
     readSession(sessionId) {
       return withDatabase(file, (db) => {
+        const columns = hasColumn(db, "event_zstd") ? "seq, event_json, event_zstd" : "seq, event_json";
         const rows = db
-          .prepare("SELECT seq, event_json FROM transcript_events WHERE session_id = ? ORDER BY seq")
-          .all(sessionId) as Array<{ seq: number; event_json: string }>;
+          .prepare(`SELECT ${columns} FROM transcript_events WHERE session_id = ? ORDER BY seq`)
+          .all(sessionId) as Array<{ seq: number; event_json: string | null; event_zstd?: Uint8Array | null }>;
         const out: TranscriptRow[] = [];
         for (const row of rows) {
           try {
-            out.push({ seq: Number(row.seq), event: JSON.parse(row.event_json) });
+            const text = eventText(row);
+            if (text !== null) out.push({ seq: Number(row.seq), event: JSON.parse(text) });
           } catch {
-            // A row the host wrote and we cannot parse is not ours to judge; skip it.
+            // A row the host wrote and we cannot decode is not ours to judge; skip it.
           }
         }
         return out;

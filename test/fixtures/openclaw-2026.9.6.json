@@ -1,0 +1,99 @@
+{
+  "comment": "OpenClaw 2026.9.6 after `openclaw doctor --fix`: large events move to event_zstd (zstd, event_json NULL). Recorded from the spike install on 2026-09-24. Row shapes are unchanged from 2026.9.5.",
+  "host": "openclaw 2026.9.6 (agent database schema version 22)",
+  "databasePath": "<stateDir>/agents/<agentId>/agent/openclaw-agent.sqlite",
+  "transcriptEventsDdl": "CREATE TABLE \"transcript_events\" (\n  session_id TEXT NOT NULL,\n  seq INTEGER NOT NULL,\n  event_json TEXT,\n  created_at INTEGER NOT NULL,\n  event_zstd BLOB,\n  event_utf8_bytes INTEGER CHECK (event_utf8_bytes IS NULL OR event_utf8_bytes >= 0),\n  navigation_json TEXT,\n  PRIMARY KEY (session_id, seq),\n  FOREIGN KEY (session_id) REFERENCES \"session_windows\"(session_id) ON DELETE CASCADE,\n  CHECK (\n    (event_json IS NOT NULL AND event_zstd IS NULL)\n    OR (\n      event_json IS NULL AND event_zstd IS NOT NULL\n      AND event_utf8_bytes IS NOT NULL\n      AND event_utf8_bytes BETWEEN 1 AND 4194304\n      AND length(event_zstd) BETWEEN 1 AND 4194304\n      AND navigation_json IS NOT NULL\n    )\n  ),\n  CHECK (\n    navigation_json IS NULL OR CASE WHEN json_valid(navigation_json) THEN coalesce(\n      octet_length(navigation_json) <= 16384\n      AND json_type(navigation_json, '$.version') = 'integer'\n      AND json_extract(navigation_json, '$.version') = 1\n      AND json_type(navigation_json, '$.report') = 'object'\n      AND json_extract(navigation_json, '$.report.kind') IN ('canonical', 'leaf', 'link', 'ignored')\n      AND json_type(navigation_json, '$.navigation') = 'object'\n      AND json_type(navigation_json, '$.reset') = 'object'\n      AND json_type(navigation_json, '$.model') = 'object'\n      AND json_type(navigation_json, '$.modelBytes') = 'integer'\n      AND json_extract(navigation_json, '$.modelBytes') BETWEEN 0 AND 4194304\n      AND json_type(navigation_json, '$.modelWithoutCheckpointBytes') = 'integer'\n      AND json_extract(navigation_json, '$.modelWithoutCheckpointBytes') BETWEEN 0 AND 4194304\n      AND json_type(navigation_json, '$.withoutCustomDataBytes') = 'integer'\n      AND json_extract(navigation_json, '$.withoutCustomDataBytes') BETWEEN 0 AND 4194304,\n      0) ELSE 0 END\n  )\n) STRICT",
+  "toolCallEvent": {
+    "type": "message",
+    "id": "f7f7bc60-d7d8-437f-aa67-74ca87ed4850",
+    "parentId": "463a7eba-a2b9-4e0e-9936-c5f4b8030fcb",
+    "timestamp": "2026-09-22T00:45:48.620Z",
+    "message": {
+      "role": "assistant",
+      "content": [
+        {
+          "type": "toolCall",
+          "id": "call_a7kujv8v",
+          "name": "tool_call",
+          "arguments": {
+            "id": "say_hello_in_one_word",
+            "args": {
+              "query": "hello"
+            }
+          }
+        }
+      ],
+      "stopReason": "toolUse"
+    }
+  },
+  "toolResultErrorEvent": {
+    "type": "message",
+    "id": "f1d5846e-0fb7-458a-9271-45f42451dd27",
+    "parentId": "f7f7bc60-d7d8-437f-aa67-74ca87ed4850",
+    "timestamp": "2026-09-22T00:45:48.690Z",
+    "message": {
+      "role": "toolResult",
+      "toolCallId": "call_a7kujv8v",
+      "toolName": "tool_call",
+      "content": [
+        {
+          "type": "text",
+          "text": "{\n  \"status\": \"error\",\n  \"tool\": \"tool_call\",\n  \"error\": \"Unknown tool id: say_hello_in_one_word. Use tool_search to find a tool, tool_describe to inspect it, then tool_call with the exact id or name.\"\n}"
+        }
+      ],
+      "details": {
+        "status": "error",
+        "tool": "tool_call",
+        "error": "Unknown tool id: say_hello_in_one_word. Use tool_search to find a tool, tool_describe to inspect it, then tool_call with the exact id or name."
+      },
+      "isError": true
+    }
+  },
+  "codexToolCallEvent": {
+    "type": "message",
+    "id": "codex-call",
+    "message": {
+      "role": "assistant",
+      "content": [
+        {
+          "type": "toolCall",
+          "id": "exec-03864d53-b3e7-457e-bd77-c7f0d60f7e34",
+          "name": "schedule_backup",
+          "arguments": {
+            "cron": "0 3 *"
+          },
+          "input": {
+            "cron": "0 3 *"
+          }
+        }
+      ],
+      "api": "openai-codex-responses",
+      "provider": "openai",
+      "model": "gpt-5.6-luna"
+    }
+  },
+  "codexToolResultErrorEvent": {
+    "type": "message",
+    "id": "codex-result",
+    "message": {
+      "role": "toolResult",
+      "toolCallId": "exec-03864d53-b3e7-457e-bd77-c7f0d60f7e34",
+      "toolName": "schedule_backup",
+      "isError": true,
+      "content": [
+        {
+          "type": "toolResult",
+          "id": "exec-03864d53-b3e7-457e-bd77-c7f0d60f7e34",
+          "name": "schedule_backup",
+          "toolName": "schedule_backup",
+          "toolCallId": "exec-03864d53-b3e7-457e-bd77-c7f0d60f7e34",
+          "toolUseId": "exec-03864d53-b3e7-457e-bd77-c7f0d60f7e34",
+          "tool_use_id": "exec-03864d53-b3e7-457e-bd77-c7f0d60f7e34",
+          "content": "cron expression '0 3 *' has 3 fields, expected 5",
+          "text": "cron expression '0 3 *' has 3 fields, expected 5"
+        }
+      ],
+      "idempotencyKey": "codex-app-server:…:tool:exec-03864d53-b3e7-457e-bd77-c7f0d60f7e34:result"
+    }
+  }
+}
