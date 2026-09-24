@@ -202,6 +202,14 @@ test("sessions from before the plugin ran are counted through backfill", async (
   assert.equal(decision.outcome, "lesson");
 });
 
+test("a summary written by an older parser is re-read", async () => {
+  const history = new FakeHistory().add("old", failing()).add("new", failing());
+  const d = deps(history, new ScriptedLlm(lessonReply()));
+  d.store.write("sessions/old.json", { sessionId: "old", agentId: "main", lastSeq: 99, errorCount: 0, selfCorrectingSuppressed: 0, patterns: [] });
+  const decision = await processSession(d, "new", "main");
+  assert.equal(decision.outcome, "lesson");
+});
+
 test("the report counts outcomes and refusals by rule", async () => {
   const history = new FakeHistory().add("s1", failing()).add("s2", failing()).add("s3", new Transcript().say("hi"));
   const d = deps(history, new ScriptedLlm(lessonReply()));

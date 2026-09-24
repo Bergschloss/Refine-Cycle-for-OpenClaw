@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import { aggregate, isSelfCorrectingError, missingParameters, summarizeSession } from "../src/core/failures.ts";
 import { fingerprint } from "../src/core/fingerprint.ts";
 import { Transcript } from "./helpers.ts";
@@ -75,6 +76,19 @@ test("aggregation counts sessions and occurrences, and a re-read session is not 
   const merged = aggregate([one, two]).get(one.patterns[0].fingerprint)!;
   assert.equal(merged.count, 3);
   assert.deepEqual(merged.sessionIds, ["s1", "s2"]);
+});
+
+test("a Codex-runtime tool result (the ChatGPT-subscription route) is read too", () => {
+  const fixture = JSON.parse(fs.readFileSync(new URL("./fixtures/openclaw-2026.9.5.json", import.meta.url), "utf8"));
+  const rows = [
+    { seq: 0, event: fixture.codexToolCallEvent },
+    { seq: 1, event: fixture.codexToolResultErrorEvent },
+  ];
+  const summary = summarizeSession("s1", "main", rows);
+  assert.equal(summary.errorCount, 1);
+  assert.equal(summary.patterns[0].tool, "schedule_backup");
+  assert.equal(summary.patterns[0].sample, "cron expression '0 3 *' has 3 fields, expected 5");
+  assert.equal(summary.patterns[0].sampleArgs, '{"cron":"0 3 *"}');
 });
 
 test("rows that are not messages, or malformed, are skipped", () => {

@@ -8,7 +8,7 @@
  * the model, and only within the day's budget, which is spent before the call.
  */
 
-import { aggregate, summarizeSession, type AggregatePattern, type SessionPattern, type SessionSummary, type TranscriptRow } from "./core/failures.ts";
+import { aggregate, summarizeSession, SUMMARY_FORMAT, type AggregatePattern, type SessionPattern, type SessionSummary, type TranscriptRow } from "./core/failures.ts";
 import { findCoveringRule, type Covering, type Source } from "./core/covered.ts";
 import { lessonShape } from "./core/shape.ts";
 import { buildUserMessage, parseProposal, SYSTEM_PROMPT, validateLesson } from "./core/proposal.ts";
@@ -168,7 +168,7 @@ function backfill(deps: Deps, agentId: string, except: string): void {
   for (const { sessionId, lastSeq } of deps.history.recentSessions(deps.settings.backfillSessions)) {
     if (sessionId === except) continue;
     const stored = deps.store.read<SessionSummary>(sessionPath(sessionId));
-    if (stored && stored.lastSeq >= lastSeq) continue;
+    if (stored && stored.format === SUMMARY_FORMAT && stored.lastSeq >= lastSeq) continue;
     summarizeAndStore(deps, sessionId, agentId);
   }
 }

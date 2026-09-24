@@ -43,8 +43,12 @@ export interface SessionPattern {
   droppedArgument: boolean;
 }
 
+/** Bumped whenever extraction changes, so stored summaries from an older parser get re-read. */
+export const SUMMARY_FORMAT = 2;
+
 export interface SessionSummary {
   $v: 1;
+  format: number;
   sessionId: string;
   agentId: string;
   lastSeq: number;
@@ -86,13 +90,22 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+/**
+ * The text of a message's content. The embedded runtime writes `{type: "text"}`
+ * parts; the Codex runtime (the ChatGPT-subscription route) writes one
+ * `{type: "toolResult", text, content}` part per result. Any part's `text` counts,
+ * then its nested `content`.
+ */
 function textOf(content: unknown): string {
   if (typeof content === "string") return content;
   if (!Array.isArray(content)) return "";
-  return content
-    .filter((part) => isRecord(part) && part.type === "text" && typeof part.text === "string")
-    .map((part) => (part as { text: string }).text)
-    .join("\n");
+  const texts: string[] = [];
+  for (const part of content) {
+    if (!isRecord(part) || part.type === "toolCall" || part.type === "image") continue;
+    const text = typeof part.text === "string" ? part.text : textOf(part.content);
+    if (text) texts.push(text);
+  }
+  return texts.join("\n");
 }
 
 /**
@@ -286,6 +299,7 @@ export function summarizeSession(sessionId: string, agentId: string, rows: Trans
   const lastSeq = rows.reduce((max, row) => Math.max(max, row.seq), -1);
   return {
     $v: 1,
+    format: SUMMARY_FORMAT,
     sessionId,
     agentId,
     lastSeq,
