@@ -1,11 +1,23 @@
 {
   "name": "refine-cycle-openclaw",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "description": "An OpenClaw plugin that learns from the agent's own repeated failures.",
   "engines": { "node": ">=24" },
   "scripts": {
     "test": "node --test --experimental-strip-types \"test/**/*.test.ts\""
+  },
+  "openclaw": {
+    "extensions": ["./src/plugin.ts"],
+    "install": {
+      "minHostVersion": ">=2026.9.5"
+    },
+    "compat": {
+      "pluginApi": ">=2026.9.5"
+    },
+    "build": {
+      "openclawVersion": "2026.9.5"
+    }
   }
 }

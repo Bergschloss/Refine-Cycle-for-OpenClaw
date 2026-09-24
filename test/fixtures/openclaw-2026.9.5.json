@@ -1,0 +1,31 @@
+{
+  "comment": "What the tests assume about OpenClaw, recorded from a real 2026.9.5 install (the spike, 2026-09-22). scripts/drift-check.ts compares this against a live install.",
+  "host": "openclaw 2026.9.5 (ec9c1a1), source b2f124b292495749ed024dd6af0aaae78db53c39",
+  "databasePath": "<stateDir>/agents/<agentId>/agent/openclaw-agent.sqlite",
+  "transcriptEventsDdl": "CREATE TABLE transcript_events (\n  session_id TEXT NOT NULL,\n  seq INTEGER NOT NULL,\n  event_json TEXT NOT NULL,\n  created_at INTEGER NOT NULL,\n  PRIMARY KEY (session_id, seq),\n  FOREIGN KEY (session_id) REFERENCES \"session_windows\"(session_id) ON DELETE CASCADE\n) STRICT",
+  "toolCallEvent": {
+    "type": "message",
+    "id": "f7f7bc60-d7d8-437f-aa67-74ca87ed4850",
+    "parentId": "463a7eba-a2b9-4e0e-9936-c5f4b8030fcb",
+    "timestamp": "2026-09-22T00:45:48.620Z",
+    "message": {
+      "role": "assistant",
+      "content": [{ "type": "toolCall", "id": "call_a7kujv8v", "name": "tool_call", "arguments": { "id": "say_hello_in_one_word", "args": { "query": "hello" } } }],
+      "stopReason": "toolUse"
+    }
+  },
+  "toolResultErrorEvent": {
+    "type": "message",
+    "id": "f1d5846e-0fb7-458a-9271-45f42451dd27",
+    "parentId": "f7f7bc60-d7d8-437f-aa67-74ca87ed4850",
+    "timestamp": "2026-09-22T00:45:48.690Z",
+    "message": {
+      "role": "toolResult",
+      "toolCallId": "call_a7kujv8v",
+      "toolName": "tool_call",
+      "content": [{ "type": "text", "text": "{\n  \"status\": \"error\",\n  \"tool\": \"tool_call\",\n  \"error\": \"Unknown tool id: say_hello_in_one_word. Use tool_search to find a tool, tool_describe to inspect it, then tool_call with the exact id or name.\"\n}" }],
+      "details": { "status": "error", "tool": "tool_call", "error": "Unknown tool id: say_hello_in_one_word. Use tool_search to find a tool, tool_describe to inspect it, then tool_call with the exact id or name." },
+      "isError": true
+    }
+  }
+}

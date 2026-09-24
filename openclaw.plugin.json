@@ -1,0 +1,28 @@
+{
+  "id": "refine-cycle",
+  "name": "Refine Cycle",
+  "description": "Learns from the agent's own repeated tool failures: finds a mistake that keeps coming back, writes one short lesson, and puts it in front of the agent in later sessions.",
+  "version": "0.1.0",
+  "activation": {
+    "onStartup": true
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "enabled": { "type": "boolean", "default": true },
+      "injectEnabled": { "type": "boolean", "default": true, "description": "Put active lessons in front of the model." },
+      "learnEnabled": { "type": "boolean", "default": true, "description": "Look for repeated failures after each turn and propose lessons." },
+      "maxInjectedChars": { "type": "integer", "minimum": 200, "default": 1000 },
+      "maxLessonChars": { "type": "integer", "minimum": 40, "default": 200 },
+      "maxModelCallsPerDay": { "type": "integer", "minimum": 0, "default": 3 },
+      "minSessions": { "type": "integer", "minimum": 1, "default": 2 },
+      "minOccurrences": { "type": "integer", "minimum": 1, "default": 5 },
+      "backfillSessions": { "type": "integer", "minimum": 0, "default": 10 },
+      "proposalTimeoutMs": { "type": "integer", "minimum": 1000, "default": 120000 },
+      "instructionFiles": { "type": "array", "items": { "type": "string" }, "default": ["AGENTS.md", "TOOLS.md", "SOUL.md"] },
+      "skillDirs": { "type": "array", "items": { "type": "string" }, "default": [] },
+      "historyDbPath": { "type": "string", "default": "" }
+    }
+  }
+}
