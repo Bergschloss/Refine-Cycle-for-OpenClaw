@@ -60,7 +60,10 @@ export interface PluginApi {
     acceptsArgs?: boolean;
     handler: (ctx: CommandContext) => { text: string } | Promise<{ text: string }>;
   }): void;
-  registerCli?(registrar: (ctx: { program: CliCommand; workspaceDir?: string }) => void, options?: { commands?: string[] }): void;
+  registerCli?(
+    registrar: (ctx: { program: CliCommand; workspaceDir?: string }) => void,
+    options?: { commands?: string[]; descriptors?: Array<{ name: string; description: string; hasSubcommands: boolean }> },
+  ): void;
 }
 
 const PLUGIN_DIR = "refine-cycle";
@@ -217,7 +220,11 @@ export default function register(api: PluginApi): void {
       root.command("delete <id>").description("Delete a lesson (kept as a tombstone)").action((id) => console.log(control(`delete ${String(id)}`)));
       root.command("report").description("What the learning loop decided, by rule").action(() => console.log(control("report")));
     },
-    { commands: ["refine-cycle"] },
+    {
+      commands: ["refine-cycle"],
+      // Parse-time metadata: without it OpenClaw 2026.9.6 does not know the command.
+      descriptors: [{ name: "refine-cycle", description: "Refine Cycle: lessons learned from repeated failures", hasSubcommands: true }],
+    },
   );
 
   log(`ready, store at ${store.root}`);

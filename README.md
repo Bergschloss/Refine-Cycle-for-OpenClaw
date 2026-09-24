@@ -50,7 +50,7 @@ Two corrections to the design came out of it: read history straight from SQLite 
 | Design | [docs/ARCHITECTURE-DRAFT-2026-09-22.md](docs/ARCHITECTURE-DRAFT-2026-09-22.md), to be revised with the two corrections |
 | Can a plugin inject lessons at all | [docs/RESEARCH-lesson-injection.md](docs/RESEARCH-lesson-injection.md) |
 | Port or rebuild | [docs/RESEARCH-port-feasibility.md](docs/RESEARCH-port-feasibility.md) |
-| Code | [milestone 1](docs/MILESTONE-1.md) steps 1–11 written and unit-tested; the real-host run is next |
+| Code | [milestone 1](docs/MILESTONE-1.md) steps 1–11 built; 42 tests. On a real OpenClaw (2026.9.5 → 2026.9.6, GPT-6 Luna on a ChatGPT subscription) the loop ran end to end on 2026-09-24: a failure repeated in 4 sessions became one lesson, the next session's model quoted it, and the agent then used the right format. Not yet: the milestone's number (how many lessons are not restatements) on real sessions |
 
 ## Layout
 
