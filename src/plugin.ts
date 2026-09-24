@@ -125,7 +125,7 @@ export default function register(api: PluginApi): void {
   );
 
   const complete = api.runtime?.llm?.complete;
-  const llmFor = (agentId: string): Llm | null =>
+  const llm: Llm | null =
     complete
       ? {
         async complete(systemPrompt, userMessage, timeoutMs) {
@@ -135,7 +135,8 @@ export default function register(api: PluginApi): void {
             purpose: "refine-cycle: propose a lesson from a repeated failure",
             maxTokens: 400,
             temperature: 0,
-            agentId,
+            // No agentId: OpenClaw refuses a plugin call that names a target agent
+            // ("cannot override the target agent"); the default is the agent's own model.
             signal: AbortSignal.timeout(timeoutMs),
           });
           return String(result?.text ?? "");
@@ -162,7 +163,7 @@ export default function register(api: PluginApi): void {
           {
             store,
             history,
-            llm: llmFor(agentId),
+            llm,
             sources: () => readSources(workspaceDir, settings.instructionFiles, settings.skillDirs),
             settings,
             now: () => new Date(),

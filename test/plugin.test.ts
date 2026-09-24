@@ -105,7 +105,7 @@ test("end to end on a real SQLite file: failures in two sessions become a lesson
   assert.equal(agentEnd({ success: true, messages: [] }, { sessionId: "s1", agentId: "main" }), undefined);
   await settle();
   assert.equal(calls.length, 1);
-  assert.equal(calls[0].agentId, "main");
+  assert.equal(calls[0].agentId, undefined, "naming the agent is an override OpenClaw refuses");
   assert.ok(calls[0].signal instanceof AbortSignal);
 
   const injected = hooks.get("before_prompt_build")!.handler({}, { sessionId: "s3" }) as { prependContext: string };
