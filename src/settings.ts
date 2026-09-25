@@ -16,8 +16,10 @@ export interface Settings {
   minSessions: number;
   /** ...or this many times in all. */
   minOccurrences: number;
-  /** Recent sessions re-read on each run, so failures from before a restart still count. */
+  /** Recent sessions re-read, so failures from before the plugin ran (or a restart) still count. */
   backfillSessions: number;
+  /** How often, at most, the host's history is scanned for those sessions. */
+  backfillIntervalMinutes: number;
   proposalTimeoutMs: number;
   /** Instruction files in the agent workspace searched by the already-covered check. */
   instructionFiles: string[];
@@ -37,6 +39,7 @@ export const DEFAULTS: Settings = {
   minSessions: 2,
   minOccurrences: 5,
   backfillSessions: 10,
+  backfillIntervalMinutes: 60,
   proposalTimeoutMs: 120_000,
   instructionFiles: ["AGENTS.md", "TOOLS.md", "SOUL.md"],
   skillDirs: [],

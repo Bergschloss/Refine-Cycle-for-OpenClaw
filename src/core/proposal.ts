@@ -25,7 +25,7 @@ export const SYSTEM_PROMPT = [
 ].join("\n");
 
 function untrusted(text: string): string {
-  return `<untrusted_tool_result>${text.replace(/<\/?untrusted_tool_result>/gi, "")}</untrusted_tool_result>`;
+  return `<untrusted_tool_result>${text.replace(/<\s*\/?\s*untrusted_tool_result[^>]*>/gi, "")}</untrusted_tool_result>`;
 }
 
 function resolutionLine(occurrences: Occurrence[]): string {
@@ -45,7 +45,7 @@ export function buildUserMessage(pattern: AggregatePattern, occurrences: Occurre
     `Fingerprint: ${pattern.fingerprint}`,
     `Tool: ${pattern.tool || "(unknown)"}`,
     `Seen ${pattern.count} times in ${pattern.sessionIds.length} session(s).`,
-    `Error, normalized: ${pattern.shape}`,
+    `Error, normalized: ${untrusted(pattern.shape)}`,
     `Error, first occurrence: ${untrusted(pattern.sample)}`,
     `Arguments of that call: ${untrusted(pattern.sampleArgs || "{}")}`,
     `What the agent did right after, in the latest session: ${resolutionLine(occurrences) || "unknown"}`,
@@ -102,32 +102,55 @@ export function parseProposal(text: string): Proposal | null {
 
 export type Validation =
   | { ok: true }
-  | { ok: false; rule: "ungrounded" | "empty" | "too_long" | "duplicate" | "restatement"; covering?: Covering };
+  | {
+    ok: false;
+    rule: "ungrounded" | "empty" | "too_long" | "markup" | "off_topic" | "duplicate" | "restatement";
+    covering?: Covering;
+  };
 
 export interface ActiveLessonView {
   id: string;
   text: string;
   fingerprint: string;
+  /** Absent means active. Disabled and deleted lessons still count as duplicates. */
+  status?: string;
 }
 
 function comparable(text: string): string {
   return text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
 }
 
+/** Does the lesson name the tool, or its last `__` segment (`mcp__server__tool` → `tool`)? */
+function namesTool(lesson: string, tool: string): boolean {
+  if (!tool) return true;
+  const text = lesson.toLowerCase();
+  const name = tool.toLowerCase();
+  const short = name.split("__").pop() ?? name;
+  return text.includes(name) || text.includes(short);
+}
+
 export function validateLesson(
   proposal: Proposal,
   observedFingerprint: string,
-  active: ActiveLessonView[],
+  tool: string,
+  known: ActiveLessonView[],
   sources: Source[],
   maxLessonChars: number,
 ): Validation {
   if (proposal.fingerprint !== observedFingerprint) return { ok: false, rule: "ungrounded" };
   if (!proposal.lesson) return { ok: false, rule: "empty" };
   if (proposal.lesson.length > maxLessonChars) return { ok: false, rule: "too_long" };
+  // A lesson is injected into every later prompt: no tags, so it cannot close its block or open another.
+  if (/[<>]/.test(proposal.lesson)) return { ok: false, rule: "markup" };
+  // A lesson is about the failure it was learned from, so it names that tool. No
+  // other content filter: the owner removed the URL and credential filters from the
+  // Hermes plugin deliberately, because they cost valid lessons and protected nothing.
+  if (!namesTool(proposal.lesson, tool)) return { ok: false, rule: "off_topic" };
   const text = comparable(proposal.lesson);
-  if (active.some((lesson) => lesson.fingerprint === observedFingerprint || comparable(lesson.text) === text)) {
+  if (known.some((lesson) => lesson.fingerprint === observedFingerprint || comparable(lesson.text) === text)) {
     return { ok: false, rule: "duplicate" };
   }
+  const active = known.filter((lesson) => (lesson.status ?? "active") === "active");
   const lessonSources = active.map((lesson) => ({ name: `lesson:${lesson.id}`, text: lesson.text }));
   const covering = findRestatement(proposal.lesson, [...sources, ...lessonSources]);
   if (covering) return { ok: false, rule: "restatement", covering };

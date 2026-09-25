@@ -9,7 +9,7 @@
  */
 
 import { createHash } from "node:crypto";
-import { FileStore, safeName } from "./store.ts";
+import { FileStore, safeName, StoreError } from "./store.ts";
 
 export type LessonStatus = "draft" | "active" | "disabled" | "deleted";
 
@@ -25,7 +25,18 @@ export interface Lesson {
   sourceSessionId: string;
   evidence: { sessionIds: string[]; eventIds: string[] };
   reason: string;
+  /** The agent whose failures produced it; it is shown to that agent only. Absent on lessons from 0.1.0: "main". */
+  agentId?: string;
 }
+
+export const DEFAULT_AGENT = "main";
+
+export function lessonAgent(lesson: Lesson): string {
+  return lesson.agentId || DEFAULT_AGENT;
+}
+
+/** A lesson with this id already exists and is not a leftover draft; it is never overwritten. */
+export class LessonExistsError extends Error {}
 
 interface JournalRecord {
   id: string;
@@ -38,8 +49,24 @@ interface JournalRecord {
   previousStatus?: LessonStatus;
 }
 
-export function lessonId(fingerprint: string, text: string): string {
-  return createHash("sha1").update(`${fingerprint}|${text.toLowerCase().trim()}`).digest("hex").slice(0, 10);
+/** Scoped by agent: the same failure and text for two agents are two lessons. */
+export function lessonId(agentId: string, fingerprint: string, text: string): string {
+  return createHash("sha1").update(`${agentId}|${fingerprint}|${text.toLowerCase().trim()}`).digest("hex").slice(0, 10);
+}
+
+const STATUSES: ReadonlySet<string> = new Set(["draft", "active", "disabled", "deleted"]);
+
+function isLesson(value: unknown): value is Lesson {
+  if (typeof value !== "object" || value === null) return false;
+  const lesson = value as Record<string, unknown>;
+  return (
+    typeof lesson.id === "string" &&
+    typeof lesson.text === "string" &&
+    typeof lesson.fingerprint === "string" &&
+    typeof lesson.createdAt === "string" &&
+    typeof lesson.status === "string" &&
+    STATUSES.has(lesson.status)
+  );
 }
 
 function lessonPath(id: string): string {
@@ -61,20 +88,38 @@ export function readLesson(store: FileStore, id: string): Lesson | undefined {
 export function allLessons(store: FileStore): Lesson[] {
   const out: Lesson[] = [];
   for (const name of store.list("lessons")) {
+    // A record missing any field the filters and the sort rely on is skipped, like a torn one.
     const lesson = store.read<Lesson>(`lessons/${name}.json`);
-    if (lesson && typeof lesson.id === "string" && typeof lesson.text === "string") out.push(lesson);
+    if (isLesson(lesson)) out.push(lesson);
   }
   return out;
 }
 
-/** Active lessons, oldest first: a stable order keeps the injected block stable. */
-export function activeLessons(store: FileStore): Lesson[] {
+/** Active lessons (of one agent, when given), oldest first: a stable order keeps the injected block stable. */
+export function activeLessons(store: FileStore, agentId?: string): Lesson[] {
   return allLessons(store)
-    .filter((lesson) => lesson.status === "active")
+    .filter((lesson) => lesson.status === "active" && (agentId === undefined || lessonAgent(lesson) === agentId))
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
 }
 
-export function activate(store: FileStore, lesson: Omit<Lesson, "status" | "changedAt">, now: Date): Lesson {
+/** `waitMs`: how long to wait for the store lock. The gateway passes 0 and never blocks. */
+export function activate(store: FileStore, lesson: Omit<Lesson, "status" | "changedAt">, now: Date, waitMs = 5_000): Lesson {
+  const release = store.lock("lessons", waitMs);
+  try {
+    return activateLocked(store, lesson, now);
+  } finally {
+    release();
+  }
+}
+
+function activateLocked(store: FileStore, lesson: Omit<Lesson, "status" | "changedAt">, now: Date): Lesson {
+  // Same agent, fingerprint and text give the same id. An existing lesson, and above all
+  // one the user disabled or deleted, must not be overwritten by a relearned copy;
+  // only a draft a crash left behind may be.
+  const existing = readLesson(store, lesson.id);
+  if (existing && existing.status !== "draft") {
+    throw new LessonExistsError(`lesson ${lesson.id} already exists (${existing.status})`);
+  }
   const draft: Lesson = { ...lesson, status: "draft", changedAt: now.toISOString() };
   const journalId = newJournalId(now, lesson.id, "activate");
   const record: JournalRecord = {
@@ -93,9 +138,26 @@ export function activate(store: FileStore, lesson: Omit<Lesson, "status" | "chan
   return active;
 }
 
-export function setStatus(store: FileStore, id: string, status: "disabled" | "deleted", now: Date): Lesson | undefined {
+export function setStatus(
+  store: FileStore,
+  id: string,
+  status: "disabled" | "deleted",
+  now: Date,
+  waitMs = 5_000,
+): Lesson | undefined {
+  const release = store.lock("lessons", waitMs);
+  try {
+    return setStatusLocked(store, id, status, now);
+  } finally {
+    release();
+  }
+}
+
+function setStatusLocked(store: FileStore, id: string, status: "disabled" | "deleted", now: Date): Lesson | undefined {
   const lesson = readLesson(store, id);
   if (!lesson) return undefined;
+  // A tombstone stays a tombstone, and a repeated command changes nothing.
+  if (lesson.status === "deleted" || lesson.status === status) return lesson;
   const op = status === "disabled" ? "disable" : "delete";
   const journalId = newJournalId(now, id, op);
   const record: JournalRecord = {
@@ -118,7 +180,27 @@ export function setStatus(store: FileStore, id: string, status: "disabled" | "de
  * is rolled forward (the lesson passed validation before its intent was written);
  * a disable or delete is re-applied. A record that cannot be read is skipped.
  */
-export function recover(store: FileStore, now: Date): { finished: number; abandoned: number; unreadable: number } {
+export function recover(
+  store: FileStore,
+  now: Date,
+): { finished: number; abandoned: number; unreadable: number; skipped?: boolean } {
+  // Recovery rewrites lesson files, so it takes the same lock as a user's disable or
+  // delete; if another process holds it, recovery waits for the next run.
+  let release: () => void;
+  try {
+    release = store.lock("lessons", 0);
+  } catch (error) {
+    if (error instanceof StoreError) return { finished: 0, abandoned: 0, unreadable: 0, skipped: true };
+    throw error;
+  }
+  try {
+    return recoverLocked(store, now);
+  } finally {
+    release();
+  }
+}
+
+function recoverLocked(store: FileStore, now: Date): { finished: number; abandoned: number; unreadable: number } {
   let finished = 0;
   let abandoned = 0;
   let unreadable = 0;
@@ -142,7 +224,9 @@ export function recover(store: FileStore, now: Date): { finished: number; abando
       }
     } else if (current) {
       const status = record.op === "disable" ? "disabled" : "deleted";
-      if (current.status !== status) {
+      // A later change (a delete after a crashed disable) wins; a tombstone stays one.
+      const changedLater = Date.parse(current.changedAt) > Date.parse(record.at);
+      if (current.status !== status && current.status !== "deleted" && !changedLater) {
         store.write(lessonPath(record.lessonId), { ...current, status, changedAt: now.toISOString() });
       }
     }

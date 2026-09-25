@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { replay } from "../src/replay.ts";
+import { readCorpus, replay } from "../src/replay.ts";
 import { DEFAULTS } from "../src/settings.ts";
 import { fingerprint } from "../src/core/fingerprint.ts";
 import type { Llm } from "../src/pipeline.ts";
@@ -43,4 +43,23 @@ test("replay runs the corpus in order, each session seeing only the ones before 
   assert.equal(result.lessons.length, 1);
   assert.equal(result.lessons[0].sourceSessionId, "c");
   assert.ok(fs.existsSync(path.join(dir, "store", "replay-result.json")));
+});
+
+test("the corpus is replayed in the order the sessions happened", () => {
+  const file = path.join(tempDir(), "corpus.jsonl");
+  const line = (sessionId: string, startedAt?: string | number) => JSON.stringify({ sessionId, startedAt, rows: [] });
+  fs.writeFileSync(file, [line("late", 300), line("undated"), line("early", 100), line("iso", "1970-01-01T00:00:00.200Z")].join("\n"));
+  assert.deepEqual(readCorpus(file).map((s) => s.sessionId), ["early", "iso", "late", "undated"]);
+});
+
+test("replay refuses a store directory that already holds a run", async () => {
+  const dir = tempDir();
+  const corpus = path.join(dir, "corpus.jsonl");
+  fs.writeFileSync(corpus, "");
+  fs.mkdirSync(path.join(dir, "store"));
+  fs.writeFileSync(path.join(dir, "store", "meta.json"), "{}");
+  await assert.rejects(
+    replay({ corpusFile: corpus, storeDir: path.join(dir, "store"), llm: null, sources: [], settings: DEFAULTS, log: () => {} }),
+    /empty store directory/,
+  );
 });

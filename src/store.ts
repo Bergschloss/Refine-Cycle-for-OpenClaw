@@ -23,6 +23,10 @@ export const SCHEMA_VERSION = 1;
 
 export class StoreError extends Error {}
 
+/** A lock older than this is from a process that died holding it. */
+const STALE_LOCK_MS = 30_000;
+const SLEEP = new Int32Array(new SharedArrayBuffer(4));
+
 export interface StoreOptions {
   /** Test seam: called before every write with the record's relative path; throwing simulates a crash there. */
   beforeWrite?: (relative: string) => void;
@@ -84,6 +88,65 @@ export class FileStore {
       fs.closeSync(fd);
     }
     fs.renameSync(temp, target);
+  }
+
+  /**
+   * An exclusive lock across processes (the gateway, a CLI run, a replay into the
+   * same store) for a read-modify-write. Returns the release function; throws
+   * StoreError when another holder keeps it past `timeoutMs`. With `timeoutMs` 0 it
+   * makes one attempt and never waits: that is what code on the gateway thread uses.
+   */
+  lock(name: string, timeoutMs = 5_000): () => void {
+    fs.mkdirSync(this.root, { recursive: true });
+    const file = path.join(this.root, `${name}.lock`);
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+      try {
+        const token = `${process.pid}-${randomBytes(8).toString("hex")}`;
+        const fd = fs.openSync(file, "wx");
+        fs.writeSync(fd, token);
+        fs.closeSync(fd);
+        return () => {
+          // Only the holder removes it: a holder that outlived the stale limit must not
+          // delete the lock a later process took over.
+          try {
+            if (fs.readFileSync(file, "utf8") === token) fs.unlinkSync(file);
+          } catch {
+            // already gone
+          }
+        };
+      } catch (error) {
+        const code = (error as NodeJS.ErrnoException).code;
+        if (code !== "EEXIST") throw new StoreError(`cannot take lock ${name}: ${code ?? String(error)}`);
+      }
+      let stale = false;
+      try {
+        stale = Date.now() - fs.statSync(file).mtimeMs > STALE_LOCK_MS;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") continue; // released between our two calls
+      }
+      if (stale) {
+        try {
+          fs.unlinkSync(file);
+          continue;
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
+          // A stale lock we cannot remove (permissions, a file held open) is treated as
+          // held: waiting or giving up below, never looping without a pause.
+        }
+      }
+      if (timeoutMs <= 0 || Date.now() > deadline) throw new StoreError(`store is locked: ${name}`);
+      Atomics.wait(SLEEP, 0, 0, 25);
+    }
+  }
+
+  remove(relative: string): void {
+    this.beforeWrite?.(relative);
+    try {
+      fs.unlinkSync(path.join(this.root, relative));
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
   }
 
   exists(relative: string): boolean {

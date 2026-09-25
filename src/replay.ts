@@ -24,6 +24,7 @@ export interface CorpusSession {
   rows: TranscriptRow[];
 }
 
+/** Sessions in the order they happened (`startedAt`); lines without it keep their place after the dated ones. */
 export function readCorpus(file: string): CorpusSession[] {
   const out: CorpusSession[] = [];
   for (const line of fs.readFileSync(file, "utf8").split("\n")) {
@@ -31,7 +32,15 @@ export function readCorpus(file: string): CorpusSession[] {
     const session = JSON.parse(line) as CorpusSession;
     if (typeof session.sessionId === "string" && Array.isArray(session.rows)) out.push(session);
   }
-  return out;
+  const time = (value: CorpusSession["startedAt"]): number => {
+    if (typeof value === "number") return value;
+    const parsed = typeof value === "string" ? Date.parse(value) : NaN;
+    return Number.isNaN(parsed) ? Number.POSITIVE_INFINITY : parsed;
+  };
+  return out
+    .map((session, index) => ({ session, index, at: time(session.startedAt) }))
+    .sort((x, y) => (x.at === y.at ? x.index - y.index : x.at < y.at ? -1 : 1))
+    .map((entry) => entry.session);
 }
 
 export interface ReplayResult {
@@ -51,6 +60,10 @@ export async function replay(options: {
 }): Promise<ReplayResult> {
   const sessions = readCorpus(options.corpusFile);
   const byId = new Map(sessions.map((session) => [session.sessionId, session.rows]));
+  // A store that already holds a run would mix its decisions into this one's numbers.
+  if (fs.existsSync(options.storeDir) && fs.readdirSync(options.storeDir).length > 0) {
+    throw new Error(`replay needs an empty store directory: ${options.storeDir}`);
+  }
   const store = new FileStore(options.storeDir);
   store.open();
   // No backfill: a session may only learn from the sessions already replayed.

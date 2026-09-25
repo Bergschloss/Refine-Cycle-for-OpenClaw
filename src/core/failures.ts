@@ -38,13 +38,18 @@ export interface SessionPattern {
   /** The arguments of the first failing call, bounded JSON. */
   sampleArgs: string;
   count: number;
+  /** The first occurrences, with host ids, as evidence (bounded). */
   occurrences: Occurrence[];
+  /** The transcript seq of every occurrence, unbounded. */
+  seqs: number[];
+  /** When each occurrence happened (ms since epoch, -1 if the host gave no time), unbounded: what the effect ledger counts. */
+  times: number[];
   /** The error names a parameter this tool had already been given successfully earlier in the session. */
   droppedArgument: boolean;
 }
 
 /** Bumped whenever extraction changes, so stored summaries from an older parser get re-read. */
-export const SUMMARY_FORMAT = 2;
+export const SUMMARY_FORMAT = 4;
 
 export interface SessionSummary {
   $v: 1;
@@ -59,6 +64,19 @@ export interface SessionSummary {
 }
 
 const SAMPLE_CHARS = 600;
+/**
+ * The Hermes plugin fingerprints at most 4000 characters of an error: the first
+ * 1000 and the last 3000 (core.collect_evidence). Same bound here, so both plugins
+ * give a long error the same identity, and a huge one cannot stall the host.
+ */
+const ERROR_HEAD_CHARS = 1000;
+const ERROR_TAIL_CHARS = 3000;
+
+function boundError(text: string): string {
+  return text.length <= ERROR_HEAD_CHARS + ERROR_TAIL_CHARS
+    ? text
+    : `${text.slice(0, ERROR_HEAD_CHARS)}\n…\n${text.slice(-ERROR_TAIL_CHARS)}`;
+}
 const ARGS_CHARS = 400;
 const OCCURRENCES_KEPT = 20;
 /** How many steps after a failure are read to see what the agent did about it. */
@@ -78,6 +96,8 @@ type Step =
   | {
     kind: "result";
     seq: number;
+    /** ms since epoch, or -1. */
+    at: number;
     eventId: string;
     callId: string;
     tool: string;
@@ -119,6 +139,13 @@ function effectiveCall(name: string, args: Record<string, unknown>): { tool: str
   return { tool: name, args };
 }
 
+/** The host writes `message.timestamp` in ms and `event.timestamp` as ISO text. */
+function eventTime(message: Record<string, unknown>, event: Record<string, unknown>): number {
+  if (typeof message.timestamp === "number" && Number.isFinite(message.timestamp)) return message.timestamp;
+  const parsed = typeof event.timestamp === "string" ? Date.parse(event.timestamp) : NaN;
+  return Number.isNaN(parsed) ? -1 : parsed;
+}
+
 function toSteps(rows: TranscriptRow[]): Step[] {
   const calls = new Map<string, ToolCall>();
   const steps: Step[] = [];
@@ -151,10 +178,11 @@ function toSteps(rows: TranscriptRow[]): Step[] {
       const { tool, args } = effectiveCall(name, call?.args ?? {});
       const details = isRecord(message.details) ? message.details : {};
       // The structured error is the failure itself; the text part may wrap it in JSON.
-      const text = typeof details.error === "string" && details.error ? details.error : textOf(message.content);
+      const text = boundError(typeof details.error === "string" && details.error ? details.error : textOf(message.content));
       steps.push({
         kind: "result",
         seq: row.seq,
+        at: eventTime(message, event),
         eventId: typeof event.id === "string" ? event.id : "",
         callId,
         tool,
@@ -231,14 +259,14 @@ function boundedJson(value: unknown, limit: number): string {
   return text.length > limit ? `${text.slice(0, limit)}…` : text;
 }
 
-function resolve(steps: Step[], index: number, fp: string, tool: string): Resolution {
+function resolve(steps: Step[], fingerprints: Map<number, string>, index: number, fp: string, tool: string): Resolution {
   const end = Math.min(steps.length, index + 1 + RESOLUTION_LOOKAHEAD);
   for (let i = index + 1; i < end; i++) {
     const step = steps[i];
     if (step.kind === "user") break;
     if (step.kind !== "result") continue;
     if (step.isError) {
-      if (fingerprint(step.tool, step.text) === fp) return "repeated";
+      if (fingerprints.get(i) === fp) return "repeated";
       continue;
     }
     return step.tool === tool ? "corrected" : "switched";
@@ -248,6 +276,11 @@ function resolve(steps: Step[], index: number, fp: string, tool: string): Resolu
 
 export function summarizeSession(sessionId: string, agentId: string, rows: TranscriptRow[]): SessionSummary {
   const steps = toSteps(rows);
+  // Each failed row is fingerprinted once; resolve() looks ahead over the same rows.
+  const fingerprints = new Map<number, string>();
+  steps.forEach((step, index) => {
+    if (step.kind === "result" && step.isError && step.text) fingerprints.set(index, fingerprint(step.tool, step.text));
+  });
   const byFingerprint = new Map<string, SessionPattern>();
   /** Argument names each tool has been called with successfully so far. */
   const usedArgs = new Map<string, Set<string>>();
@@ -268,12 +301,12 @@ export function summarizeSession(sessionId: string, agentId: string, rows: Trans
       suppressed++;
       return;
     }
-    const fp = fingerprint(step.tool, step.text);
+    const fp = fingerprints.get(index)!;
     const occurrence: Occurrence = {
       seq: step.seq,
       eventId: step.eventId,
       toolCallId: step.callId,
-      resolution: resolve(steps, index, fp, step.tool),
+      resolution: resolve(steps, fingerprints, index, fp, step.tool),
     };
     const already = usedArgs.get(step.tool);
     const dropped = !!already && missingParameters(step.text).some((name) => already.has(name));
@@ -287,11 +320,15 @@ export function summarizeSession(sessionId: string, agentId: string, rows: Trans
         sampleArgs: boundedJson(step.args, ARGS_CHARS),
         count: 1,
         occurrences: [occurrence],
+        seqs: [step.seq],
+        times: [step.at],
         droppedArgument: dropped,
       });
       return;
     }
     pattern.count++;
+    pattern.seqs.push(step.seq);
+    pattern.times.push(step.at);
     if (pattern.occurrences.length < OCCURRENCES_KEPT) pattern.occurrences.push(occurrence);
     pattern.droppedArgument ||= dropped;
   });

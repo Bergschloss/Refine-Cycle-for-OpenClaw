@@ -19,6 +19,7 @@ This is not a port. OpenClaw takes TypeScript plugins, so the code is new. What 
 - **Cheap refusals before expensive ones.** Everything that can refuse without a model call runs first.
 - **Crash safety.** Write the record, apply, then mark. A record a crash cut short must not stop the plugin for good.
 - **Every change reversible.**
+- **No content filter on lessons.** A lesson may carry a URL, a command or a credential name if the model saw it; there is no scrubber and no URL ban. This is the owner's decision, carried over from the Hermes plugin, where those filters were removed because they cost valid lessons and protected nothing. What the plugin does refuse is structural: markup that could close the injected block, a lesson that does not name the failing tool, and unobserved fingerprints.
 - **The grader stays frozen.** `lesson_effect_checker.py` decides whether a lesson helped, deterministically and without a model. It is pinned by hash, because the published result was measured with it.
 
 ## What is deliberately not built
@@ -50,7 +51,7 @@ Two corrections to the design came out of it: read history straight from SQLite 
 | Design | [docs/ARCHITECTURE-DRAFT-2026-09-22.md](docs/ARCHITECTURE-DRAFT-2026-09-22.md), to be revised with the two corrections |
 | Can a plugin inject lessons at all | [docs/RESEARCH-lesson-injection.md](docs/RESEARCH-lesson-injection.md) |
 | Port or rebuild | [docs/RESEARCH-port-feasibility.md](docs/RESEARCH-port-feasibility.md) |
-| Code | [milestone 1](docs/MILESTONE-1.md) steps 1–11 built; 42 tests. On a real OpenClaw (2026.9.5 → 2026.9.6, GPT-6 Luna on a ChatGPT subscription) the loop ran end to end on 2026-09-24: a failure repeated in 4 sessions became one lesson, the next session's model quoted it, and the agent then used the right format. Not yet: the milestone's number (how many lessons are not restatements) on real sessions |
+| Code | [milestone 1](docs/MILESTONE-1.md) steps 1–11 built, step 12 records exposures and later recurrence (the frozen grader is not wired in yet); `npm test` covers it. On a real OpenClaw (2026.9.5 → 2026.9.6, GPT-6 Luna on a ChatGPT subscription) the loop ran end to end on 2026-09-24: a failure repeated in 4 sessions became one lesson, the next session's model quoted it, and the agent then used the right format. Not yet: the milestone's number (how many lessons are not restatements) on real sessions |
 
 ## Layout
 
@@ -65,7 +66,7 @@ Two corrections to the design came out of it: read history straight from SQLite 
 
 ## Installing it for a test
 
-Point OpenClaw at the checkout and grant it both hook permissions, in `openclaw.json`. Both are required: OpenClaw calls `before_prompt_build` and `agent_end` for a non-bundled plugin only with `allowConversationAccess`, and applies its prompt changes only with `allowPromptInjection`.
+Point OpenClaw at the checkout and grant it both hook permissions, in `openclaw.json` (OpenClaw has no manifest field for them; the user grants them per plugin). OpenClaw calls `before_prompt_build` and `agent_end` for a non-bundled plugin only with `allowConversationAccess: true`. Prompt changes are applied unless `allowPromptInjection` is `false` (OpenClaw's `resolvePromptInjectionAllowed`); setting it to `true` states the grant explicitly.
 
 ```json
 "plugins": {

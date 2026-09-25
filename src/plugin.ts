@@ -18,11 +18,11 @@ import path from "node:path";
 import { formatBlock, type Block } from "./core/injection.ts";
 import { sqliteHistory, agentDatabasePath } from "./host/history.ts";
 import { readSources } from "./host/sources.ts";
-import { activeLessons, allLessons, setStatus } from "./lessons.ts";
+import { activeLessons, allLessons, DEFAULT_AGENT, lessonAgent, recover, setStatus } from "./lessons.ts";
 import { processSession, recordExposure, report, type Llm } from "./pipeline.ts";
 import { replay } from "./replay.ts";
 import { readSettings } from "./settings.ts";
-import { FileStore } from "./store.ts";
+import { FileStore, StoreError } from "./store.ts";
 
 // The slice of OpenClaw's plugin API this plugin uses (openclaw 2026.9.5,
 // src/plugins/plugin-api.types.ts). Declared here so the plugin has no build-time
@@ -36,6 +36,7 @@ interface HookContext {
 
 interface CommandContext {
   args?: string;
+  agentId?: string;
 }
 
 interface CliCommand {
@@ -46,7 +47,11 @@ interface CliCommand {
 
 export interface PluginApi {
   id: string;
-  config?: { plugins?: { entries?: Record<string, { hooks?: { allowConversationAccess?: boolean } } | undefined> } };
+  config?: {
+    plugins?: {
+      entries?: Record<string, { hooks?: { allowConversationAccess?: boolean; allowPromptInjection?: boolean } } | undefined>;
+    };
+  };
   pluginConfig?: Record<string, unknown>;
   logger?: { info?: (message: string) => void; warn?: (message: string) => void };
   runtime?: {
@@ -70,6 +75,8 @@ export interface PluginApi {
 
 const PLUGIN_DIR = "refine-cycle";
 const PROMPT_HOOK_TIMEOUT_MS = 2_000;
+const MAX_BLOCKS_PER_SESSION = 20;
+const MAX_SESSIONS_REMEMBERED = 500;
 
 function resolveStateDir(api: PluginApi): string {
   try {
@@ -92,11 +99,20 @@ export default function register(api: PluginApi): void {
 
   // OpenClaw only calls before_prompt_build and agent_end for a non-bundled plugin
   // the user has granted conversation access; without it the plugin is inert.
-  if (api.config?.plugins?.entries?.[api.id]?.hooks?.allowConversationAccess !== true) {
+  const hookPolicy = api.config?.plugins?.entries?.[api.id]?.hooks;
+  if (hookPolicy?.allowConversationAccess !== true) {
     warn(
       `needs plugins.entries.${api.id}.hooks.allowConversationAccess = true in openclaw.json; ` +
         "until then OpenClaw does not call its hooks, so nothing is learned or injected",
     );
+  }
+
+  // Prompt changes are allowed unless the user sets this to false
+  // (OpenClaw's resolvePromptInjectionAllowed). When it is false the host drops the
+  // block, so nothing is injected and no exposure may be recorded.
+  const injectionAllowed = hookPolicy?.allowPromptInjection !== false;
+  if (!injectionAllowed) {
+    warn(`plugins.entries.${api.id}.hooks.allowPromptInjection is false: lessons are learned but never shown to the model`);
   }
 
   const stateDir = resolveStateDir(api);
@@ -108,18 +124,44 @@ export default function register(api: PluginApi): void {
     storeError = String(error);
     warn(`store unusable, nothing will be injected or learned: ${storeError}`);
   }
+  if (!storeError) {
+    // Finish what a crash left half-done before anything reads the lessons.
+    try {
+      recover(store, new Date());
+    } catch (error) {
+      warn(`journal recovery skipped: ${String(error)}`);
+    }
+  }
 
-  /** What the prompt hook injected per session, recorded to the effect ledger after the turn. */
-  const injected = new Map<string, Block>();
+  /**
+   * What the prompt hook injected per session, recorded to the effect ledger after
+   * the turn. `shownAtMs` is when the block was built: failures after it happened
+   * with the lesson in view.
+   * Bounded, because a run that never reaches agent_end leaves its entry behind.
+   */
+  const injected = new Map<string, Array<{ block: Block; shownAtMs: number }>>();
+  let lastOmitted = "";
+  const remember = (sessionId: string, block: Block) => {
+    const entries = injected.get(sessionId) ?? [];
+    if (!entries.some((entry) => entry.block.hash === block.hash)) entries.push({ block, shownAtMs: Date.now() });
+    injected.delete(sessionId);
+    injected.set(sessionId, entries.slice(-MAX_BLOCKS_PER_SESSION));
+    while (injected.size > MAX_SESSIONS_REMEMBERED) injected.delete(injected.keys().next().value!);
+  };
 
   api.on(
     "before_prompt_build",
     (_event, ctx) => {
-      if (storeError || !settings.injectEnabled) return undefined;
+      if (storeError || !settings.injectEnabled || !injectionAllowed) return undefined;
       try {
-        const block = formatBlock(activeLessons(store), settings.maxInjectedChars);
+        const block = formatBlock(activeLessons(store, ctx?.agentId || DEFAULT_AGENT), settings.maxInjectedChars);
         if (!block) return undefined;
-        if (ctx?.sessionId) injected.set(ctx.sessionId, block);
+        if (ctx?.sessionId) remember(ctx.sessionId, block);
+        const omitted = (block.omittedIds ?? []).join(",");
+        if (omitted && omitted !== lastOmitted) {
+          warn(`${block.omittedIds!.length} active lesson(s) do not fit maxInjectedChars and are not shown: ${omitted}`);
+        }
+        lastOmitted = omitted;
         return { prependContext: block.text };
       } catch (error) {
         warn(`injection skipped: ${String(error)}`);
@@ -134,7 +176,12 @@ export default function register(api: PluginApi): void {
     complete
       ? {
         async complete(systemPrompt, userMessage, timeoutMs) {
-          const result = await complete({
+          // The host is asked to abort via `signal`; the plugin does not rely on it.
+          let timer: ReturnType<typeof setTimeout> | undefined;
+          const timeout = new Promise<never>((_, reject) => {
+            timer = setTimeout(() => reject(new Error(`model call timed out after ${timeoutMs} ms`)), timeoutMs);
+          });
+          const call = complete({
             messages: [{ role: "user", content: userMessage }],
             systemPrompt,
             purpose: "refine-cycle: propose a lesson from a repeated failure",
@@ -144,7 +191,12 @@ export default function register(api: PluginApi): void {
             // ("cannot override the target agent"); the default is the agent's own model.
             signal: AbortSignal.timeout(timeoutMs),
           });
-          return String(result?.text ?? "");
+          try {
+            const result = await Promise.race([call, timeout]);
+            return String(result?.text ?? "");
+          } finally {
+            clearTimeout(timer);
+          }
         },
       }
       : null;
@@ -155,14 +207,14 @@ export default function register(api: PluginApi): void {
     const sessionId = ctx.sessionId;
     if (!sessionId || queued.has(sessionId)) return;
     queued.add(sessionId);
-    const agentId = ctx.agentId || "main";
+    const agentId = ctx.agentId || DEFAULT_AGENT;
     const workspaceDir = ctx.workspaceDir;
     queue = queue.then(async () => {
       queued.delete(sessionId);
       try {
-        const block = injected.get(sessionId);
+        const shown = injected.get(sessionId) ?? [];
         injected.delete(sessionId);
-        if (block) recordExposure(store, sessionId, block, new Date());
+        for (const { block, shownAtMs } of shown) recordExposure(store, sessionId, block, shownAtMs, new Date());
         const history = sqliteHistory(settings.historyDbPath || agentDatabasePath(stateDir, agentId));
         const decision = await processSession(
           {
@@ -189,18 +241,29 @@ export default function register(api: PluginApi): void {
     enqueue(ctx);
   });
 
-  const control = (args: string): string => {
+  /** `agentId` limits a chat command to that agent's lessons; the command line sees all of them. */
+  const control = (args: string, agentId?: string): string => {
     if (storeError) return `Refine Cycle cannot use its store: ${storeError}`;
-    const [verb = "list", id = ""] = args.trim().split(/\s+/);
+    const [verb = "list", id = ""] = args.trim().split(/\s+/).filter(Boolean);
     const now = new Date();
+    const mine = allLessons(store).filter((lesson) => agentId === undefined || lessonAgent(lesson) === agentId);
     if (verb === "list") {
-      const lessons = allLessons(store).filter((lesson) => lesson.status !== "deleted");
+      const lessons = mine.filter((lesson) => lesson.status !== "deleted");
       if (lessons.length === 0) return "No lessons yet.";
       return lessons.map((lesson) => `${lesson.id} [${lesson.status}] ${lesson.text}`).join("\n");
     }
     if (verb === "disable" || verb === "delete") {
       if (!id) return `Usage: ${verb} <lesson id>`;
-      const changed = setStatus(store, id, verb === "disable" ? "disabled" : "deleted", now);
+      if (!mine.some((lesson) => lesson.id === id)) return `No lesson ${id}.`;
+      recover(store, now); // non-blocking: skipped while another process holds the lock
+      let changed;
+      try {
+        // In chat the gateway thread must not wait; the command line may.
+        changed = setStatus(store, id, verb === "disable" ? "disabled" : "deleted", now, agentId === undefined ? 5_000 : 0);
+      } catch (error) {
+        if (error instanceof StoreError) return "The lesson store is busy; try again in a moment.";
+        throw error;
+      }
       return changed ? `Lesson ${id} ${changed.status}.` : `No lesson ${id}.`;
     }
     if (verb === "report" || verb === "status") return JSON.stringify(report(store), null, 2);
@@ -211,7 +274,7 @@ export default function register(api: PluginApi): void {
     name: "refine",
     description: "Refine Cycle lessons: list, disable <id>, delete <id>, report",
     acceptsArgs: true,
-    handler: (ctx) => ({ text: control(ctx?.args ?? "") }),
+    handler: (ctx) => ({ text: control(ctx?.args ?? "", ctx?.agentId || DEFAULT_AGENT) }),
   });
 
   api.registerCli?.(

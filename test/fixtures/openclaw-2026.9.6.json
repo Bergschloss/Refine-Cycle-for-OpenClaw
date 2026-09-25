@@ -23,7 +23,8 @@
           }
         }
       ],
-      "stopReason": "toolUse"
+      "stopReason": "toolUse",
+      "timestamp": 1790037948600
     }
   },
   "toolResultErrorEvent": {
@@ -46,7 +47,8 @@
         "tool": "tool_call",
         "error": "Unknown tool id: say_hello_in_one_word. Use tool_search to find a tool, tool_describe to inspect it, then tool_call with the exact id or name."
       },
-      "isError": true
+      "isError": true,
+      "timestamp": 1790037948687
     }
   },
   "codexToolCallEvent": {
@@ -93,7 +95,8 @@
           "text": "cron expression '0 3 *' has 3 fields, expected 5"
         }
       ],
-      "idempotencyKey": "codex-app-server:…:tool:exec-03864d53-b3e7-457e-bd77-c7f0d60f7e34:result"
+      "idempotencyKey": "codex-app-server:…:tool:exec-03864d53-b3e7-457e-bd77-c7f0d60f7e34:result",
+      "timestamp": 1790214680414
     }
   }
 }

@@ -2,8 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { activate, activeLessons, allLessons, recover, setStatus } from "../src/lessons.ts";
-import { FileStore } from "../src/store.ts";
+import { activate, activeLessons, allLessons, LessonExistsError, recover, setStatus } from "../src/lessons.ts";
+import { FileStore, StoreError } from "../src/store.ts";
 import { formatBlock } from "../src/core/injection.ts";
 import { tempDir } from "./helpers.ts";
 
@@ -93,4 +93,91 @@ test("an unreadable meta record makes the store refuse to open", () => {
   const root = tempDir();
   fs.writeFileSync(path.join(root, "meta.json"), "not json");
   assert.throws(() => new FileStore(root).open(), /unreadable/);
+});
+
+test("activation never overwrites an existing lesson; a leftover draft may be finished", () => {
+  const root = tempDir();
+  const store = new FileStore(root);
+  store.open();
+  activate(store, lesson(), NOW);
+  setStatus(store, "abc123", "deleted", NOW);
+  assert.throws(() => activate(store, lesson(), NOW), LessonExistsError);
+  assert.equal(allLessons(store)[0].status, "deleted");
+
+  const drafts = new FileStore(tempDir());
+  drafts.open();
+  drafts.write("lessons/abc123.json", { ...lesson(), status: "draft", changedAt: NOW.toISOString() });
+  assert.equal(activate(drafts, lesson(), NOW).status, "active");
+});
+
+test("a deleted lesson stays deleted, and repeating a command changes nothing", () => {
+  const store = new FileStore(tempDir());
+  store.open();
+  activate(store, lesson(), NOW);
+  setStatus(store, "abc123", "deleted", NOW);
+  const journalBefore = store.list("journal").length;
+  assert.equal(setStatus(store, "abc123", "disabled", NOW)!.status, "deleted");
+  assert.equal(setStatus(store, "abc123", "deleted", NOW)!.status, "deleted");
+  assert.equal(store.list("journal").length, journalBefore, "no journal record for a no-op");
+});
+
+test("a lesson file missing a field the sort needs is skipped, not fatal", () => {
+  const root = tempDir();
+  const store = new FileStore(root);
+  store.open();
+  activate(store, lesson(), NOW);
+  store.write("lessons/zz.json", { id: "zz", text: "When a, b.", fingerprint: "0123456789ab", status: "active" });
+  assert.deepEqual(activeLessons(store).map((l) => l.id), ["abc123"]);
+  assert.ok(formatBlock(activeLessons(store), 1000));
+});
+
+test("the store lock is exclusive across instances, and a stale one is taken over", () => {
+  const root = tempDir();
+  const one = new FileStore(root);
+  const two = new FileStore(root);
+  const release = one.lock("budget");
+  assert.throws(() => two.lock("budget", 60), StoreError);
+  release();
+  two.lock("budget", 60)();
+  fs.writeFileSync(path.join(root, "budget.lock"), "12345");
+  const old = new Date(Date.now() - 60_000);
+  fs.utimesSync(path.join(root, "budget.lock"), old, old);
+  two.lock("budget", 60)();
+});
+
+test("recovery waits for the next run when another process holds the lesson lock", () => {
+  const root = tempDir();
+  new FileStore(root).open();
+  assert.throws(() => activate(crashingStore(root, 3), lesson(), NOW), Crash);
+  const store = new FileStore(root);
+  const release = store.lock("lessons");
+  assert.deepEqual(recover(store, NOW), { finished: 0, abandoned: 0, unreadable: 0, skipped: true });
+  release();
+  assert.equal(recover(store, NOW).finished, 1);
+  assert.equal(activeLessons(store).length, 1);
+});
+
+test("recovery does not undo a change the user made after the crash", () => {
+  const root = tempDir();
+  const store = new FileStore(root);
+  store.open();
+  activate(store, lesson(), NOW);
+  // A disable crashed after its intent; then the user deleted the lesson.
+  assert.throws(() => setStatus(crashingStore(root, 2), "abc123", "disabled", NOW), Crash);
+  setStatus(store, "abc123", "deleted", new Date(NOW.getTime() + 60_000));
+  recover(store, new Date(NOW.getTime() + 120_000));
+  assert.equal(allLessons(store)[0].status, "deleted");
+});
+
+test("a stale lock that cannot be removed is 'busy' at once, never a spin", () => {
+  const root = tempDir();
+  const store = new FileStore(root);
+  // A directory in the lock's place: it exists, looks stale, and unlink cannot remove it.
+  fs.mkdirSync(path.join(root, "budget.lock"));
+  const old = new Date(Date.now() - 60_000);
+  fs.utimesSync(path.join(root, "budget.lock"), old, old);
+  const started = Date.now();
+  assert.throws(() => store.lock("budget", 0), StoreError);
+  assert.throws(() => store.lock("budget", 100), StoreError);
+  assert.ok(Date.now() - started < 2_000, `took ${Date.now() - started} ms`);
 });

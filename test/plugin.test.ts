@@ -11,14 +11,22 @@ import { tempDir, Transcript } from "./helpers.ts";
 
 type Handler = (event: unknown, ctx: Record<string, unknown>) => unknown;
 
-function fakeApi(stateDir: string, complete?: (params: Record<string, unknown>) => Promise<{ text: string }>, grant = true) {
+function fakeApi(
+  stateDir: string,
+  complete?: (params: Record<string, unknown>) => Promise<{ text: string }>,
+  grant = true,
+  injection?: boolean,
+  pluginConfig: Record<string, unknown> = {},
+) {
   const hooks = new Map<string, { handler: Handler; timeoutMs?: number }>();
-  const commands = new Map<string, (ctx: { args?: string }) => unknown>();
+  const commands = new Map<string, (ctx: { args?: string; agentId?: string }) => unknown>();
   const logs: string[] = [];
   const api: PluginApi = {
     id: "refine-cycle",
-    config: { plugins: { entries: { "refine-cycle": { hooks: { allowConversationAccess: grant } } } } },
-    pluginConfig: {},
+    config: {
+      plugins: { entries: { "refine-cycle": { hooks: { allowConversationAccess: grant, allowPromptInjection: injection } } } },
+    },
+    pluginConfig,
     logger: { info: (m) => logs.push(m), warn: (m) => logs.push(`WARN ${m}`) },
     runtime: { state: { resolveStateDir: () => stateDir }, llm: complete ? { complete } : {} },
     on: (hook, handler, options) => hooks.set(hook, { handler: handler as Handler, timeoutMs: options?.timeoutMs }),
@@ -128,4 +136,72 @@ test("the hook returns before the learning work runs", async () => {
   assert.equal(result, undefined);
   assert.equal(started, false);
   await settle();
+});
+
+test("with prompt injection denied, nothing is injected or counted as shown, and the log says so", async () => {
+  const stateDir = tempDir();
+  writeAgentDb(stateDir, { s1: new Transcript().user("hi") });
+  const store = new FileStore(path.join(stateDir, "plugin-data", "refine-cycle"));
+  store.open();
+  activate(store, {
+    id: "l1", text: "When calling cron_add, give five fields.", fingerprint: "0123456789ab", tool: "cron_add",
+    createdAt: new Date().toISOString(), sourceSessionId: "s0", evidence: { sessionIds: [], eventIds: [] }, reason: "",
+  }, new Date());
+  const { hooks, logs } = fakeApi(stateDir, undefined, true, false);
+  assert.equal(hooks.get("before_prompt_build")!.handler({}, { sessionId: "s1" }), undefined);
+  hooks.get("agent_end")!.handler({}, { sessionId: "s1" });
+  await settle();
+  assert.equal(fs.existsSync(path.join(store.root, "effects", "s1.json")), false);
+  assert.ok(logs.some((line) => line.startsWith("WARN") && line.includes("allowPromptInjection")));
+});
+
+test("/refine with no arguments lists the lessons", () => {
+  const { commands } = fakeApi(tempDir());
+  assert.equal((commands.get("refine")!({ args: "" }) as { text: string }).text, "No lessons yet.");
+  assert.equal((commands.get("refine")!({}) as { text: string }).text, "No lessons yet.");
+});
+
+test("lessons of one agent are not injected into another agent's prompt", () => {
+  const stateDir = tempDir();
+  const { hooks } = fakeApi(stateDir);
+  const store = new FileStore(path.join(stateDir, "plugin-data", "refine-cycle"));
+  activate(store, {
+    id: "l2", text: "When calling deploy, pass the region.", fingerprint: "0123456789ac", tool: "deploy",
+    createdAt: new Date().toISOString(), sourceSessionId: "s0", evidence: { sessionIds: [], eventIds: [] }, reason: "",
+    agentId: "ops",
+  }, new Date());
+  const prompt = hooks.get("before_prompt_build")!.handler;
+  assert.match((prompt({}, { sessionId: "a", agentId: "ops" }) as { prependContext: string }).prependContext, /pass the region/);
+  assert.equal(prompt({}, { sessionId: "b", agentId: "main" }), undefined);
+});
+
+test("/refine in chat sees and changes only the calling agent's lessons", () => {
+  const stateDir = tempDir();
+  const { commands } = fakeApi(stateDir);
+  const store = new FileStore(path.join(stateDir, "plugin-data", "refine-cycle"));
+  activate(store, {
+    id: "l3", text: "When calling deploy, pass the region.", fingerprint: "0123456789ad", tool: "deploy",
+    createdAt: new Date().toISOString(), sourceSessionId: "s0", evidence: { sessionIds: [], eventIds: [] }, reason: "",
+    agentId: "ops",
+  }, new Date());
+  const refine = commands.get("refine")!;
+  assert.equal((refine({ args: "list", agentId: "main" }) as { text: string }).text, "No lessons yet.");
+  assert.equal((refine({ args: "delete l3", agentId: "main" }) as { text: string }).text, "No lesson l3.");
+  assert.match((refine({ args: "list", agentId: "ops" }) as { text: string }).text, /l3 \[active\]/);
+});
+
+test("a model call the host never answers times out on the plugin's own clock", async () => {
+  const stateDir = tempDir();
+  const error = "cron expression '* * *' has 3 fields, expected 5";
+  const failing = () => new Transcript().user("go").call("cron_add", { schedule: "* * *" }, { error });
+  writeAgentDb(stateDir, { s1: failing(), s2: failing() });
+  const { hooks } = fakeApi(stateDir, () => new Promise(() => {}), true, undefined, { proposalTimeoutMs: 50 });
+  hooks.get("agent_end")!.handler({}, { sessionId: "s1", agentId: "main" });
+  const candidate = path.join(stateDir, "plugin-data", "refine-cycle", "candidates", "s1.json");
+  for (let i = 0; i < 100 && !(fs.existsSync(candidate) && JSON.parse(fs.readFileSync(candidate, "utf8")).outcome !== "pending"); i++) {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  const decision = JSON.parse(fs.readFileSync(candidate, "utf8"));
+  assert.equal(decision.outcome, "model_error");
+  assert.match(decision.reply, /timed out/);
 });

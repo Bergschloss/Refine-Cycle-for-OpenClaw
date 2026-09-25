@@ -10,8 +10,21 @@
     "timestamp": "2026-09-22T00:45:48.620Z",
     "message": {
       "role": "assistant",
-      "content": [{ "type": "toolCall", "id": "call_a7kujv8v", "name": "tool_call", "arguments": { "id": "say_hello_in_one_word", "args": { "query": "hello" } } }],
-      "stopReason": "toolUse"
+      "content": [
+        {
+          "type": "toolCall",
+          "id": "call_a7kujv8v",
+          "name": "tool_call",
+          "arguments": {
+            "id": "say_hello_in_one_word",
+            "args": {
+              "query": "hello"
+            }
+          }
+        }
+      ],
+      "stopReason": "toolUse",
+      "timestamp": 1790037948600
     }
   },
   "codexToolCallEvent": {
@@ -19,7 +32,19 @@
     "id": "codex-call",
     "message": {
       "role": "assistant",
-      "content": [{ "type": "toolCall", "id": "exec-03864d53-b3e7-457e-bd77-c7f0d60f7e34", "name": "schedule_backup", "arguments": { "cron": "0 3 *" }, "input": { "cron": "0 3 *" } }],
+      "content": [
+        {
+          "type": "toolCall",
+          "id": "exec-03864d53-b3e7-457e-bd77-c7f0d60f7e34",
+          "name": "schedule_backup",
+          "arguments": {
+            "cron": "0 3 *"
+          },
+          "input": {
+            "cron": "0 3 *"
+          }
+        }
+      ],
       "api": "openai-codex-responses",
       "provider": "openai",
       "model": "gpt-5.6-luna"
@@ -46,7 +71,8 @@
           "text": "cron expression '0 3 *' has 3 fields, expected 5"
         }
       ],
-      "idempotencyKey": "codex-app-server:…:tool:exec-03864d53-b3e7-457e-bd77-c7f0d60f7e34:result"
+      "idempotencyKey": "codex-app-server:…:tool:exec-03864d53-b3e7-457e-bd77-c7f0d60f7e34:result",
+      "timestamp": 1790214680414
     }
   },
   "toolResultErrorEvent": {
@@ -58,9 +84,19 @@
       "role": "toolResult",
       "toolCallId": "call_a7kujv8v",
       "toolName": "tool_call",
-      "content": [{ "type": "text", "text": "{\n  \"status\": \"error\",\n  \"tool\": \"tool_call\",\n  \"error\": \"Unknown tool id: say_hello_in_one_word. Use tool_search to find a tool, tool_describe to inspect it, then tool_call with the exact id or name.\"\n}" }],
-      "details": { "status": "error", "tool": "tool_call", "error": "Unknown tool id: say_hello_in_one_word. Use tool_search to find a tool, tool_describe to inspect it, then tool_call with the exact id or name." },
-      "isError": true
+      "content": [
+        {
+          "type": "text",
+          "text": "{\n  \"status\": \"error\",\n  \"tool\": \"tool_call\",\n  \"error\": \"Unknown tool id: say_hello_in_one_word. Use tool_search to find a tool, tool_describe to inspect it, then tool_call with the exact id or name.\"\n}"
+        }
+      ],
+      "details": {
+        "status": "error",
+        "tool": "tool_call",
+        "error": "Unknown tool id: say_hello_in_one_word. Use tool_search to find a tool, tool_describe to inspect it, then tool_call with the exact id or name."
+      },
+      "isError": true,
+      "timestamp": 1790037948687
     }
   }
 }

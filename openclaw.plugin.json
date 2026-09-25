@@ -33,7 +33,7 @@
       },
       "maxInjectedChars": {
         "type": "integer",
-        "minimum": 200,
+        "minimum": 400,
         "default": 1000
       },
       "maxLessonChars": {
@@ -60,6 +60,11 @@
         "type": "integer",
         "minimum": 0,
         "default": 10
+      },
+      "backfillIntervalMinutes": {
+        "type": "integer",
+        "minimum": 0,
+        "default": 60
       },
       "proposalTimeoutMs": {
         "type": "integer",

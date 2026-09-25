@@ -14,9 +14,15 @@ export class Transcript {
   private seq = 0;
   private callCounter = 0;
 
+  /** ms since epoch of row `seq`: one second apart, from a fixed start. */
+  static time(seq: number): number {
+    return 1_790_000_000_000 + seq * 1_000;
+  }
+
   private push(message: Record<string, unknown>): string {
     const id = `ev-${this.seq}`;
-    this.rows.push({ seq: this.seq++, event: { type: "message", id, parentId: null, message } });
+    const timestamp = Transcript.time(this.seq);
+    this.rows.push({ seq: this.seq++, event: { type: "message", id, parentId: null, message: { ...message, timestamp } } });
     return id;
   }
 

@@ -89,6 +89,7 @@ test("a Codex-runtime tool result (the ChatGPT-subscription route) is read too",
   assert.equal(summary.patterns[0].tool, "schedule_backup");
   assert.equal(summary.patterns[0].sample, "cron expression '0 3 *' has 3 fields, expected 5");
   assert.equal(summary.patterns[0].sampleArgs, '{"cron":"0 3 *"}');
+  assert.deepEqual(summary.patterns[0].times, [1790214680414], "the host's own ms timestamp");
 });
 
 test("rows that are not messages, or malformed, are skipped", () => {
@@ -100,4 +101,20 @@ test("rows that are not messages, or malformed, are skipped", () => {
   const summary = summarizeSession("s1", "main", rows);
   assert.equal(summary.patterns.length, 1);
   assert.equal(summary.lastSeq, 2);
+});
+
+test("a long error is bounded like the Hermes plugin: head 1000 and tail 3000 characters", () => {
+  const error = (middle: string) => "E".repeat(1000) + middle.repeat(5000) + "T".repeat(3000);
+  const t = new Transcript().call("x", {}, { error: error("a") }).call("x", {}, { error: error("b") });
+  const summary = summarizeSession("s1", "main", t.rows);
+  assert.equal(summary.patterns.length, 1, "differences outside head and tail do not split the pattern");
+  assert.equal(summary.patterns[0].count, 2);
+  assert.deepEqual(summary.patterns[0].seqs, [1, 3]);
+});
+
+test("an event with only an ISO timestamp is still placed in time", () => {
+  const rows = [
+    { seq: 0, event: { type: "message", id: "e", timestamp: "2026-09-22T00:45:48.690Z", message: { role: "toolResult", toolName: "x", isError: true, content: "boom" } } },
+  ];
+  assert.deepEqual(summarizeSession("s1", "main", rows).patterns[0].times, [Date.parse("2026-09-22T00:45:48.690Z")]);
 });

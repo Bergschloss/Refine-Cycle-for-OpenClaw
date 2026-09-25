@@ -61,6 +61,9 @@ if (!error) {
     if (!(key in got)) problems.push(`toolResult has no "${key}" (fixture keys: ${keysOf(want).join(", ")}; live: ${keysOf(got).join(", ")})`);
   }
   if (!Array.isArray(got.content)) problems.push("toolResult content is not an array of parts");
+  if (typeof got.timestamp !== "number" && typeof (error as Record<string, unknown>).timestamp !== "string") {
+    problems.push("toolResult has neither message.timestamp (ms) nor event.timestamp (ISO): the effect ledger cannot place failures in time");
+  }
   if (got.isError !== true) problems.push("toolResult isError is not the boolean true");
 }
 
