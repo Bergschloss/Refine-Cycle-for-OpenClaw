@@ -250,3 +250,23 @@ test("closed journal records are pruned after a week, open ones never", () => {
   assert.deepEqual(store.list("journal").sort(), ["new-applied", "old-intent"]);
   assert.equal(store.read<{ state: string }>("journal/old-intent.json")!.state, "applied");
 });
+
+test("a closed journal record that cannot be removed never fails recovery or a disable", () => {
+  const root = tempDir();
+  const store = new FileStore(root);
+  activate(store, lesson("l1"), new Date("2026-09-01T00:00:00.000Z"));
+  const journal = path.join(root, "journal");
+  const unlink = fs.unlinkSync;
+  fs.unlinkSync = (target: fs.PathLike) => {
+    if (String(target).startsWith(journal)) throw Object.assign(new Error("operation not permitted"), { code: "EPERM" });
+    unlink(target);
+  };
+  try {
+    const now = new Date("2026-09-26T00:00:00.000Z");
+    assert.doesNotThrow(() => recover(store, now));
+    setStatus(store, "l1", "disabled", now);
+  } finally {
+    fs.unlinkSync = unlink;
+  }
+  assert.equal(store.read<{ status: string }>("lessons/l1.json")!.status, "disabled");
+});

@@ -151,7 +151,9 @@ test("the same command is compared past flags, inside quotes and in inline code"
   assert.equal(resolution("bash -c 'npm test'", "bash -c 'npm test -- --ci'"), "corrected");
   assert.equal(resolution("python3 -m pytest", "python3 -m pip install x"), "unknown");
   assert.equal(resolution("node -e 'boom()'", "node -e 'console.log(1)'"), "unknown");
-  assert.equal(resolution('python3 -c "import a; a.go()"', 'python3 -c "import a; a.go(1)"'), "corrected");
+  // Changed inline code is a different command: the comparison leans to "not the same".
+  assert.equal(resolution('python3 -c "import a; a.go()"', 'python3 -c "import a; a.go(1)"'), "unknown");
+  assert.equal(resolution('python3 -c "import a;  a.go()"', 'python3 -c "import a; a.go()"'), "corrected");
   assert.equal(resolution("npm test", "npm --silent test"), "corrected");
   assert.equal(resolution(["python3", "a.py"], ["python3", "b.py"]), "unknown");
   assert.equal(resolution(["python3", "a.py"], ["python3", "a.py", "--fix"]), "corrected");
@@ -173,5 +175,25 @@ test("the same command: odd argv, git -C, multi-line scripts and pipelines", () 
   assert.equal(resolution("cd /repo\nnpm test", "cd /repo\nnpm test -- --ci"), "corrected");
   assert.equal(resolution("ls | grep foo", "ls -la | wc -l"), "unknown");
   assert.equal(resolution("npm test 2>&1 | tail -5", "npm test 2>&1 | tail -20"), "corrected");
-  assert.equal(resolution("npm run dev & npm test", "npm test"), "corrected");
+  assert.equal(resolution("npm run dev & npm test", "npm test"), "unknown");
+  assert.equal(resolution("npm run dev & npm test", "npm run dev & npm test --ci"), "corrected");
+});
+
+test("the same command: heredocs, line continuations, shell scripts and whole multi-line scripts", () => {
+  const resolution = (failed: unknown, later: unknown) => {
+    const t = new Transcript().call("Bash", { command: failed }, { error: "exit code 1" }).call("Bash", { command: later }, { ok: "done" });
+    return summarizeSession("s1", "main", t.rows).patterns[0].occurrences[0].resolution;
+  };
+  assert.equal(resolution("python3 - <<'EOF'\nimport foo\nEOF", "cat > notes.md <<'EOF'\nhi\nEOF"), "unknown");
+  assert.equal(resolution("node <<EOF\nboom()\nEOF", "python3 <<EOF\nprint(1)\nEOF"), "unknown");
+  assert.equal(resolution("cat <<EOF > a.txt\nx\nEOF", "cat <<EOF > a.txt\ny\nEOF"), "corrected");
+  assert.equal(resolution("python3 train.py \\\n  --out model.bin", "ls \\\n  --out model.bin"), "unknown");
+  assert.equal(resolution("bash -c 'cd /repo && pytest'", "bash -c 'cd /repo && ls'"), "unknown");
+  assert.equal(resolution("bash -lc 'cd /repo && pytest'", "bash -lc 'cd /repo && git status'"), "unknown");
+  assert.equal(resolution(["bash", "-lc", "cd /repo && pytest"], ["bash", "-lc", "cd /repo && git status"]), "unknown");
+  assert.equal(resolution("bash -lc 'cd /repo && pytest -x'", "bash -lc 'cd /repo && pytest -q'"), "corrected");
+  assert.equal(resolution("npm test\necho done", "ls\necho done"), "unknown");
+  assert.equal(resolution("# build it\nnpm run build", "# lint it\nnpm run lint"), "unknown");
+  assert.equal(resolution("npm run build", "npm run build -- --verbose"), "corrected");
+  assert.equal(resolution("uv run pytest", "uv run ruff check"), "unknown");
 });

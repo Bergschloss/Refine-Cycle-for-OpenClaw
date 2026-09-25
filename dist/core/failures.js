@@ -187,20 +187,28 @@ function boundedJson(value, limit) {
     return text.length > limit ? `${text.slice(0, limit)}…` : text;
 }
 /**
- * The command a shell-like call runs (its first word). For tools such as Bash, any later
- * success of the same tool is not a correction of this failure: only a success of the
- * same command is. Tools without a command argument compare by tool alone.
+ * What a shell-like call runs. For tools such as Bash, any later success of the same
+ * tool is not a correction of this failure: only a success of the same command is.
+ * The comparison leans to "not the same": a false match refuses a real repeated failure
+ * as self-corrected, a false mismatch only lets it through to the other checks. Tools
+ * without a command argument compare by tool alone.
  */
 const WRAPPERS = new Set(["sudo", "env", "npx", "exec", "time", "nohup", "command"]);
-/** Flags whose value is what runs: `bash -c 'npm test'`, `node -e`, `python3 -m pytest`. */
-const CODE_FLAGS = new Set(["-c", "-e", "-m", "--eval", "--command"]);
+const SHELLS = new Set(["bash", "sh", "zsh", "dash", "ksh", "fish", "pwsh", "powershell", "cmd"]);
+/** Flags whose value is inline code or a module: `python3 -c '…'`, `node -e`, `python3 -m pytest`. */
+const CODE_FLAGS = new Set(["-c", "-e", "--eval", "-m"]);
 /** Flags that take a directory or path before the subcommand: `git -C /repo push`, `npm --prefix app test`. */
 const VALUE_FLAGS = new Set(["-C", "--prefix", "--cwd", "--dir", "--directory", "--git-dir", "--work-tree", "--manifest-path"]);
+const ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=/;
+const HEREDOC = /(?<!<)<<(?!<)-?[ \t]*(['"]?)([A-Za-z_]\w*)\1([^\n]*)(?:\n(?:[\s\S]*?\n)?[ \t]*\2[ \t]*(?=\n|$)|[\s\S]*$)/g;
 /**
  * Shell words with quotes kept together. A newline, `;`, `&&`, `||` or a background `&`
- * outside quotes ends a segment; a pipe stays in it as its own `|` word.
+ * outside quotes ends a segment; a pipe stays in it as its own `|` word; comments are
+ * dropped. Line continuations are joined and heredoc bodies removed first: neither is
+ * a command of its own.
  */
-function shellSegments(text) {
+function shellSegments(script) {
+    const text = script.replace(/\\\r?\n/g, " ").replace(HEREDOC, "$3");
     const segments = [[]];
     let word = "";
     let inWord = false;
@@ -223,6 +231,15 @@ function shellSegments(text) {
         else if (ch === "'" || ch === '"') {
             quote = ch;
             inWord = true;
+        }
+        else if (ch === "\\" && next !== undefined) {
+            word += next;
+            inWord = true;
+            i++;
+        }
+        else if (ch === "#" && !inWord) {
+            while (i + 1 < text.length && text[i + 1] !== "\n")
+                i++;
         }
         else if (ch === "\n" || ch === ";" || (ch === "&" && next === "&") || (ch === "|" && next === "|")) {
             endWord();
@@ -250,55 +267,73 @@ function shellSegments(text) {
     return segments.filter((segment) => segment.length > 0);
 }
 const baseName = (word) => (word.trim().split(/\s+/)[0] ?? "").split(/[\\/]/).pop().toLowerCase();
-/** One command of a pipeline: its program and first argument, past wrappers and flags. */
-function commandKey(command) {
+const code = (text) => text.replace(/\s+/g, " ").trim();
+/** One command: the program and its first two arguments, past wrappers, flags and redirections. */
+function commandKey(command, depth) {
     const words = [...command];
-    while (words.length > 1 && (WRAPPERS.has(words[0].toLowerCase()) || /^[A-Za-z_][A-Za-z0-9_]*=/.test(words[0])))
+    while (words.length > 1 && (WRAPPERS.has(words[0].toLowerCase()) || ASSIGNMENT.test(words[0])))
         words.shift();
     if (words.length === 0)
         return "";
-    // `python3 a.py` and `python3 b.py` differ, and so do `bash -c 'npm test'` and `bash -c 'ls'`,
-    // or `git -C /repo push` and `git -C /repo log`.
-    const found = [baseName(words[0])];
-    for (let i = 1; i < words.length; i++) {
+    const program = baseName(words[0]).replace(/\.exe$/, "");
+    const found = [program];
+    let args = 0;
+    for (let i = 1; i < words.length && args < 2; i++) {
         const word = words[i];
-        if (CODE_FLAGS.has(word) || word.toLowerCase() === "-command") {
-            found.push(word.toLowerCase(), baseName(words[i + 1] ?? ""));
+        if (args === 0 && SHELLS.has(program) && (/^-[a-z]*c$/i.test(word) || /^-command$/i.test(word) || /^\/c$/i.test(word))) {
+            // A shell running a script (`bash -lc 'cd /repo && pytest'`): compare the script.
+            const script = words[i + 1] ?? "";
+            found.push("-c", depth < 2 ? scriptKey(script, depth + 1) : code(script));
+            break;
+        }
+        if (args === 0 && CODE_FLAGS.has(word)) {
+            const value = words[i + 1] ?? "";
+            found.push(word, word === "-m" ? baseName(value) : code(value));
             break;
         }
         if (VALUE_FLAGS.has(word)) {
             i++;
             continue;
         }
-        if (word.startsWith("-"))
+        if (/^(?:\d*|&)(?:>>?|<)$/.test(word)) {
+            i++; // a redirection and its target
+            continue;
+        }
+        if (word.startsWith("-") || /^(?:\d*|&)(?:>>?|<)/.test(word))
             continue;
         found.push(baseName(word));
-        break;
+        args++;
     }
-    return found.join(" ").trim();
+    return found.join(" ");
+}
+/** Every command of a script except bare directory changes, in order. */
+function scriptKey(script, depth) {
+    const segments = shellSegments(script);
+    const work = segments.filter((words) => !/^(?:cd|pushd|popd)$/i.test(words[0]));
+    return (work.length > 0 ? work : segments)
+        .map((words) => {
+        const pipeline = [[]];
+        for (const word of words) {
+            if (word === "|")
+                pipeline.push([]);
+            else
+                pipeline[pipeline.length - 1].push(word);
+        }
+        return pipeline.map((command) => commandKey(command, depth)).join(" | ");
+    })
+        .join(" ; ");
 }
 function leadingCommand(args) {
     for (const key of ["command", "cmd", "script"]) {
         const value = args[key];
-        let segments;
+        let found = "";
         if (typeof value === "string")
-            segments = shellSegments(value);
-        else if (Array.isArray(value) && value.every((word) => typeof word === "string"))
-            segments = value.length > 0 ? [value] : [];
-        else
-            continue;
-        if (segments.length === 0)
-            continue;
-        // The part that does the work: the last segment of the chain that is not a bare cd.
-        const work = [...segments].reverse().find((words) => !/^(?:cd|pushd)$/i.test(words[0])) ?? segments[segments.length - 1];
-        const commands = [[]];
-        for (const word of work) {
-            if (word === "|")
-                commands.push([]);
-            else
-                commands[commands.length - 1].push(word);
+            found = scriptKey(value, 0);
+        else if (Array.isArray(value) && value.length > 0 && value.every((word) => typeof word === "string")) {
+            found = commandKey(value, 0);
         }
-        return commands.map(commandKey).join(" | ");
+        if (found)
+            return found;
     }
     return null;
 }

@@ -215,7 +215,14 @@ function recoverLocked(store: FileStore, now: Date): { finished: number; abandon
     if (record.state !== "intent") {
       // A closed record only matters to a crash; kept a week for inspection, then pruned
       // so recovery on every turn does not read a history that grows forever.
-      if (now.getTime() - Date.parse(record.at) > JOURNAL_KEEP_MS) store.remove(`journal/${name}.json`);
+      // Housekeeping only: a record that cannot be removed now is tried again next time.
+      if (now.getTime() - Date.parse(record.at) > JOURNAL_KEEP_MS) {
+        try {
+          store.remove(`journal/${name}.json`);
+        } catch {
+          // left in place
+        }
+      }
       continue;
     }
     const current = readLesson(store, record.lessonId);

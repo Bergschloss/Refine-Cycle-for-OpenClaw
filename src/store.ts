@@ -144,6 +144,8 @@ export class FileStore {
       fs.closeSync(fs.openSync(guard, "wx"));
     } catch {
       // A guard left by a waiter that died mid-takeover is cleared like a stale lock.
+      // Two waiters clearing the same dead guard at the same instant is the one race
+      // left; it needs a crash inside the takeover itself.
       try {
         if (Date.now() - fs.statSync(guard).mtimeMs > STALE_LOCK_MS) {
           fs.unlinkSync(guard);
