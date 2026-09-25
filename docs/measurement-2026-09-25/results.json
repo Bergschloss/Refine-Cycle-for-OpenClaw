@@ -1,0 +1,2382 @@
+{
+  "promptA": "Use schedule_backup to schedule the nightly backup for every night at 3 with cron 0 3 *. Make only one tool call.",
+  "promptB": "Call send_report now for the European date string \"25/09/2026\" as written in the ticket.",
+  "stats": {
+    "A": {
+      "lesson": {
+        "k": 20,
+        "n": 20,
+        "rate": 1,
+        "wilson95": [
+          0.8388748419471806,
+          1
+        ]
+      },
+      "nothing": {
+        "k": 8,
+        "n": 20,
+        "rate": 0.4,
+        "wilson95": [
+          0.21880653237281708,
+          0.6134184992377468
+        ]
+      },
+      "placebo": {
+        "k": 3,
+        "n": 20,
+        "rate": 0.15,
+        "wilson95": [
+          0.052368745896216595,
+          0.36041886474075696
+        ]
+      },
+      "fisher_lesson_vs_nothing": 0.00004509515076812074,
+      "fisher_lesson_vs_placebo": 2.5695242602917738e-8,
+      "fisher_placebo_vs_nothing": 0.15518744551002586
+    },
+    "B": {
+      "lesson": {
+        "k": 16,
+        "n": 20,
+        "rate": 0.8,
+        "wilson95": [
+          0.5839825677481064,
+          0.919342337420202
+        ]
+      },
+      "nothing": {
+        "k": 0,
+        "n": 20,
+        "rate": 0,
+        "wilson95": [
+          0,
+          0.16112515805281938
+        ]
+      },
+      "placebo": {
+        "k": 0,
+        "n": 20,
+        "rate": 0,
+        "wilson95": [
+          0,
+          0.16112515805281938
+        ]
+      },
+      "fisher_lesson_vs_nothing": 1.5417145561750692e-7,
+      "fisher_lesson_vs_placebo": 1.5417145561750692e-7,
+      "fisher_placebo_vs_nothing": 1
+    },
+    "ALL": {
+      "lesson": {
+        "k": 36,
+        "n": 40,
+        "rate": 0.9,
+        "wilson95": [
+          0.7694822477247771,
+          0.9604204713173936
+        ]
+      },
+      "nothing": {
+        "k": 8,
+        "n": 40,
+        "rate": 0.2,
+        "wilson95": [
+          0.10499989725437704,
+          0.347573063463995
+        ]
+      },
+      "placebo": {
+        "k": 3,
+        "n": 40,
+        "rate": 0.075,
+        "wilson95": [
+          0.025836025774588198,
+          0.19864233524310543
+        ]
+      },
+      "fisher_lesson_vs_nothing": 1.993909675459875e-10,
+      "fisher_lesson_vs_placebo": 1.1640553828200776e-12,
+      "fisher_placebo_vs_nothing": 0.19266080268676364
+    }
+  },
+  "trials": [
+    {
+      "trialIndex": 1,
+      "blockIndex": 1,
+      "task": "B",
+      "tool": "send_report",
+      "arm": "lesson",
+      "store": "store-lesson-B",
+      "inject": true,
+      "rep": 1,
+      "sessionId": "02bbab69-ea7e-41c7-804a-900a435a825d",
+      "firstCallId": "exec-45e46d15-fa4b-49cb-a7a0-8c02e487c17a",
+      "firstArgs": {
+        "date": "2026-09-25"
+      },
+      "isError": false,
+      "firstCallSuccess": true,
+      "totalCalls": 1,
+      "exposuresRecorded": 1
+    },
+    {
+      "trialIndex": 2,
+      "blockIndex": 1,
+      "task": "B",
+      "tool": "send_report",
+      "arm": "lesson",
+      "store": "store-lesson-B",
+      "inject": true,
+      "rep": 2,
+      "sessionId": "bc6d009d-d291-4bb1-b771-24a897cae212",
+      "firstCallId": "exec-95608dc4-78b1-41e6-9dda-44ad8cfa4e99",
+      "firstArgs": {
+        "date": "2026-09-25"
+      },
+      "isError": false,
+      "firstCallSuccess": true,
+      "totalCalls": 1,
+      "exposuresRecorded": 1
+    },
+    {
+      "trialIndex": 3,
+      "blockIndex": 1,
+      "task": "B",
+      "tool": "send_report",
+      "arm": "lesson",
+      "store": "store-lesson-B",
+      "inject": true,
+      "rep": 3,
+      "sessionId": "c6b515f8-ccad-4dc9-912a-bd8a56fc9775",
+      "firstCallId": "exec-57956459-b972-4fc4-9126-e5d755b901a1",
+      "firstArgs": {
+        "date": "25/09/2026"
+      },
+      "isError": true,
+      "firstCallSuccess": false,
+      "totalCalls": 1,
+      "exposuresRecorded": 1
+    },
+    {
+      "trialIndex": 4,
+      "blockIndex": 1,
+      "task": "B",
+      "tool": "send_report",
+      "arm": "lesson",
+      "store": "store-lesson-B",
+      "inject": true,
+      "rep": 4,
+      "sessionId": "48017511-3986-4082-a807-0354eb0c17fb",
+      "firstCallId": "exec-23af127f-a4d8-4062-89dd-7aeea4f150ea",
+      "firstArgs": {
+        "date": "2026-09-25"
+      },
+      "isError": false,
+      "firstCallSuccess": true,
+      "totalCalls": 1,
+      "exposuresRecorded": 1
+    },
+    {
+      "trialIndex": 5,
+      "blockIndex": 1,
+      "task": "B",
+      "tool": "send_report",
+      "arm": "lesson",
+      "store": "store-lesson-B",
+      "inject": true,
+      "rep": 5,
+      "sessionId": "93e0ad0c-d8dc-4cc3-b43a-b8ea563cd730",
+      "firstCallId": "exec-77984d76-776b-461e-bb4d-57329cb1b396",
+      "firstArgs": {
+        "date": "2026-09-25"
+      },
+      "isError": false,
+      "firstCallSuccess": true,
+      "totalCalls": 1,
+      "exposuresRecorded": 1
+    },
+    {
+      "trialIndex": 6,
+      "blockIndex": 1,
+      "task": "B",
+      "tool": "send_report",
+      "arm": "lesson",
+      "store": "store-lesson-B",
+      "inject": true,
+      "rep": 6,
+      "sessionId": "38475a71-598d-49f0-9195-ef4d632ad711",
+      "firstCallId": "exec-898cab9a-1ca5-4258-9a7d-b85bafc31fb3",
+      "firstArgs": {
+        "date": "2026-09-25"
+      },
+      "isError": false,
+      "firstCallSuccess": true,
+      "totalCalls": 1,
+      "exposuresRecorded": 1
+    },
+    {
+      "trialIndex": 7,
+      "blockIndex": 1,
+      "task": "B",
+      "tool": "send_report",
+      "arm": "lesson",
+      "store": "store-lesson-B",
+      "inject": true,
+      "rep": 7,
+      "sessionId": "369b5953-8f71-45b2-9f02-ceb3fd3f06bf",
+      "firstCallId": "exec-ee6cee9c-d30a-40b6-9441-baf72f81f582",
+      "firstArgs": {
+        "date": "2026-09-25"
+      },
+      "isError": false,
+      "firstCallSuccess": true,
+      "totalCalls": 1,
+      "exposuresRecorded": 1
+    },
+    {
+      "trialIndex": 8,
+      "blockIndex": 1,
+      "task": "B",
+      "tool": "send_report",
+      "arm": "lesson",
+      "store": "store-lesson-B",
+      "inject": true,
+      "rep": 8,
+      "sessionId": "5e2a0ce7-7333-45a2-988c-4ca2089612b7",
+      "firstCallId": "exec-4129c675-2d00-4712-91c6-353edd05e583",
+      "firstArgs": {
+        "date": "25/09/2026"
+      },
+      "isError": true,
+      "firstCallSuccess": false,
+      "totalCalls": 1,
+      "exposuresRecorded": 1
+    },
+    {
+      "trialIndex": 9,
+      "blockIndex": 1,
+      "task": "B",
+      "tool": "send_report",
+      "arm": "lesson",
+      "store": "store-lesson-B",
+      "inject": true,
+      "rep": 9,
+      "sessionId": "56107615-e229-434f-a197-d9e098b0503a",
+      "firstCallId": "exec-eeab20c2-124c-4c9a-a591-8d1f4ad1b0b9",
+      "firstArgs": {
+        "date": "2026-09-25"
+      },
+      "isError": false,
+      "firstCallSuccess": true,
+      "totalCalls": 1,
+      "exposuresRecorded": 1
+    },
+    {
+      "trialIndex": 10,
+      "blockIndex": 1,
+      "task": "B",
+      "tool": "send_report",
+      "arm": "lesson",
+      "store": "store-lesson-B",
+      "inject": true,
+      "rep": 10,
+      "sessionId": "5f4d82bd-8b15-4bdd-b898-e73b2246677a",
+      "firstCallId": "exec-c160458b-1376-4096-94ba-0e31ba125885",
+      "firstArgs": {
+        "date": "25/09/2026"
+      },
+      "isError": true,
+      "firstCallSuccess": false,
+      "totalCalls": 2,
+      "exposuresRecorded": 1
+    },
+    {
+      "trialIndex": 11,
+      "blockIndex": 2,
+      "task": "A",
+      "tool": "schedule_backup",
+      "arm": "lesson",
+      "store": "store-lesson-A",
+      "inject": true,
+      "rep": 1,
+      "sessionId": "d9cae90e-e0ec-4031-bf98-18204c1f2317",
+      "firstCallId": "exec-9d54c4e7-198e-44ac-95bf-6cd0cf514454",
+      "firstArgs": {
+        "cron": "0 3 * * *"
+      },
+      "isError": false,
+      "firstCallSuccess": true,
+      "totalCalls": 1,
+      "exposuresRecorded": 1
+    },
+    {
+      "trialIndex": 12,
+      "blockIndex": 2,
+      "task": "A",
+      "tool": "schedule_backup",
+      "arm": "lesson",
+      "store": "store-lesson-A",
+      "inject": true,
+      "rep": 2,
+      "sessionId": "3be53fec-7e38-47b3-9b00-f5a8f94909b7",
+      "firstCallId": "exec-f1d9ec01-121b-4a8d-beb3-c4c2347540e3",
+      "firstArgs": {
+        "cron": "0 3 * * *"
+      },
+      "isError": false,
+      "firstCallSuccess": true,
+      "totalCalls": 1,
+      "exposuresRecorded": 1
+    },
+    {
+      "trialIndex": 13,
+      "blockIndex": 2,
+      "task": "A",
+      "tool": "schedule_backup",
+      "arm": "lesson",
+      "store": "store-lesson-A",
+      "inject": true,
+      "rep": 3,
+      "sessionId": "af9e3110-bfca-4745-8378-64d21588c48c",
+      "firstCallId": "exec-e17c1046-6c58-41eb-b46c-54c0db7908c5",
+      "firstArgs": {
+        "cron": "0 3 * * *"
+      },
+      "isError": false,
+      "firstCallSuccess": true,
+      "totalCalls": 1,
+      "exposuresRecorded": 1
+    },
+    {
+      "trialIndex": 14,
+      "blockIndex": 2,
+      "task": "A",
+      "tool": "schedule_backup",
+      "arm": "lesson",
+      "store": "store-lesson-A",
+      "inject": true,
+      "rep": 4,
+      "sessionId": "e18191ea-ca03-493d-b3c0-9ecc939eb0a7",
+      "firstCallId": "exec-6cf15b8e-e243-45cd-a955-144148c2da24",
+      "firstArgs": {
+        "cron": "0 3 * * *"
+      },
+      "isError": false,
+      "firstCallSuccess": true,
+      "totalCalls": 1,
+      "exposuresRecorded": 1
+    },
+    {
+      "trialIndex": 15,
+      "blockIndex": 2,
+      "task": "A",
+      "tool": "schedule_backup",
+      "arm": "lesson",
+      "store": "store-lesson-A",
+      "inject": true,
+      "rep": 5,
+      "sessionId": "65f2c0e9-0019-475b-8f33-84d39a040c5f",
+      "firstCallId": "exec-7fa473c0-a799-4862-b153-dcf904fbf4d3",
+      "firstArgs": {
+        "cron": "0 3 * * *"
+      },
+      "isError": false,
+      "firstCallSuccess": true,
+      "totalCalls": 1,
+      "exposuresRecorded": 1
+    },
+    {
+      "trialIndex": 16,
+      "blockIndex": 2,
+      "task": "A",
+      "tool": "schedule_backup",
+      "arm": "lesson",
+      "store": "store-lesson-A",
+      "inject": true,
+      "rep": 6,
+      "sessionId": "b2db9fbb-f850-4a7f-bbd2-28b85259d652",
+      "firstCallId": "exec-de736c0b-6a6c-4ed6-b817-2f80a991fd9f",
+      "firstArgs": {
+        "cron": "0 3 * * *"
+      },
+      "isError": false,
+      "firstCallSuccess": true,
+      "totalCalls": 1,
+      "exposuresRecorded": 1
+    },
+    {
+      "trialIndex": 17,
+      "blockIndex": 2,
+      "task": "A",
+      "tool": "schedule_backup",
+      "arm": "lesson",
+      "store": "store-lesson-A",
+      "inject": true,
+      "rep": 7,
+      "sessionId": "eb2b867c-6a4b-4de5-88ab-70aa20076789",
+      "firstCallId": "exec-c4c17c4c-46ae-45ac-a00d-6624febf4f39",
+      "firstArgs": {
+        "cron": "0 3 * * *"
+      },
+      "isError": false,
+      "firstCallSuccess": true,
+      "totalCalls": 1,
+      "exposuresRecorded": 1
+    },
+    {
+      "trialIndex": 18,
+      "blockIndex": 2,
+      "task": "A",
+      "tool": "schedule_backup",
+      "arm": "lesson",
+      "store": "store-lesson-A",
+      "inject": true,
+      "rep": 8,
+      "sessionId": "d593862b-7039-4324-89c6-48677043c363",
+      "firstCallId": "exec-73932e3c-e150-4a3b-b12c-d97394e47830",
+      "firstArgs": {
+        "cron": "0 3 * * *"
+      },
+      "isError": false,
+      "firstCallSuccess": true,
+      "totalCalls": 1,
+      "exposuresRecorded": 1
+    },
+    {
+      "trialIndex": 19,
+      "blockIndex": 2,
+      "task": "A",
+      "tool": "schedule_backup",
+      "arm": "lesson",
+      "store": "store-lesson-A",
+      "inject": true,
+      "rep": 9,
+      "sessionId": "f8f9bba2-73ea-4dad-8a6c-f84f18cb121a",
+      "firstCallId": "exec-ff0d8e87-d028-42d8-bff4-eb49c80a3edf",
+      "firstArgs": {
+        "cron": "0 3 * * *"
+      },
+      "isError": false,
+      "firstCallSuccess": true,
+      "totalCalls": 1,
+      "exposuresRecorded": 1
+    },
+    {
+      "trialIndex": 20,
+      "blockIndex": 2,
+      "task": "A",
+      "tool": "schedule_backup",
+      "arm": "lesson",
+      "store": "store-lesson-A",
+      "inject": true,
+      "rep": 10,
+      "sessionId": "2e545f3d-7622-40b0-8061-159a940d7a10",
+      "firstCallId": "exec-51c61b6d-c1fb-449a-8a13-d73e63e697e7",
+      "firstArgs": {
+        "cron": "0 3 * * *"
+      },
+      "isError": false,
+      "firstCallSuccess": true,
+      "totalCalls": 1,
+      "exposuresRecorded": 1
+    },
+    {
+      "trialIndex": 21,
+      "blockIndex": 3,
+      "task": "A",
+      "tool": "schedule_backup",
+      "arm": "placebo",
+      "store": "store-placebo-A",
+      "inject": true,
+      "rep": 1,
+      "sessionId": "7305acef-14c8-433b-9755-3966f90158c9",
+      "firstCallId": "exec-a1b8c79d-fc73-4400-a755-4c599da05a75",
+      "firstArgs": {
+        "cron": "0 3 *"
+      },
+      "isError": true,
+      "firstCallSuccess": false,
+      "totalCalls": 1,
+      "exposuresRecorded": 1
+    },
+    {
+      "trialIndex": 22,
+      "blockIndex": 3,
+      "task": "A",
+      "tool": "schedule_backup",
+      "arm": "placebo",
+      "store": "store-placebo-A",
+      "inject": true,
+      "rep": 2,
+      "sessionId": "c9ac2a32-db92-4dbc-80af-3c82b4fad80d",
+      "firstCallId": "exec-fc1a10dd-47e0-4cba-96f6-8985a0f460c9",
+      "firstArgs": {
+        "cron": "0 3 *"
+      },
+      "isError": true,
+      "firstCallSuccess": false,
+      "totalCalls": 1,
+      "exposuresRecorded": 1
+    },
+    {
+      "trialIndex": 23,
+      "blockIndex": 3,
+      "task": "A",
+      "tool": "schedule_backup",
+      "arm": "placebo",
+      "store": "store-placebo-A",
+      "inject": true,
+      "rep": 3,
+      "sessionId": "94faaafc-ff67-4a40-9987-c922eb6bf6c5",
+      "firstCallId": "exec-d3e1be07-7f21-4baf-a9c5-f8f169672e07",
+      "firstArgs": {
+        "cron": "0 3 *"
+      },
+      "isError": true,
+      "firstCallSuccess": false,
+      "totalCalls": 2,
+      "exposuresRecorded": 1
+    },
+    {
+      "trialIndex": 24,
+      "blockIndex": 3,
+      "task": "A",
+      "tool": "schedule_backup",
+      "arm": "placebo",
+      "store": "store-placebo-A",
+      "inject": true,
+      "rep": 4,
+      "sessionId": "8e09863e-119d-469a-9ad8-bb11d077c07e",
+      "firstCallId": "exec-857ec48e-e1ef-4bce-93d4-d1c6bf10d3d4",
+      "firstArgs": {
+        "cron": "0 3 *"
+      },
+      "isError": true,
+      "firstCallSuccess": false,
+      "totalCalls": 1,
+      "exposuresRecorded": 1
+    },
+    {
+      "trialIndex": 25,
+      "blockIndex": 3,
+      "task": "A",
+      "tool": "schedule_backup",
+      "arm": "placebo",
+      "store": "store-placebo-A",
+      "inject": true,
+      "rep": 5,
+      "sessionId": "ddd18ce6-c790-4d7a-867b-43bfe8b5c1b1",
+      "firstCallId": "exec-496986ad-c012-4cce-9827-1ff5a65f97e0",
+      "firstArgs": {
+        "cron": "0 3 * * *"
+      },
+      "isError": false,
+      "firstCallSuccess": true,
+      "totalCalls": 1,
+      "exposuresRecorded": 1
+    },
+    {
+      "trialIndex": 26,
+      "blockIndex": 3,
+      "task": "A",
+      "tool": "schedule_backup",
+      "arm": "placebo",
+      "store": "store-placebo-A",
+      "inject": true,
+      "rep": 6,
+      "sessionId": "416183c0-466a-4791-b6e3-59e7f42783d0",
+      "firstCallId": "exec-400c2145-c5f3-46a5-ad3d-de0ec3f893fb",
+      "firstArgs": {
+        "cron": "0 3 * * *"
+      },
+      "isError": false,
+      "firstCallSuccess": true,
+      "totalCalls": 1,
+      "exposuresRecorded": 1
+    },
+    {
+      "trialIndex": 27,
+      "blockIndex": 3,
+      "task": "A",
+      "tool": "schedule_backup",
+      "arm": "placebo",
+      "store": "store-placebo-A",
+      "inject": true,
+      "rep": 7,
+      "sessionId": "b535b36c-eb1f-48c8-ab31-d9a00bffb3e8",
+      "firstCallId": "exec-40698af8-6644-4d0f-bf63-0006eaadc8fc",
+      "firstArgs": {
+        "cron": "0 3 *"
+      },
+      "isError": true,
+      "firstCallSuccess": false,
+      "totalCalls": 2,
+      "exposuresRecorded": 1
+    },
+    {
+      "trialIndex": 28,
+      "blockIndex": 3,
+      "task": "A",
+      "tool": "schedule_backup",
+      "arm": "placebo",
+      "store": "store-placebo-A",
+      "inject": true,
+      "rep": 8,
+      "sessionId": "9517ff6a-ed09-4f11-880f-b29833a0e433",
+      "firstCallId": "exec-aaa80399-47b9-4e60-9f38-35b76ddc9d13",
+      "firstArgs": {
+        "cron": "0 3 *"
+      },
+      "isError": true,
+      "firstCallSuccess": false,
+      "totalCalls": 2,
+      "exposuresRecorded": 1
+    },
+    {
+      "trialIndex": 29,
+      "blockIndex": 3,
+      "task": "A",
+      "tool": "schedule_backup",
+      "arm": "placebo",
+      "store": "store-placebo-A",
+      "inject": true,
+      "rep": 9,
+      "sessionId": "fe383560-60fd-425f-9331-63250550a741",
+      "firstCallId": "exec-2379fae5-14ae-43c7-b7c1-e18fe10712c6",
+      "firstArgs": {
+        "cron": "0 3 *"
+      },
+      "isError": true,
+      "firstCallSuccess": false,
+      "totalCalls": 2,
+      "exposuresRecorded": 1
+    },
+    {
+      "trialIndex": 30,
+      "blockIndex": 3,
+      "task": "A",
+      "tool": "schedule_backup",
+      "arm": "placebo",
+      "store": "store-placebo-A",
+      "inject": true,
+      "rep": 10,
+      "sessionId": "e6e5cd65-e2ad-4bd0-84d7-de0d77baa509",
+      "firstCallId": "exec-6722548f-2ed7-44ec-98b5-a8f3f9596a32",
+      "firstArgs": {
+        "cron": "0 3 *"
+      },
+      "isError": true,
+      "firstCallSuccess": false,
+      "totalCalls": 1,
+      "exposuresRecorded": 1
+    },
+    {
+      "trialIndex": 31,
+      "blockIndex": 4,
+      "task": "B",
+      "tool": "send_report",
+      "arm": "placebo",
+      "store": "store-placebo-B",
+      "inject": true,
+      "rep": 1,
+      "sessionId": "9922b36e-f1d8-48d1-9faa-93e1f9f9170a",
+      "firstCallId": "exec-066f1bb5-2d0e-4936-bccc-a8e7ae43d8ff",
+      "firstArgs": {
+        "date": "25/09/2026"
+      },
+      "isError": true,
+      "firstCallSuccess": false,
+      "totalCalls": 2,
+      "exposuresRecorded": 1
+    },
+    {
+      "trialIndex": 32,
+      "blockIndex": 4,
+      "task": "B",
+      "tool": "send_report",
+      "arm": "placebo",
+      "store": "store-placebo-B",
+      "inject": true,
+      "rep": 2,
+      "sessionId": "c8bb8727-25ea-4350-a533-1abd7a908d6e",
+      "firstCallId": "exec-db537c23-5108-4d58-b641-e3e63a3781b0",
+      "firstArgs": {
+        "date": "25/09/2026"
+      },
+      "isError": true,
+      "firstCallSuccess": false,
+      "totalCalls": 1,
+      "exposuresRecorded": 1
+    },
+    {
+      "trialIndex": 33,
+      "blockIndex": 4,
+      "task": "B",
+      "tool": "send_report",
+      "arm": "placebo",
+      "store": "store-placebo-B",
+      "inject": true,
+      "rep": 3,
+      "sessionId": "5d0185aa-4441-4f23-b9a1-97a069a50243",
+      "firstCallId": "exec-42e1bb76-c00f-4fe4-aad4-47854db3efa9",
+      "firstArgs": {
+        "date": "25/09/2026"
+      },
+      "isError": true,
+      "firstCallSuccess": false,
+      "totalCalls": 1,
+      "exposuresRecorded": 1
+    },
+    {
+      "trialIndex": 34,
+      "blockIndex": 4,
+      "task": "B",
+      "tool": "send_report",
+      "arm": "placebo",
+      "store": "store-placebo-B",
+      "inject": true,
+      "rep": 4,
+      "sessionId": "49eab0ed-d4bd-4e78-b095-b2b1c8caf541",
+      "firstCallId": "exec-f23cadb6-eb95-4ec1-a5d4-027405757c55",
+      "firstArgs": {
+        "date": "25/09/2026"
+      },
+      "isError": true,
+      "firstCallSuccess": false,
+      "totalCalls": 1,
+      "exposuresRecorded": 1
+    },
+    {
+      "trialIndex": 35,
+      "blockIndex": 4,
+      "task": "B",
+      "tool": "send_report",
+      "arm": "placebo",
+      "store": "store-placebo-B",
+      "inject": true,
+      "rep": 5,
+      "sessionId": "7ec1aee7-a9de-4823-b048-323833150301",
+      "firstCallId": "exec-cf2ad490-49ab-43a2-a8a3-eb525fea3d07",
+      "firstArgs": {
+        "date": "25/09/2026"
+      },
+      "isError": true,
+      "firstCallSuccess": false,
+      "totalCalls": 1,
+      "exposuresRecorded": 1
+    },
+    {
+      "trialIndex": 36,
+      "blockIndex": 4,
+      "task": "B",
+      "tool": "send_report",
+      "arm": "placebo",
+      "store": "store-placebo-B",
+      "inject": true,
+      "rep": 6,
+      "sessionId": "d5684ba1-2434-4ae1-a490-09197f318614",
+      "firstCallId": "exec-ca4ed3ba-67d2-4e6f-97de-d41bc8fa7ed8",
+      "firstArgs": {
+        "date": "25/09/2026"
+      },
+      "isError": true,
+      "firstCallSuccess": false,
+      "totalCalls": 1,
+      "exposuresRecorded": 1
+    },
+    {
+      "trialIndex": 37,
+      "blockIndex": 4,
+      "task": "B",
+      "tool": "send_report",
+      "arm": "placebo",
+      "store": "store-placebo-B",
+      "inject": true,
+      "rep": 7,
+      "sessionId": "7092d590-1814-4ab8-8ac1-7b7befe0462e",
+      "firstCallId": "exec-3cd0bcaa-06ef-4253-857a-3579cb6e3dbe",
+      "firstArgs": {
+        "date": "25/09/2026"
+      },
+      "isError": true,
+      "firstCallSuccess": false,
+      "totalCalls": 2,
+      "exposuresRecorded": 1
+    },
+    {
+      "trialIndex": 38,
+      "blockIndex": 4,
+      "task": "B",
+      "tool": "send_report",
+      "arm": "placebo",
+      "store": "store-placebo-B",
+      "inject": true,
+      "rep": 8,
+      "sessionId": "df1b2b8d-fb25-40ee-a225-502ddbe5a4b0",
+      "firstCallId": "exec-7e86f0e5-188d-45cb-b9ed-e76c2537ea8c",
+      "firstArgs": {
+        "date": "25/09/2026"
+      },
+      "isError": true,
+      "firstCallSuccess": false,
+      "totalCalls": 1,
+      "exposuresRecorded": 1
+    },
+    {
+      "trialIndex": 39,
+      "blockIndex": 4,
+      "task": "B",
+      "tool": "send_report",
+      "arm": "placebo",
+      "store": "store-placebo-B",
+      "inject": true,
+      "rep": 9,
+      "sessionId": "1874e6bb-3e1b-4858-abcd-815bb102a73d",
+      "firstCallId": "exec-01c855d2-ec69-4111-bb8d-27422b10aeb4",
+      "firstArgs": {
+        "date": "25/09/2026"
+      },
+      "isError": true,
+      "firstCallSuccess": false,
+      "totalCalls": 1,
+      "exposuresRecorded": 1
+    },
+    {
+      "trialIndex": 40,
+      "blockIndex": 4,
+      "task": "B",
+      "tool": "send_report",
+      "arm": "placebo",
+      "store": "store-placebo-B",
+      "inject": true,
+      "rep": 10,
+      "sessionId": "f5bbd59e-fb6c-4456-86b4-48100a3d3f02",
+      "firstCallId": "exec-cf2a1dab-d7a4-43e4-8d2e-bdbf78adb3b9",
+      "firstArgs": {
+        "date": "25/09/2026"
+      },
+      "isError": true,
+      "firstCallSuccess": false,
+      "totalCalls": 1,
+      "exposuresRecorded": 1
+    },
+    {
+      "trialIndex": 41,
+      "blockIndex": 5,
+      "task": "A",
+      "tool": "schedule_backup",
+      "arm": "nothing",
+      "store": "store-nothing",
+      "inject": false,
+      "rep": 1,
+      "sessionId": "78c45606-19ca-47fa-a356-a0090de35b01",
+      "firstCallId": "exec-dad8cdb1-3f8b-4ae0-b5af-15ad3d6a59f3",
+      "firstArgs": {
+        "cron": "0 3 * * *"
+      },
+      "isError": false,
+      "firstCallSuccess": true,
+      "totalCalls": 1,
+      "exposuresRecorded": 0
+    },
+    {
+      "trialIndex": 42,
+      "blockIndex": 5,
+      "task": "A",
+      "tool": "schedule_backup",
+      "arm": "nothing",
+      "store": "store-nothing",
+      "inject": false,
+      "rep": 2,
+      "sessionId": "81ae3b25-8435-4871-b9a9-48c78cae78c0",
+      "firstCallId": "exec-2deeebaf-6ed7-41d5-815c-bc6cbd1abc35",
+      "firstArgs": {
+        "cron": "0 3 *"
+      },
+      "isError": true,
+      "firstCallSuccess": false,
+      "totalCalls": 1,
+      "exposuresRecorded": 0
+    },
+    {
+      "trialIndex": 43,
+      "blockIndex": 5,
+      "task": "A",
+      "tool": "schedule_backup",
+      "arm": "nothing",
+      "store": "store-nothing",
+      "inject": false,
+      "rep": 3,
+      "sessionId": "038ecfdc-11f3-4564-a3e3-e63170f11a52",
+      "firstCallId": "exec-99559599-d2e0-41c5-b724-8f48ea87e651",
+      "firstArgs": {
+        "cron": "0 3 * * *"
+      },
+      "isError": false,
+      "firstCallSuccess": true,
+      "totalCalls": 1,
+      "exposuresRecorded": 0
+    },
+    {
+      "trialIndex": 44,
+      "blockIndex": 5,
+      "task": "A",
+      "tool": "schedule_backup",
+      "arm": "nothing",
+      "store": "store-nothing",
+      "inject": false,
+      "rep": 4,
+      "sessionId": "2322b82b-e6e2-45bb-a229-605b948df437",
+      "firstCallId": "exec-d340bcea-79a8-4151-8142-7cebaff78d9c",
+      "firstArgs": {
+        "cron": "0 3 * * *"
+      },
+      "isError": false,
+      "firstCallSuccess": true,
+      "totalCalls": 1,
+      "exposuresRecorded": 0
+    },
+    {
+      "trialIndex": 45,
+      "blockIndex": 5,
+      "task": "A",
+      "tool": "schedule_backup",
+      "arm": "nothing",
+      "store": "store-nothing",
+      "inject": false,
+      "rep": 5,
+      "sessionId": "0a7f8b38-e77f-4d1f-9d17-7cfac42dd537",
+      "firstCallId": "exec-7994b729-ab20-4723-bb80-df9f07807c76",
+      "firstArgs": {
+        "cron": "0 3 * * *"
+      },
+      "isError": false,
+      "firstCallSuccess": true,
+      "totalCalls": 1,
+      "exposuresRecorded": 0
+    },
+    {
+      "trialIndex": 46,
+      "blockIndex": 5,
+      "task": "A",
+      "tool": "schedule_backup",
+      "arm": "nothing",
+      "store": "store-nothing",
+      "inject": false,
+      "rep": 6,
+      "sessionId": "425f3895-9af3-47a3-828f-af35904fd9d9",
+      "firstCallId": "exec-33d15e7f-11fd-46df-b7bd-6e481fd447fe",
+      "firstArgs": {
+        "cron": "0 3 * * *"
+      },
+      "isError": false,
+      "firstCallSuccess": true,
+      "totalCalls": 1,
+      "exposuresRecorded": 0
+    },
+    {
+      "trialIndex": 47,
+      "blockIndex": 5,
+      "task": "A",
+      "tool": "schedule_backup",
+      "arm": "nothing",
+      "store": "store-nothing",
+      "inject": false,
+      "rep": 7,
+      "sessionId": "d2a3d902-06df-46c2-ae74-2349e99a9314",
+      "firstCallId": "exec-3962d51f-e2b5-4a0c-8642-46e27878e4cb",
+      "firstArgs": {
+        "cron": "0 3 *"
+      },
+      "isError": true,
+      "firstCallSuccess": false,
+      "totalCalls": 1,
+      "exposuresRecorded": 0
+    },
+    {
+      "trialIndex": 48,
+      "blockIndex": 5,
+      "task": "A",
+      "tool": "schedule_backup",
+      "arm": "nothing",
+      "store": "store-nothing",
+      "inject": false,
+      "rep": 8,
+      "sessionId": "aaa3933c-034a-4d20-85da-e86a950dc2fc",
+      "firstCallId": "exec-dd2fecb0-a9a5-4d67-82b7-5099e0facf67",
+      "firstArgs": {
+        "cron": "0 3 *"
+      },
+      "isError": true,
+      "firstCallSuccess": false,
+      "totalCalls": 1,
+      "exposuresRecorded": 0
+    },
+    {
+      "trialIndex": 49,
+      "blockIndex": 5,
+      "task": "A",
+      "tool": "schedule_backup",
+      "arm": "nothing",
+      "store": "store-nothing",
+      "inject": false,
+      "rep": 9,
+      "sessionId": "a811eb89-6cc4-4ad0-8c59-2945f63855a4",
+      "firstCallId": "exec-a78f7c79-7bbe-4f96-bbe1-c9194e61dda5",
+      "firstArgs": {
+        "cron": "0 3 *"
+      },
+      "isError": true,
+      "firstCallSuccess": false,
+      "totalCalls": 2,
+      "exposuresRecorded": 0
+    },
+    {
+      "trialIndex": 50,
+      "blockIndex": 5,
+      "task": "A",
+      "tool": "schedule_backup",
+      "arm": "nothing",
+      "store": "store-nothing",
+      "inject": false,
+      "rep": 10,
+      "sessionId": "dfd47667-284e-4799-9cbe-f6aa5d750c70",
+      "firstCallId": null,
+      "firstArgs": null,
+      "isError": null,
+      "firstCallSuccess": false,
+      "totalCalls": 0,
+      "exposuresRecorded": 0
+    },
+    {
+      "trialIndex": 51,
+      "blockIndex": 6,
+      "task": "B",
+      "tool": "send_report",
+      "arm": "placebo",
+      "store": "store-placebo-B",
+      "inject": true,
+      "rep": 11,
+      "sessionId": "8f7e32cf-4700-4d3c-a4a0-1f7361883d72",
+      "firstCallId": "exec-aec433b2-627a-47b8-a9de-3643ef817484",
+      "firstArgs": {
+        "date": "25/09/2026"
+      },
+      "isError": true,
+      "firstCallSuccess": false,
+      "totalCalls": 1,
+      "exposuresRecorded": 1
+    },
+    {
+      "trialIndex": 52,
+      "blockIndex": 6,
+      "task": "B",
+      "tool": "send_report",
+      "arm": "placebo",
+      "store": "store-placebo-B",
+      "inject": true,
+      "rep": 12,
+      "sessionId": "fa964a89-2ef1-407c-9b44-5949fbae4c85",
+      "firstCallId": "exec-45b2f7cf-b42f-4863-a06f-be386d6cbab1",
+      "firstArgs": {
+        "date": "25/09/2026"
+      },
+      "isError": true,
+      "firstCallSuccess": false,
+      "totalCalls": 1,
+      "exposuresRecorded": 1
+    },
+    {
+      "trialIndex": 53,
+      "blockIndex": 6,
+      "task": "B",
+      "tool": "send_report",
+      "arm": "placebo",
+      "store": "store-placebo-B",
+      "inject": true,
+      "rep": 13,
+      "sessionId": "9163f0e5-952d-4b14-a542-b24dd483aeea",
+      "firstCallId": "exec-d9260a78-4bf0-49ad-ba82-360e57220349",
+      "firstArgs": {
+        "date": "25/09/2026"
+      },
+      "isError": true,
+      "firstCallSuccess": false,
+      "totalCalls": 1,
+      "exposuresRecorded": 1
+    },
+    {
+      "trialIndex": 54,
+      "blockIndex": 6,
+      "task": "B",
+      "tool": "send_report",
+      "arm": "placebo",
+      "store": "store-placebo-B",
+      "inject": true,
+      "rep": 14,
+      "sessionId": "c2210dc1-5c99-45f0-a44e-0305e0d67b70",
+      "firstCallId": "exec-6f52cb94-bcfe-4c01-8abe-1112cd7d2b7d",
+      "firstArgs": {
+        "date": "25/09/2026"
+      },
+      "isError": true,
+      "firstCallSuccess": false,
+      "totalCalls": 1,
+      "exposuresRecorded": 1
+    },
+    {
+      "trialIndex": 55,
+      "blockIndex": 6,
+      "task": "B",
+      "tool": "send_report",
+      "arm": "placebo",
+      "store": "store-placebo-B",
+      "inject": true,
+      "rep": 15,
+      "sessionId": "95f45b42-1c47-46a7-8143-38fc6b0bd103",
+      "firstCallId": "exec-276a08a9-6435-40a7-bc61-0f9e205fe6c0",
+      "firstArgs": {
+        "date": "25/09/2026"
+      },
+      "isError": true,
+      "firstCallSuccess": false,
+      "totalCalls": 2,
+      "exposuresRecorded": 1
+    },
+    {
+      "trialIndex": 56,
+      "blockIndex": 6,
+      "task": "B",
+      "tool": "send_report",
+      "arm": "placebo",
+      "store": "store-placebo-B",
+      "inject": true,
+      "rep": 16,
+      "sessionId": "1ddab9dd-d53c-4bc1-9ab3-2ec55a361a4f",
+      "firstCallId": "exec-97eb4ea0-2a01-4d91-bcca-c6a36107a36c",
+      "firstArgs": {
+        "date": "25/09/2026"
+      },
+      "isError": true,
+      "firstCallSuccess": false,
+      "totalCalls": 1,
+      "exposuresRecorded": 1
+    },
+    {
+      "trialIndex": 57,
+      "blockIndex": 6,
+      "task": "B",
+      "tool": "send_report",
+      "arm": "placebo",
+      "store": "store-placebo-B",
+      "inject": true,
+      "rep": 17,
+      "sessionId": "7529e113-0aff-41f3-97bd-213949c9e127",
+      "firstCallId": "exec-d6775914-fedc-4723-83cf-8ea36d6519fc",
+      "firstArgs": {
+        "date": "25/09/2026"
+      },
+      "isError": true,
+      "firstCallSuccess": false,
+      "totalCalls": 1,
+      "exposuresRecorded": 1
+    },
+    {
+      "trialIndex": 58,
+      "blockIndex": 6,
+      "task": "B",
+      "tool": "send_report",
+      "arm": "placebo",
+      "store": "store-placebo-B",
+      "inject": true,
+      "rep": 18,
+      "sessionId": "e8885027-fe8c-4b20-b800-8a6d5f098007",
+      "firstCallId": "exec-1aac5a8d-2fe2-4c90-a11d-8350b35d5918",
+      "firstArgs": {
+        "date": "25/09/2026"
+      },
+      "isError": true,
+      "firstCallSuccess": false,
+      "totalCalls": 1,
+      "exposuresRecorded": 1
+    },
+    {
+      "trialIndex": 59,
+      "blockIndex": 6,
+      "task": "B",
+      "tool": "send_report",
+      "arm": "placebo",
+      "store": "store-placebo-B",
+      "inject": true,
+      "rep": 19,
+      "sessionId": "f89255cd-4ec2-4b48-a275-f3c6c810d162",
+      "firstCallId": "exec-83e19e84-a7eb-4c89-bf6a-8e89d78ce118",
+      "firstArgs": {
+        "date": "25/09/2026"
+      },
+      "isError": true,
+      "firstCallSuccess": false,
+      "totalCalls": 1,
+      "exposuresRecorded": 1
+    },
+    {
+      "trialIndex": 60,
+      "blockIndex": 6,
+      "task": "B",
+      "tool": "send_report",
+      "arm": "placebo",
+      "store": "store-placebo-B",
+      "inject": true,
+      "rep": 20,
+      "sessionId": "412015bf-c690-4a96-9c2a-01b680040e6d",
+      "firstCallId": "exec-f02ca1a1-5a55-4db2-ae66-adf4c855190b",
+      "firstArgs": {
+        "date": "25/09/2026"
+      },
+      "isError": true,
+      "firstCallSuccess": false,
+      "totalCalls": 1,
+      "exposuresRecorded": 1
+    },
+    {
+      "trialIndex": 61,
+      "blockIndex": 7,
+      "task": "A",
+      "tool": "schedule_backup",
+      "arm": "lesson",
+      "store": "store-lesson-A",
+      "inject": true,
+      "rep": 11,
+      "sessionId": "23267a85-8161-4232-8543-1b9f55564aa6",
+      "firstCallId": "exec-f34c424a-204f-49e2-9995-c4c03cd4b31b",
+      "firstArgs": {
+        "cron": "0 3 * * *"
+      },
+      "isError": false,
+      "firstCallSuccess": true,
+      "totalCalls": 1,
+      "exposuresRecorded": 1
+    },
+    {
+      "trialIndex": 62,
+      "blockIndex": 7,
+      "task": "A",
+      "tool": "schedule_backup",
+      "arm": "lesson",
+      "store": "store-lesson-A",
+      "inject": true,
+      "rep": 12,
+      "sessionId": "ef939188-0602-4a2a-b1e0-d1569d899182",
+      "firstCallId": "exec-9cb35eb2-3199-46f9-95c2-c2c5483acde0",
+      "firstArgs": {
+        "cron": "0 3 * * *"
+      },
+      "isError": false,
+      "firstCallSuccess": true,
+      "totalCalls": 1,
+      "exposuresRecorded": 1
+    },
+    {
+      "trialIndex": 63,
+      "blockIndex": 7,
+      "task": "A",
+      "tool": "schedule_backup",
+      "arm": "lesson",
+      "store": "store-lesson-A",
+      "inject": true,
+      "rep": 13,
+      "sessionId": "a02d77d4-7130-4187-854d-7f62ce6ebf62",
+      "firstCallId": "exec-cf18ee03-18c0-4630-ae80-0c575c463690",
+      "firstArgs": {
+        "cron": "0 3 * * *"
+      },
+      "isError": false,
+      "firstCallSuccess": true,
+      "totalCalls": 1,
+      "exposuresRecorded": 1
+    },
+    {
+      "trialIndex": 64,
+      "blockIndex": 7,
+      "task": "A",
+      "tool": "schedule_backup",
+      "arm": "lesson",
+      "store": "store-lesson-A",
+      "inject": true,
+      "rep": 14,
+      "sessionId": "b1c951a9-772e-4988-8c81-709d5d5d59e0",
+      "firstCallId": "exec-cc0167f1-e3d6-4320-8363-a0292e919cc6",
+      "firstArgs": {
+        "cron": "0 3 * * *"
+      },
+      "isError": false,
+      "firstCallSuccess": true,
+      "totalCalls": 1,
+      "exposuresRecorded": 1
+    },
+    {
+      "trialIndex": 65,
+      "blockIndex": 7,
+      "task": "A",
+      "tool": "schedule_backup",
+      "arm": "lesson",
+      "store": "store-lesson-A",
+      "inject": true,
+      "rep": 15,
+      "sessionId": "3ce10e42-f4a6-429b-a10d-f193a5cfdde0",
+      "firstCallId": "exec-5d83de27-f246-4a3a-ba51-9aec26f72e13",
+      "firstArgs": {
+        "cron": "0 3 * * *"
+      },
+      "isError": false,
+      "firstCallSuccess": true,
+      "totalCalls": 1,
+      "exposuresRecorded": 1
+    },
+    {
+      "trialIndex": 66,
+      "blockIndex": 7,
+      "task": "A",
+      "tool": "schedule_backup",
+      "arm": "lesson",
+      "store": "store-lesson-A",
+      "inject": true,
+      "rep": 16,
+      "sessionId": "832039f2-9c1b-4cb7-905b-1f70675c8514",
+      "firstCallId": "exec-f38c4d28-1001-4cbb-b915-d7a44e6f46bf",
+      "firstArgs": {
+        "cron": "0 3 * * *"
+      },
+      "isError": false,
+      "firstCallSuccess": true,
+      "totalCalls": 1,
+      "exposuresRecorded": 1
+    },
+    {
+      "trialIndex": 67,
+      "blockIndex": 7,
+      "task": "A",
+      "tool": "schedule_backup",
+      "arm": "lesson",
+      "store": "store-lesson-A",
+      "inject": true,
+      "rep": 17,
+      "sessionId": "4eb1709d-031d-4d0c-a4c6-7da0958e99fb",
+      "firstCallId": "exec-b55d5106-8afd-432f-970e-e678e958a927",
+      "firstArgs": {
+        "cron": "0 3 * * *"
+      },
+      "isError": false,
+      "firstCallSuccess": true,
+      "totalCalls": 1,
+      "exposuresRecorded": 1
+    },
+    {
+      "trialIndex": 68,
+      "blockIndex": 7,
+      "task": "A",
+      "tool": "schedule_backup",
+      "arm": "lesson",
+      "store": "store-lesson-A",
+      "inject": true,
+      "rep": 18,
+      "sessionId": "22fe77ff-4bf8-4804-96f6-f58dd4cf16d8",
+      "firstCallId": "exec-30d9c0ae-e59c-43b9-9b89-4a63b708efb7",
+      "firstArgs": {
+        "cron": "0 3 * * *"
+      },
+      "isError": false,
+      "firstCallSuccess": true,
+      "totalCalls": 1,
+      "exposuresRecorded": 1
+    },
+    {
+      "trialIndex": 69,
+      "blockIndex": 7,
+      "task": "A",
+      "tool": "schedule_backup",
+      "arm": "lesson",
+      "store": "store-lesson-A",
+      "inject": true,
+      "rep": 19,
+      "sessionId": "9746cdf0-e5d8-4c2d-8a35-63f4c7cff4c7",
+      "firstCallId": "exec-290a9382-19f1-4305-a347-58834343b226",
+      "firstArgs": {
+        "cron": "0 3 * * *"
+      },
+      "isError": false,
+      "firstCallSuccess": true,
+      "totalCalls": 1,
+      "exposuresRecorded": 1
+    },
+    {
+      "trialIndex": 70,
+      "blockIndex": 7,
+      "task": "A",
+      "tool": "schedule_backup",
+      "arm": "lesson",
+      "store": "store-lesson-A",
+      "inject": true,
+      "rep": 20,
+      "sessionId": "3f01df9a-aa47-4401-8172-e891a9965ea0",
+      "firstCallId": "exec-0a4b4fd9-5cc6-440b-ac6e-69102ac02d5a",
+      "firstArgs": {
+        "cron": "0 3 * * *"
+      },
+      "isError": false,
+      "firstCallSuccess": true,
+      "totalCalls": 1,
+      "exposuresRecorded": 1
+    },
+    {
+      "trialIndex": 71,
+      "blockIndex": 8,
+      "task": "B",
+      "tool": "send_report",
+      "arm": "nothing",
+      "store": "store-nothing",
+      "inject": false,
+      "rep": 1,
+      "sessionId": "747c9cba-cd23-418b-a9ad-636c686b4d34",
+      "firstCallId": "exec-e80b6dec-5372-442b-adf6-85b405e1ddc7",
+      "firstArgs": {
+        "date": "25/09/2026"
+      },
+      "isError": true,
+      "firstCallSuccess": false,
+      "totalCalls": 1,
+      "exposuresRecorded": 0
+    },
+    {
+      "trialIndex": 72,
+      "blockIndex": 8,
+      "task": "B",
+      "tool": "send_report",
+      "arm": "nothing",
+      "store": "store-nothing",
+      "inject": false,
+      "rep": 2,
+      "sessionId": "f0859488-6807-45ba-b9d0-33fdc5b7b688",
+      "firstCallId": "exec-83a15259-af1f-45c9-85a9-c7edcea99f3b",
+      "firstArgs": {
+        "date": "25/09/2026"
+      },
+      "isError": true,
+      "firstCallSuccess": false,
+      "totalCalls": 1,
+      "exposuresRecorded": 0
+    },
+    {
+      "trialIndex": 73,
+      "blockIndex": 8,
+      "task": "B",
+      "tool": "send_report",
+      "arm": "nothing",
+      "store": "store-nothing",
+      "inject": false,
+      "rep": 3,
+      "sessionId": "6eb9ff03-90a3-4559-a525-797c82be9063",
+      "firstCallId": "exec-e523d3de-90ed-482c-adfc-c3d273ee05fe",
+      "firstArgs": {
+        "date": "25/09/2026"
+      },
+      "isError": true,
+      "firstCallSuccess": false,
+      "totalCalls": 1,
+      "exposuresRecorded": 0
+    },
+    {
+      "trialIndex": 74,
+      "blockIndex": 8,
+      "task": "B",
+      "tool": "send_report",
+      "arm": "nothing",
+      "store": "store-nothing",
+      "inject": false,
+      "rep": 4,
+      "sessionId": "4c08c14e-ca6f-4493-9c9c-81772f642b98",
+      "firstCallId": "exec-f31e3053-d42d-4364-8a70-3e3490c4e5bb",
+      "firstArgs": {
+        "date": "25/09/2026"
+      },
+      "isError": true,
+      "firstCallSuccess": false,
+      "totalCalls": 1,
+      "exposuresRecorded": 0
+    },
+    {
+      "trialIndex": 75,
+      "blockIndex": 8,
+      "task": "B",
+      "tool": "send_report",
+      "arm": "nothing",
+      "store": "store-nothing",
+      "inject": false,
+      "rep": 5,
+      "sessionId": "7ab4025f-7d67-4695-8a35-ad5cf07f092f",
+      "firstCallId": "exec-1b1b7fcb-5707-40bb-b371-30cc4784b048",
+      "firstArgs": {
+        "date": "25/09/2026"
+      },
+      "isError": true,
+      "firstCallSuccess": false,
+      "totalCalls": 1,
+      "exposuresRecorded": 0
+    },
+    {
+      "trialIndex": 76,
+      "blockIndex": 8,
+      "task": "B",
+      "tool": "send_report",
+      "arm": "nothing",
+      "store": "store-nothing",
+      "inject": false,
+      "rep": 6,
+      "sessionId": "bd310da4-6258-4318-8fab-bd96252eb8db",
+      "firstCallId": "exec-6e75126c-14aa-48a9-809d-03b84daed6d3",
+      "firstArgs": {
+        "date": "25/09/2026"
+      },
+      "isError": true,
+      "firstCallSuccess": false,
+      "totalCalls": 1,
+      "exposuresRecorded": 0
+    },
+    {
+      "trialIndex": 77,
+      "blockIndex": 8,
+      "task": "B",
+      "tool": "send_report",
+      "arm": "nothing",
+      "store": "store-nothing",
+      "inject": false,
+      "rep": 7,
+      "sessionId": "48e6df35-606f-4bba-815a-20ff91f82edc",
+      "firstCallId": "exec-7d13e39a-54f8-4932-8ead-aa4ab1755433",
+      "firstArgs": {
+        "date": "25/09/2026"
+      },
+      "isError": true,
+      "firstCallSuccess": false,
+      "totalCalls": 1,
+      "exposuresRecorded": 0
+    },
+    {
+      "trialIndex": 78,
+      "blockIndex": 8,
+      "task": "B",
+      "tool": "send_report",
+      "arm": "nothing",
+      "store": "store-nothing",
+      "inject": false,
+      "rep": 8,
+      "sessionId": "841e66dd-407b-4bf6-aff7-0071f5d6b314",
+      "firstCallId": "exec-a5d0d76d-370d-4244-b8e6-f42c5a45b7cb",
+      "firstArgs": {
+        "date": "25/09/2026"
+      },
+      "isError": true,
+      "firstCallSuccess": false,
+      "totalCalls": 1,
+      "exposuresRecorded": 0
+    },
+    {
+      "trialIndex": 79,
+      "blockIndex": 8,
+      "task": "B",
+      "tool": "send_report",
+      "arm": "nothing",
+      "store": "store-nothing",
+      "inject": false,
+      "rep": 9,
+      "sessionId": "a54d06d7-2f60-4817-a9f7-4b4e2504eba7",
+      "firstCallId": "exec-3481a467-47e8-4b50-981e-48c2915430a3",
+      "firstArgs": {
+        "date": "25/09/2026"
+      },
+      "isError": true,
+      "firstCallSuccess": false,
+      "totalCalls": 1,
+      "exposuresRecorded": 0
+    },
+    {
+      "trialIndex": 80,
+      "blockIndex": 8,
+      "task": "B",
+      "tool": "send_report",
+      "arm": "nothing",
+      "store": "store-nothing",
+      "inject": false,
+      "rep": 10,
+      "sessionId": "db6b8d52-f6d6-4bfe-bd2b-a25164027fe1",
+      "firstCallId": "exec-4757717f-f7a5-4145-8fd5-d9f1a358a932",
+      "firstArgs": {
+        "date": "25/09/2026"
+      },
+      "isError": true,
+      "firstCallSuccess": false,
+      "totalCalls": 1,
+      "exposuresRecorded": 0
+    },
+    {
+      "trialIndex": 81,
+      "blockIndex": 9,
+      "task": "B",
+      "tool": "send_report",
+      "arm": "nothing",
+      "store": "store-nothing",
+      "inject": false,
+      "rep": 11,
+      "sessionId": "3182512a-ebf0-458f-a5a5-18dbbf159088",
+      "firstCallId": "exec-3a82a591-c71c-4a11-a724-01ab3e3fde86",
+      "firstArgs": {
+        "date": "25/09/2026"
+      },
+      "isError": true,
+      "firstCallSuccess": false,
+      "totalCalls": 1,
+      "exposuresRecorded": 0
+    },
+    {
+      "trialIndex": 82,
+      "blockIndex": 9,
+      "task": "B",
+      "tool": "send_report",
+      "arm": "nothing",
+      "store": "store-nothing",
+      "inject": false,
+      "rep": 12,
+      "sessionId": "c6d2ba18-2c11-4dbc-a2cf-6426a25efe7d",
+      "firstCallId": "exec-01f00e94-278c-4bd5-a9b8-e65ae90f5fa9",
+      "firstArgs": {
+        "date": "25/09/2026"
+      },
+      "isError": true,
+      "firstCallSuccess": false,
+      "totalCalls": 1,
+      "exposuresRecorded": 0
+    },
+    {
+      "trialIndex": 83,
+      "blockIndex": 9,
+      "task": "B",
+      "tool": "send_report",
+      "arm": "nothing",
+      "store": "store-nothing",
+      "inject": false,
+      "rep": 13,
+      "sessionId": "5660e73c-a3cb-4ee2-a4de-ee9198e9e3f4",
+      "firstCallId": "exec-418e5dc6-5fa8-40c9-b10c-970428440dd1",
+      "firstArgs": {
+        "date": "25/09/2026"
+      },
+      "isError": true,
+      "firstCallSuccess": false,
+      "totalCalls": 1,
+      "exposuresRecorded": 0
+    },
+    {
+      "trialIndex": 84,
+      "blockIndex": 9,
+      "task": "B",
+      "tool": "send_report",
+      "arm": "nothing",
+      "store": "store-nothing",
+      "inject": false,
+      "rep": 14,
+      "sessionId": "37c78cb5-f445-45de-8dcf-02e6122e72f0",
+      "firstCallId": "exec-ea754286-dea5-46ef-9574-0129747acf96",
+      "firstArgs": {
+        "date": "25/09/2026"
+      },
+      "isError": true,
+      "firstCallSuccess": false,
+      "totalCalls": 1,
+      "exposuresRecorded": 0
+    },
+    {
+      "trialIndex": 85,
+      "blockIndex": 9,
+      "task": "B",
+      "tool": "send_report",
+      "arm": "nothing",
+      "store": "store-nothing",
+      "inject": false,
+      "rep": 15,
+      "sessionId": "3dce557a-e0ab-4338-b669-e8f39a926cda",
+      "firstCallId": "exec-feb654d5-b64f-431a-8ec2-38e847159bf8",
+      "firstArgs": {
+        "date": "25/09/2026"
+      },
+      "isError": true,
+      "firstCallSuccess": false,
+      "totalCalls": 1,
+      "exposuresRecorded": 0
+    },
+    {
+      "trialIndex": 86,
+      "blockIndex": 9,
+      "task": "B",
+      "tool": "send_report",
+      "arm": "nothing",
+      "store": "store-nothing",
+      "inject": false,
+      "rep": 16,
+      "sessionId": "aaf03a5d-0e94-4902-af21-e1948f935dad",
+      "firstCallId": "exec-584434fd-7309-4087-8ac4-bc83862f1375",
+      "firstArgs": {
+        "date": "25/09/2026"
+      },
+      "isError": true,
+      "firstCallSuccess": false,
+      "totalCalls": 1,
+      "exposuresRecorded": 0
+    },
+    {
+      "trialIndex": 87,
+      "blockIndex": 9,
+      "task": "B",
+      "tool": "send_report",
+      "arm": "nothing",
+      "store": "store-nothing",
+      "inject": false,
+      "rep": 17,
+      "sessionId": "1518fde3-ed33-41a7-8e6e-0eb14c359e4e",
+      "firstCallId": "exec-d115aae5-5a44-4687-aff3-8859d2d38a0d",
+      "firstArgs": {
+        "date": "25/09/2026"
+      },
+      "isError": true,
+      "firstCallSuccess": false,
+      "totalCalls": 1,
+      "exposuresRecorded": 0
+    },
+    {
+      "trialIndex": 88,
+      "blockIndex": 9,
+      "task": "B",
+      "tool": "send_report",
+      "arm": "nothing",
+      "store": "store-nothing",
+      "inject": false,
+      "rep": 18,
+      "sessionId": "d3eb78dd-b56e-4ae5-8859-0c4b78130d5f",
+      "firstCallId": "exec-efc86e9d-74d4-4748-b744-caf59ad70014",
+      "firstArgs": {
+        "date": "25/09/2026"
+      },
+      "isError": true,
+      "firstCallSuccess": false,
+      "totalCalls": 1,
+      "exposuresRecorded": 0
+    },
+    {
+      "trialIndex": 89,
+      "blockIndex": 9,
+      "task": "B",
+      "tool": "send_report",
+      "arm": "nothing",
+      "store": "store-nothing",
+      "inject": false,
+      "rep": 19,
+      "sessionId": "b3f3b76c-ae5a-4e7e-9d87-182f160d30d6",
+      "firstCallId": "exec-0cbc939e-9e26-4650-90b9-bbb76ff4844a",
+      "firstArgs": {
+        "date": "25/09/2026"
+      },
+      "isError": true,
+      "firstCallSuccess": false,
+      "totalCalls": 1,
+      "exposuresRecorded": 0
+    },
+    {
+      "trialIndex": 90,
+      "blockIndex": 9,
+      "task": "B",
+      "tool": "send_report",
+      "arm": "nothing",
+      "store": "store-nothing",
+      "inject": false,
+      "rep": 20,
+      "sessionId": "09ea17f9-3ae5-4931-978b-02b773ad5e90",
+      "firstCallId": "exec-e2d81315-fb1d-4637-8ee3-ebcada69eb66",
+      "firstArgs": {
+        "date": "25/09/2026"
+      },
+      "isError": true,
+      "firstCallSuccess": false,
+      "totalCalls": 1,
+      "exposuresRecorded": 0
+    },
+    {
+      "trialIndex": 91,
+      "blockIndex": 10,
+      "task": "B",
+      "tool": "send_report",
+      "arm": "lesson",
+      "store": "store-lesson-B",
+      "inject": true,
+      "rep": 11,
+      "sessionId": "463a0e77-9d61-4656-bd53-7f0d46933753",
+      "firstCallId": "exec-c44a8222-147c-4b20-8b3b-564135065720",
+      "firstArgs": {
+        "date": "2026-09-25"
+      },
+      "isError": false,
+      "firstCallSuccess": true,
+      "totalCalls": 1,
+      "exposuresRecorded": 1
+    },
+    {
+      "trialIndex": 92,
+      "blockIndex": 10,
+      "task": "B",
+      "tool": "send_report",
+      "arm": "lesson",
+      "store": "store-lesson-B",
+      "inject": true,
+      "rep": 12,
+      "sessionId": "e23155c5-e39c-480d-8554-773cd15aa3ea",
+      "firstCallId": "exec-63f1b234-1529-4f70-9527-e13d19a8e11e",
+      "firstArgs": {
+        "date": "2026-09-25"
+      },
+      "isError": false,
+      "firstCallSuccess": true,
+      "totalCalls": 1,
+      "exposuresRecorded": 1
+    },
+    {
+      "trialIndex": 93,
+      "blockIndex": 10,
+      "task": "B",
+      "tool": "send_report",
+      "arm": "lesson",
+      "store": "store-lesson-B",
+      "inject": true,
+      "rep": 13,
+      "sessionId": "a8a10b94-5e4a-4386-b469-6a395c3d0961",
+      "firstCallId": "exec-e01b9215-46dd-4ede-a7d1-8b52d64b77eb",
+      "firstArgs": {
+        "date": "2026-09-25"
+      },
+      "isError": false,
+      "firstCallSuccess": true,
+      "totalCalls": 1,
+      "exposuresRecorded": 1
+    },
+    {
+      "trialIndex": 94,
+      "blockIndex": 10,
+      "task": "B",
+      "tool": "send_report",
+      "arm": "lesson",
+      "store": "store-lesson-B",
+      "inject": true,
+      "rep": 14,
+      "sessionId": "e645657f-472f-42ee-aad4-34a51176362c",
+      "firstCallId": "exec-8607dc43-9503-40c0-8cc6-69eea86c047d",
+      "firstArgs": {
+        "date": "2026-09-25"
+      },
+      "isError": false,
+      "firstCallSuccess": true,
+      "totalCalls": 1,
+      "exposuresRecorded": 1
+    },
+    {
+      "trialIndex": 95,
+      "blockIndex": 10,
+      "task": "B",
+      "tool": "send_report",
+      "arm": "lesson",
+      "store": "store-lesson-B",
+      "inject": true,
+      "rep": 15,
+      "sessionId": "65de46f7-a1a3-4fe3-bee6-646e58e5e71f",
+      "firstCallId": "exec-796f5968-9c5d-4a4b-adf7-e2360804f21c",
+      "firstArgs": {
+        "date": "2026-09-25"
+      },
+      "isError": false,
+      "firstCallSuccess": true,
+      "totalCalls": 1,
+      "exposuresRecorded": 1
+    },
+    {
+      "trialIndex": 96,
+      "blockIndex": 10,
+      "task": "B",
+      "tool": "send_report",
+      "arm": "lesson",
+      "store": "store-lesson-B",
+      "inject": true,
+      "rep": 16,
+      "sessionId": "6a5d4781-4bd3-4292-8bf2-d0ef8ecb6af5",
+      "firstCallId": "exec-b5627f76-d03f-43a7-b032-2a7328b44ac5",
+      "firstArgs": {
+        "date": "2026-09-25"
+      },
+      "isError": false,
+      "firstCallSuccess": true,
+      "totalCalls": 1,
+      "exposuresRecorded": 1
+    },
+    {
+      "trialIndex": 97,
+      "blockIndex": 10,
+      "task": "B",
+      "tool": "send_report",
+      "arm": "lesson",
+      "store": "store-lesson-B",
+      "inject": true,
+      "rep": 17,
+      "sessionId": "0911c906-7e71-4d0e-be1b-5ee8d797bffd",
+      "firstCallId": "exec-66ec2f84-fdc3-4b79-9d32-4d354bd79eae",
+      "firstArgs": {
+        "date": "2026-09-25"
+      },
+      "isError": false,
+      "firstCallSuccess": true,
+      "totalCalls": 1,
+      "exposuresRecorded": 1
+    },
+    {
+      "trialIndex": 98,
+      "blockIndex": 10,
+      "task": "B",
+      "tool": "send_report",
+      "arm": "lesson",
+      "store": "store-lesson-B",
+      "inject": true,
+      "rep": 18,
+      "sessionId": "fb213abc-a3ca-4645-b45b-27fe6a07f59c",
+      "firstCallId": "exec-e0c64b6e-3001-4031-9d41-da8ae9e3460a",
+      "firstArgs": {
+        "date": "2026-09-25"
+      },
+      "isError": false,
+      "firstCallSuccess": true,
+      "totalCalls": 1,
+      "exposuresRecorded": 1
+    },
+    {
+      "trialIndex": 99,
+      "blockIndex": 10,
+      "task": "B",
+      "tool": "send_report",
+      "arm": "lesson",
+      "store": "store-lesson-B",
+      "inject": true,
+      "rep": 19,
+      "sessionId": "a5bcbf3d-50e6-42fa-b979-3acfef5ec86a",
+      "firstCallId": "exec-e727d9c0-9560-452b-8374-2cd829eb6382",
+      "firstArgs": {
+        "date": "2026-09-25"
+      },
+      "isError": false,
+      "firstCallSuccess": true,
+      "totalCalls": 1,
+      "exposuresRecorded": 1
+    },
+    {
+      "trialIndex": 100,
+      "blockIndex": 10,
+      "task": "B",
+      "tool": "send_report",
+      "arm": "lesson",
+      "store": "store-lesson-B",
+      "inject": true,
+      "rep": 20,
+      "sessionId": "9674f01f-44b0-4359-ba32-da47d2984b53",
+      "firstCallId": "exec-88107d29-a704-42a6-a8f6-c98f1e336578",
+      "firstArgs": {
+        "date": "25/09/2026"
+      },
+      "isError": true,
+      "firstCallSuccess": false,
+      "totalCalls": 1,
+      "exposuresRecorded": 1
+    },
+    {
+      "trialIndex": 101,
+      "blockIndex": 11,
+      "task": "A",
+      "tool": "schedule_backup",
+      "arm": "nothing",
+      "store": "store-nothing",
+      "inject": false,
+      "rep": 11,
+      "sessionId": "068200d0-f87b-4c7e-b8cf-b6244eea8111",
+      "firstCallId": "exec-8fd5482c-b45f-4099-b7e6-4598669e8790",
+      "firstArgs": {
+        "cron": "0 3 *"
+      },
+      "isError": true,
+      "firstCallSuccess": false,
+      "totalCalls": 1,
+      "exposuresRecorded": 0
+    },
+    {
+      "trialIndex": 102,
+      "blockIndex": 11,
+      "task": "A",
+      "tool": "schedule_backup",
+      "arm": "nothing",
+      "store": "store-nothing",
+      "inject": false,
+      "rep": 12,
+      "sessionId": "afe22a2c-86ae-46e5-8890-80fc2f6ccffb",
+      "firstCallId": "exec-502e342c-8593-44f6-9edb-79ae219cc61e",
+      "firstArgs": {
+        "cron": "0 3 * * *"
+      },
+      "isError": false,
+      "firstCallSuccess": true,
+      "totalCalls": 1,
+      "exposuresRecorded": 0
+    },
+    {
+      "trialIndex": 103,
+      "blockIndex": 11,
+      "task": "A",
+      "tool": "schedule_backup",
+      "arm": "nothing",
+      "store": "store-nothing",
+      "inject": false,
+      "rep": 13,
+      "sessionId": "f51763d3-fc05-4895-9094-a3f92f85b3d7",
+      "firstCallId": "exec-ef03a4aa-f661-4b8d-99f0-612e88df227c",
+      "firstArgs": {
+        "cron": "0 3 * * *"
+      },
+      "isError": false,
+      "firstCallSuccess": true,
+      "totalCalls": 1,
+      "exposuresRecorded": 0
+    },
+    {
+      "trialIndex": 104,
+      "blockIndex": 11,
+      "task": "A",
+      "tool": "schedule_backup",
+      "arm": "nothing",
+      "store": "store-nothing",
+      "inject": false,
+      "rep": 14,
+      "sessionId": "44353670-181c-4b38-ae14-ae11ac9e0e94",
+      "firstCallId": "exec-2e2bfb87-67fb-45a1-9c8c-ecd6dd2586eb",
+      "firstArgs": {
+        "cron": "0 3 *"
+      },
+      "isError": true,
+      "firstCallSuccess": false,
+      "totalCalls": 1,
+      "exposuresRecorded": 0
+    },
+    {
+      "trialIndex": 105,
+      "blockIndex": 11,
+      "task": "A",
+      "tool": "schedule_backup",
+      "arm": "nothing",
+      "store": "store-nothing",
+      "inject": false,
+      "rep": 15,
+      "sessionId": "430ced90-2e86-4d39-95a3-4b90f31e7827",
+      "firstCallId": "exec-a7dbedf7-8948-40ba-bede-ed272b20b511",
+      "firstArgs": {
+        "cron": "0 3 *"
+      },
+      "isError": true,
+      "firstCallSuccess": false,
+      "totalCalls": 1,
+      "exposuresRecorded": 0
+    },
+    {
+      "trialIndex": 106,
+      "blockIndex": 11,
+      "task": "A",
+      "tool": "schedule_backup",
+      "arm": "nothing",
+      "store": "store-nothing",
+      "inject": false,
+      "rep": 16,
+      "sessionId": "aabeb279-2d0a-4f1e-874b-29e91d3549d4",
+      "firstCallId": "exec-dfda47d1-e97b-42fb-840b-7839c009f937",
+      "firstArgs": {
+        "cron": "0 3 *"
+      },
+      "isError": true,
+      "firstCallSuccess": false,
+      "totalCalls": 1,
+      "exposuresRecorded": 0
+    },
+    {
+      "trialIndex": 107,
+      "blockIndex": 11,
+      "task": "A",
+      "tool": "schedule_backup",
+      "arm": "nothing",
+      "store": "store-nothing",
+      "inject": false,
+      "rep": 17,
+      "sessionId": "317ccf60-12c7-4c4c-a5d8-9f5478cc2ced",
+      "firstCallId": "exec-e16af6ad-b623-4c5f-beb7-6b534cc81d31",
+      "firstArgs": {
+        "cron": "0 3 *"
+      },
+      "isError": true,
+      "firstCallSuccess": false,
+      "totalCalls": 1,
+      "exposuresRecorded": 0
+    },
+    {
+      "trialIndex": 108,
+      "blockIndex": 11,
+      "task": "A",
+      "tool": "schedule_backup",
+      "arm": "nothing",
+      "store": "store-nothing",
+      "inject": false,
+      "rep": 18,
+      "sessionId": "06ee49e4-be26-4aaf-9875-6909d70315ce",
+      "firstCallId": "exec-28cc93de-29a8-4a1c-846b-3144ba8d3782",
+      "firstArgs": {
+        "cron": "0 3 * * *"
+      },
+      "isError": false,
+      "firstCallSuccess": true,
+      "totalCalls": 1,
+      "exposuresRecorded": 0
+    },
+    {
+      "trialIndex": 109,
+      "blockIndex": 11,
+      "task": "A",
+      "tool": "schedule_backup",
+      "arm": "nothing",
+      "store": "store-nothing",
+      "inject": false,
+      "rep": 19,
+      "sessionId": "73e38785-9870-4474-899a-b4980fe3fe0f",
+      "firstCallId": "exec-d9b45c78-0721-40f3-9c21-b5a4465c1aa6",
+      "firstArgs": {
+        "cron": "0 3 *"
+      },
+      "isError": true,
+      "firstCallSuccess": false,
+      "totalCalls": 2,
+      "exposuresRecorded": 0
+    },
+    {
+      "trialIndex": 110,
+      "blockIndex": 11,
+      "task": "A",
+      "tool": "schedule_backup",
+      "arm": "nothing",
+      "store": "store-nothing",
+      "inject": false,
+      "rep": 20,
+      "sessionId": "f67bd376-2524-429a-9ac6-e68e920b1542",
+      "firstCallId": "exec-83d7785d-2db1-41c2-b426-1cea352603af",
+      "firstArgs": {
+        "cron": "0 3 *"
+      },
+      "isError": true,
+      "firstCallSuccess": false,
+      "totalCalls": 1,
+      "exposuresRecorded": 0
+    },
+    {
+      "trialIndex": 111,
+      "blockIndex": 12,
+      "task": "A",
+      "tool": "schedule_backup",
+      "arm": "placebo",
+      "store": "store-placebo-A",
+      "inject": true,
+      "rep": 11,
+      "sessionId": "2bb3a70d-816e-4682-b8f9-192a6ce35833",
+      "firstCallId": "exec-78b48570-d2ba-43c3-8dbd-fdee80acfc67",
+      "firstArgs": {
+        "cron": "0 3 * * *"
+      },
+      "isError": false,
+      "firstCallSuccess": true,
+      "totalCalls": 1,
+      "exposuresRecorded": 1
+    },
+    {
+      "trialIndex": 112,
+      "blockIndex": 12,
+      "task": "A",
+      "tool": "schedule_backup",
+      "arm": "placebo",
+      "store": "store-placebo-A",
+      "inject": true,
+      "rep": 12,
+      "sessionId": "d24c7b26-77bc-409b-80be-ee6e9f8791a3",
+      "firstCallId": "exec-6cc24d07-1cf8-4bf5-98b0-a12a00004f65",
+      "firstArgs": {
+        "cron": "0 3 *"
+      },
+      "isError": true,
+      "firstCallSuccess": false,
+      "totalCalls": 1,
+      "exposuresRecorded": 1
+    },
+    {
+      "trialIndex": 113,
+      "blockIndex": 12,
+      "task": "A",
+      "tool": "schedule_backup",
+      "arm": "placebo",
+      "store": "store-placebo-A",
+      "inject": true,
+      "rep": 13,
+      "sessionId": "c81c6867-3340-49e1-9876-868841372253",
+      "firstCallId": "exec-27843bb9-5091-4f08-9f44-dba1c25ed7cf",
+      "firstArgs": {
+        "cron": "0 3 *"
+      },
+      "isError": true,
+      "firstCallSuccess": false,
+      "totalCalls": 2,
+      "exposuresRecorded": 1
+    },
+    {
+      "trialIndex": 114,
+      "blockIndex": 12,
+      "task": "A",
+      "tool": "schedule_backup",
+      "arm": "placebo",
+      "store": "store-placebo-A",
+      "inject": true,
+      "rep": 14,
+      "sessionId": "6bc99259-cfe3-4320-a08b-4bb10012e0c8",
+      "firstCallId": "exec-e71796ae-3ea4-4655-afa2-1b0175606d97",
+      "firstArgs": {
+        "cron": "0 3 *"
+      },
+      "isError": true,
+      "firstCallSuccess": false,
+      "totalCalls": 1,
+      "exposuresRecorded": 1
+    },
+    {
+      "trialIndex": 115,
+      "blockIndex": 12,
+      "task": "A",
+      "tool": "schedule_backup",
+      "arm": "placebo",
+      "store": "store-placebo-A",
+      "inject": true,
+      "rep": 15,
+      "sessionId": "fce5663b-3c3b-4aa0-a52e-0a239f8ffbb7",
+      "firstCallId": "exec-fa8d7bc7-cf50-494f-8fa4-e312eff454f9",
+      "firstArgs": {
+        "cron": "0 3 *"
+      },
+      "isError": true,
+      "firstCallSuccess": false,
+      "totalCalls": 1,
+      "exposuresRecorded": 1
+    },
+    {
+      "trialIndex": 116,
+      "blockIndex": 12,
+      "task": "A",
+      "tool": "schedule_backup",
+      "arm": "placebo",
+      "store": "store-placebo-A",
+      "inject": true,
+      "rep": 16,
+      "sessionId": "11794190-ac30-4256-a084-eda53f258cb8",
+      "firstCallId": "exec-58cef2aa-d019-4a0b-9594-b1cc2de3c906",
+      "firstArgs": {
+        "cron": "0 3 *"
+      },
+      "isError": true,
+      "firstCallSuccess": false,
+      "totalCalls": 2,
+      "exposuresRecorded": 1
+    },
+    {
+      "trialIndex": 117,
+      "blockIndex": 12,
+      "task": "A",
+      "tool": "schedule_backup",
+      "arm": "placebo",
+      "store": "store-placebo-A",
+      "inject": true,
+      "rep": 17,
+      "sessionId": "0eec04db-8427-41a6-b84c-cc74eae9a180",
+      "firstCallId": "exec-13e3fac1-eb55-4bb4-aa25-97eb2c507cbb",
+      "firstArgs": {
+        "cron": "0 3 *"
+      },
+      "isError": true,
+      "firstCallSuccess": false,
+      "totalCalls": 1,
+      "exposuresRecorded": 1
+    },
+    {
+      "trialIndex": 118,
+      "blockIndex": 12,
+      "task": "A",
+      "tool": "schedule_backup",
+      "arm": "placebo",
+      "store": "store-placebo-A",
+      "inject": true,
+      "rep": 18,
+      "sessionId": "a0f2b0a7-73e6-4c44-a57f-fabb64788342",
+      "firstCallId": "exec-e92d2e8d-457a-46f1-9a5d-5dc3219bf91e",
+      "firstArgs": {
+        "cron": "0 3 *"
+      },
+      "isError": true,
+      "firstCallSuccess": false,
+      "totalCalls": 1,
+      "exposuresRecorded": 1
+    },
+    {
+      "trialIndex": 119,
+      "blockIndex": 12,
+      "task": "A",
+      "tool": "schedule_backup",
+      "arm": "placebo",
+      "store": "store-placebo-A",
+      "inject": true,
+      "rep": 19,
+      "sessionId": "88b27b04-e2da-4023-b4ed-92f44bb13bb0",
+      "firstCallId": "exec-b8703d9d-e26d-46b2-b7f5-ab8d2240f57f",
+      "firstArgs": {
+        "cron": "0 3 *"
+      },
+      "isError": true,
+      "firstCallSuccess": false,
+      "totalCalls": 1,
+      "exposuresRecorded": 1
+    },
+    {
+      "trialIndex": 120,
+      "blockIndex": 12,
+      "task": "A",
+      "tool": "schedule_backup",
+      "arm": "placebo",
+      "store": "store-placebo-A",
+      "inject": true,
+      "rep": 20,
+      "sessionId": "fd06742d-1434-44ff-a902-5fc420288854",
+      "firstCallId": "exec-a5b257bf-74f7-45c2-878a-e75ac9c27e56",
+      "firstArgs": {
+        "cron": "0 3 *"
+      },
+      "isError": true,
+      "firstCallSuccess": false,
+      "totalCalls": 2,
+      "exposuresRecorded": 1
+    }
+  ]
+}

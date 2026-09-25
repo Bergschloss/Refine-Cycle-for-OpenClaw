@@ -1,80 +1,104 @@
 # Refine Cycle for OpenClaw
 
-An OpenClaw plugin that learns from the agent's own repeated failures: it looks across past sessions, finds the mistakes that keep coming back, writes one small lesson, puts that lesson in front of the agent in later sessions, and afterwards checks whether the failure stopped.
+**Your agent keeps repeating the same mistake. This makes it stop.**
 
-Private, in progress: milestone 1 (the loop end to end) is being built. See [Status](#status).
+**Refine Cycle** watches your OpenClaw agent's tool failures across sessions. When the same failure comes back, it writes one short lesson and puts it in front of the agent from then on. Later, it records whether the failure came back.
 
-## Where this comes from
+**Cross-session by design.** An agent can fix a mistake inside one conversation and make it again in the next: the same wrong date format, the same missing flag, the same command that never works on your machine. Refine Cycle remembers across conversations, so you stop explaining the same thing twice.
 
-There is a working version of this idea for another agent, [Refine Cycle for Hermes Agent](https://github.com/Bergschloss/Refine-Cycle-for-Hermes-Agent): 23k lines of Python, 1,278 tests, and a pre-registered measurement with placebo controls — with a lesson the agent handled the repeated mistake correctly 66 times out of 131, without it 28 out of 133, and two placebo notes scored 28 and 30. The result was reproduced on 2026-09-20 on a current model: 65/130 against 29/130.
+**Measured:** on two tasks the agent kept getting wrong, it got the tool call right **20%** of the time on its own and **90%** with the plugin's lesson. A placebo note of the same length scored **7.5%**.
 
-This is not a port. OpenClaw takes TypeScript plugins, so the code is new. What carries over is the loop, the measurement, and what the Hermes version cost us to learn.
+[**Install on your OpenClaw →**](#install)
 
-## What carries over
+## A simple three-step loop
 
-- **Count failures over the whole session.** Reading only the newest rows hid the first failure in 58% of repeated-failure groups, and in 95% of sessions longer than 300 rows.
-- **A lesson with no observed repeated failure behind it is worthless**, and must be refused.
-- **Most repeats cannot be fixed by a lesson**: roughly 46% are knowledge gaps, 37% a wrong tool choice, 6% the agent dropping an argument it had already used. Saying "nothing to write here" has to be cheap and common.
-- **The restatement trap.** Lessons that survive usually repeat what the agent's own skills already say. On a real corpus: 0 useful lessons out of 33 candidate sessions. Check what exists before proposing.
-- **Cheap refusals before expensive ones.** Everything that can refuse without a model call runs first.
-- **Crash safety.** Write the record, apply, then mark. A record a crash cut short must not stop the plugin for good.
-- **Every change reversible.**
-- **No content filter on lessons.** A lesson may carry a URL, a command or a credential name if the model saw it; there is no scrubber and no URL ban. This is the owner's decision, carried over from the Hermes plugin, where those filters were removed because they cost valid lessons and protected nothing. What the plugin does refuse is structural: markup that could close the injected block, a lesson that does not name the failing tool, and unobserved fingerprints.
-- **The grader stays frozen.** `lesson_effect_checker.py` decides whether a lesson helped, deterministically and without a model. It is pinned by hash, because the published result was measured with it.
+1. **Notice what keeps going wrong.** One failed call may be noise. The same failure in two sessions, or five times, is a pattern.
+2. **Write the smallest useful lesson.** One sentence, such as *"When calling send_report, format the date as YYYY-MM-DD, such as 2026-09-25, rather than DD/MM/YYYY."* The model may also answer that there is nothing to learn, and often does.
+3. **Check the result.** Each later session records which lessons it saw and whether the failure came back after it.
 
-## What is deliberately not built
+## You stay in control
 
-The Hermes version carries an installer, a patch to eight host files, a self-update path, a Fix command, a host restart, a desktop status bar and unsolicited chat messages. Every one of those exists because that host made it necessary. OpenClaw installs plugins from its own registry, refuses an incompatible one instead of crashing, and needs no patch — so none of that is here.
+- At most one model call per session and three a day, on the model and account your agent already uses. The plugin has no key of its own.
+- `/refine list` shows every lesson; `/refine disable <id>` and `/refine delete <id>` take one away, and a lesson you took away is never learned again.
+- It never edits your `AGENTS.md`, `SOUL.md`, skills or memory. Lessons live in the plugin's own folder.
+- It does not filter your conversation or its lessons. The evidence for a lesson goes to the model your agent already uses, as your agent would send it; the lessons and the plugin's records stay on your machine.
+- If a hook fails or the store is unreadable, your agent's turn goes on as if the plugin were not there, and the log says why.
 
-## How lessons reach the agent
+## How it works
 
-Through `before_prompt_build`, which prepends a bounded block of active lessons to the prompt. No exclusive slot is taken: the user's memory plugin and context engine stay theirs. The plugin keeps lessons in its own durable store and never edits `AGENTS.md`, `SOUL.md` or any other file the user owns.
+After each turn, the plugin reads the whole session from OpenClaw's history and turns each failed tool call into a fingerprint, so the same error with a different path, id or timestamp counts once. Most failures stop here, without a model call: they did not repeat, the agent fixed them straight away, they were a timeout, or the agent's own instructions and skills already cover them. A failure that gets through goes to the model with its evidence. A lesson the model writes must name the observed failure and the failing tool, fit in 200 characters, and not repeat a rule the agent already has. It is journaled before it becomes active, so a crash never leaves a half-written lesson. From the next prompt on, the agent's active lessons are placed ahead of its turn in a short, marked block.
 
-## The spike says yes
+Design, host contract and code layout: [docs/DESIGN.md](docs/DESIGN.md).
 
-On 2026-09-22 a probe plugin was built and run against OpenClaw 2026.9.5 with a local model. All four things the design depends on work, and none of them needs a patch to the host ([the report](docs/spike-2026-09-22/REPORT.md), [the probe](docs/spike-2026-09-22/probe-plugin)):
+## What the testing shows
 
-- **A lesson reaches the model.** `before_prompt_build` returning `prependContext` put a token in front of the model in a fresh session, after the whole process was killed and restarted, with no user action. The host ignores prompt changes unless the plugin declares `allowPromptInjection`, which is the right kind of gate: the user grants it at install.
-- **Past sessions are readable.** Transcripts and tool outcomes live in SQLite (`transcript_events`) and can be read across sessions.
-- **The model can be called from the plugin** on the user's own route and budget: `api.runtime.llm.complete`, no key of the plugin's own.
-- **`agent_end` fires with the rows already written**, so a session can be analysed the moment it ends.
+In a 120-session test on OpenClaw 2026.9.6 with GPT-6 Luna, the agent got the first tool call right in 36 of 40 sessions with the lesson, 8 of 40 with nothing, and 3 of 40 with a placebo note. The placebo did no better than nothing, so the gain comes from what the lesson says. The tasks were two test tools built to provoke one specific mistake each, so this shows that a correct lesson changes behaviour; how often the plugin finds one in real use is a separate number.
 
-Also measured: a 10 KB injected block passed without complaint, a hook that throws does not break the user's turn, and two plugins prepending context are concatenated rather than fighting.
+On 125 of the author's real coding-agent dialogs, replayed in order, the plugin sent 5 failures to the model and got 1 lesson back. That lesson was useful: it corrected an out-of-date example in the author's own instructions that had caused the same error twice. Method, limits and raw data: [docs/MEASUREMENT-2026-09-25.md](docs/MEASUREMENT-2026-09-25.md).
 
-Two corrections to the design came out of it: read history straight from SQLite rather than through the request-scoped runtime API, and declare `allowPromptInjection` from the start.
+## Install
 
-## Status
+Tested on OpenClaw 2026.9.6 (2026.9.5 is supported), Node 24 or newer.
+
+**1. Install the plugin.** OpenClaw asks you to trust the source and to accept what the plugin can do; review both, then:
+
+```bash
+openclaw plugins install git:github.com/Bergschloss/Refine-Cycle-for-OpenClaw --accept-capabilities
+```
+
+**2. Let it see your sessions.** OpenClaw gives a plugin your conversation only when you allow it. Without this, Refine Cycle stays idle and says so in the log.
+
+```bash
+openclaw config set plugins.entries.refine-cycle.hooks.allowConversationAccess true
+```
+
+**3. Restart the gateway**, so the plugin loads.
+
+```bash
+openclaw gateway restart
+```
+
+**4. Check it.** It answers "No lessons yet." until a failure has repeated.
+
+```bash
+openclaw refine-cycle list
+```
+
+## Commands
+
+| In chat | On the command line | |
+|---|---|---|
+| `/refine list` | `openclaw refine-cycle list` | Lessons and their status |
+| `/refine disable <id>` | `openclaw refine-cycle disable <id>` | Stop showing a lesson |
+| `/refine delete <id>` | `openclaw refine-cycle delete <id>` | Delete a lesson (kept as a tombstone) |
+| `/refine report` | `openclaw refine-cycle report` | What the loop decided, by rule |
+
+In chat, the commands see only the lessons of the agent you are talking to.
+
+## Settings
+
+Under `plugins.entries.refine-cycle.config` in `openclaw.json`. All are optional.
+
+| Setting | Default | |
+|---|---|---|
+| `injectEnabled` | `true` | Show active lessons to the agent |
+| `learnEnabled` | `true` | Look for repeated failures and write lessons |
+| `maxModelCallsPerDay` | `3` | Model calls for writing lessons, per day |
+| `minSessions` / `minOccurrences` | `2` / `5` | How often a failure must repeat (either one) |
+| `maxInjectedChars` | `1000` | Size of the lessons block in the prompt |
+| `maxLessonChars` | `200` | Longest lesson accepted |
+| `instructionFiles` | `AGENTS.md`, `TOOLS.md`, `SOUL.md` | Files checked so a lesson never repeats a rule you already wrote |
+
+## Documentation
 
 | | |
 |---|---|
-| Spike | done, all four gates pass — [docs/spike-2026-09-22/](docs/spike-2026-09-22) |
-| Design | [docs/ARCHITECTURE-DRAFT-2026-09-22.md](docs/ARCHITECTURE-DRAFT-2026-09-22.md), to be revised with the two corrections |
-| Can a plugin inject lessons at all | [docs/RESEARCH-lesson-injection.md](docs/RESEARCH-lesson-injection.md) |
-| Port or rebuild | [docs/RESEARCH-port-feasibility.md](docs/RESEARCH-port-feasibility.md) |
-| Code | [milestone 1](docs/MILESTONE-1.md) steps 1–11 built, step 12 records exposures and later recurrence (the frozen grader is not wired in yet); `npm test` covers it. On a real OpenClaw (2026.9.5 → 2026.9.6, GPT-6 Luna on a ChatGPT subscription) the loop ran end to end on 2026-09-24: a failure repeated in 4 sessions became one lesson, the next session's model quoted it, and the agent then used the right format. Not yet: the milestone's number (how many lessons are not restatements) on real sessions |
+| [DESIGN.md](docs/DESIGN.md) | How it works inside, the OpenClaw host contract, code layout |
+| [MEASUREMENT-2026-09-25.md](docs/MEASUREMENT-2026-09-25.md) | The placebo-controlled test and the real-dialog replay, with raw data |
+| [MILESTONE-1.md](docs/MILESTONE-1.md) | What the first version set out to do |
 
-## Layout
+The idea and its first measurement come from [Refine Cycle for Hermes Agent](https://github.com/Bergschloss/Refine-Cycle-for-Hermes-Agent), which adapts the `/refine` concept from [Prime Intellect's Prime Agent](https://www.primeintellect.ai/blog/prime-agent).
 
-- `src/plugin.ts` — the only file that knows OpenClaw: hooks, the background queue, `/refine` and `openclaw refine-cycle`.
-- `src/pipeline.ts` — the learning loop for one ended turn, host-independent.
-- `src/core/` — pure functions: the fingerprint (a line-for-line port of the Hermes `patterns.py`, pinned by a 382-row golden corpus recorded from the Python original), failure extraction, the refusal rules, the already-covered check, the injected block, the proposal and its validation.
-- `src/store.ts`, `src/lessons.ts` — atomic JSON files with `$v`, and the journal that makes lesson changes crash-safe.
-- `src/host/` — reading the agent's SQLite history (read-only) and its skills and instruction files.
-- `scripts/drift-check.ts` — compares what the tests assume about OpenClaw with a live install.
+## License
 
-`npm test` runs everything on Node 24+ with no dependencies.
-
-## Installing it for a test
-
-Point OpenClaw at the checkout and grant it both hook permissions, in `openclaw.json` (OpenClaw has no manifest field for them; the user grants them per plugin). OpenClaw calls `before_prompt_build` and `agent_end` for a non-bundled plugin only with `allowConversationAccess: true`. Prompt changes are applied unless `allowPromptInjection` is `false` (OpenClaw's `resolvePromptInjectionAllowed`); setting it to `true` states the grant explicitly.
-
-```json
-"plugins": {
-  "load": { "paths": ["/path/to/Refine-Cycle-for-OpenClaw"] },
-  "entries": {
-    "refine-cycle": { "enabled": true, "hooks": { "allowPromptInjection": true, "allowConversationAccess": true }, "config": {} }
-  }
-}
-```
-
-The plugin keeps its data in `<OpenClaw state dir>/plugin-data/refine-cycle/` and reads the agent's history from `<state dir>/agents/<agent>/agent/openclaw-agent.sqlite`.  Without the conversation-access grant the plugin does nothing and says so in the log.
+MIT © 2026 Taras Boiko
