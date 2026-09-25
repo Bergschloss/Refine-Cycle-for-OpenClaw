@@ -172,25 +172,28 @@ test("recovery does not undo a change the user made after the crash", () => {
 test("a stale lock that cannot be removed is 'busy' at once, never a spin", () => {
   const root = tempDir();
   const store = new FileStore(root);
-  // A stale lock that cannot be moved or removed (no permission on the folder).
-  fs.writeFileSync(path.join(root, "budget.lock"), "dead-owner");
+  // A stale lock that cannot be removed (no permission on the folder, a file held open).
+  const lock = path.join(root, "budget.lock");
+  fs.writeFileSync(lock, "dead-owner");
   const old = new Date(Date.now() - 60_000);
-  fs.utimesSync(path.join(root, "budget.lock"), old, old);
-  const rename = fs.renameSync;
-  fs.renameSync = () => {
-    throw Object.assign(new Error("operation not permitted"), { code: "EPERM" });
+  fs.utimesSync(lock, old, old);
+  const unlink = fs.unlinkSync;
+  fs.unlinkSync = (target: fs.PathLike) => {
+    if (String(target) === lock) throw Object.assign(new Error("operation not permitted"), { code: "EPERM" });
+    unlink(target);
   };
   const started = Date.now();
   try {
     assert.throws(() => store.lock("budget", 0), StoreError);
     assert.throws(() => store.lock("budget", 100), StoreError);
   } finally {
-    fs.renameSync = rename;
+    fs.unlinkSync = unlink;
   }
+  assert.equal(fs.existsSync(`${lock}.takeover`), false);
   assert.ok(Date.now() - started < 2_000, `took ${Date.now() - started} ms`);
 });
 
-test("a stale lock is taken over, and a fresh lock that replaced it is put back", () => {
+test("a stale lock is taken over, and a fresh lock that replaced it is never removed", () => {
   const dir = tempDir();
   const store = new FileStore(dir);
   const file = path.join(dir, "budget.lock");
@@ -204,23 +207,36 @@ test("a stale lock is taken over, and a fresh lock that replaced it is put back"
   assert.equal(fs.existsSync(file), false);
   assert.deepEqual(fs.readdirSync(dir).filter((name) => name.endsWith(".stale")), []);
 
-  // Another waiter replaced the stale lock with its own between our stat and our move.
+  // Another waiter took the stale lock over and holds a fresh one before we get the guard.
   fs.writeFileSync(file, "dead-owner");
   fs.utimesSync(file, old, old);
-  const rename = fs.renameSync;
-  fs.renameSync = (from: fs.PathLike, to: fs.PathLike) => {
-    fs.renameSync = rename;
-    fs.unlinkSync(file);
-    fs.writeFileSync(file, "fresh-owner");
-    rename(from, to);
-  };
+  const open = fs.openSync;
+  fs.openSync = ((target: fs.PathLike, flags: fs.OpenMode) => {
+    if (String(target).endsWith(".takeover")) {
+      fs.openSync = open;
+      fs.unlinkSync(file);
+      fs.writeFileSync(file, "fresh-owner");
+    }
+    return open(target, flags);
+  }) as typeof fs.openSync;
   try {
     assert.throws(() => store.lock("budget", 0), /store is locked/);
   } finally {
-    fs.renameSync = rename;
+    fs.openSync = open;
   }
   assert.equal(fs.readFileSync(file, "utf8"), "fresh-owner");
-  assert.deepEqual(fs.readdirSync(dir).filter((name) => name.endsWith(".stale")), []);
+
+  // A waiter mid-takeover holds the guard: nobody else removes the lock; a guard left
+  // by a waiter that died is cleared.
+  fs.unlinkSync(file);
+  fs.writeFileSync(file, "dead-owner");
+  fs.utimesSync(file, old, old);
+  fs.writeFileSync(`${file}.takeover`, "");
+  assert.throws(() => store.lock("budget", 0), /store is locked/);
+  assert.equal(fs.readFileSync(file, "utf8"), "dead-owner");
+  fs.utimesSync(`${file}.takeover`, old, old);
+  store.lock("budget", 0)();
+  assert.deepEqual(fs.readdirSync(dir).filter((name) => name.startsWith("budget.lock")), []);
 });
 
 test("closed journal records are pruned after a week, open ones never", () => {

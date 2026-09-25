@@ -125,30 +125,47 @@ export class FileStore {
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code === "ENOENT") continue; // released between our two calls
       }
-      if (stale) {
-        // Moved aside under a unique name, then checked: between our stat and the move
-        // another waiter may have replaced the stale lock with its own fresh one, and
-        // that one is put back instead of removed.
-        const aside = `${file}.${process.pid}-${randomBytes(4).toString("hex")}.stale`;
-        try {
-          fs.renameSync(file, aside);
-          if (Date.now() - fs.statSync(aside).mtimeMs <= STALE_LOCK_MS) {
-            try {
-              fs.linkSync(aside, file);
-            } catch {
-              // a third process took the lock meanwhile; it holds it now
-            }
-          }
-          fs.unlinkSync(aside);
-          continue;
-        } catch (error) {
-          if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
-          // A stale lock we cannot move (permissions, a file held open) is treated as
-          // held: waiting or giving up below, never looping without a pause.
-        }
-      }
+      if (stale && this.takeOver(file)) continue;
       if (timeoutMs <= 0 || Date.now() > deadline) throw new StoreError(`store is locked: ${name}`);
       Atomics.wait(SLEEP, 0, 0, 25);
+    }
+  }
+
+  /**
+   * Remove a stale lock, one waiter at a time: only the waiter that creates the
+   * takeover guard may remove it, and only if it is still stale under the guard, so a
+   * fresh lock another waiter took meanwhile is never removed. False when the lock
+   * stays (another waiter is taking over, or it cannot be removed: permissions, a
+   * file held open); the caller then waits or gives up, never loops without a pause.
+   */
+  private takeOver(file: string): boolean {
+    const guard = `${file}.takeover`;
+    try {
+      fs.closeSync(fs.openSync(guard, "wx"));
+    } catch {
+      // A guard left by a waiter that died mid-takeover is cleared like a stale lock.
+      try {
+        if (Date.now() - fs.statSync(guard).mtimeMs > STALE_LOCK_MS) {
+          fs.unlinkSync(guard);
+          return true;
+        }
+      } catch {
+        // gone already, or cannot be removed
+      }
+      return false;
+    }
+    try {
+      if (Date.now() - fs.statSync(file).mtimeMs <= STALE_LOCK_MS) return false;
+      fs.unlinkSync(file);
+      return true;
+    } catch (error) {
+      return (error as NodeJS.ErrnoException).code === "ENOENT";
+    } finally {
+      try {
+        fs.unlinkSync(guard);
+      } catch {
+        // cannot happen short of a permissions change; the guard goes stale and is cleared
+      }
     }
   }
 

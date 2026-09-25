@@ -156,3 +156,22 @@ test("the same command is compared past flags, inside quotes and in inline code"
   assert.equal(resolution(["python3", "a.py"], ["python3", "b.py"]), "unknown");
   assert.equal(resolution(["python3", "a.py"], ["python3", "a.py", "--fix"]), "corrected");
 });
+
+test("the same command: odd argv, git -C, multi-line scripts and pipelines", () => {
+  const resolution = (failed: unknown, later: unknown) => {
+    const t = new Transcript().call("Bash", { command: failed }, { error: "exit code 1" }).call("Bash", { command: later }, { ok: "done" });
+    return summarizeSession("s1", "main", t.rows).patterns[0].occurrences[0].resolution;
+  };
+  // An empty or odd argv is compared by tool, never a crash.
+  assert.equal(resolution([], ["ls"]), "corrected");
+  assert.equal(resolution([1, 2], ["ls"]), "corrected");
+  assert.equal(resolution("", "ls"), "corrected");
+  assert.equal(resolution("git -C /repo push", "git -C /repo log"), "unknown");
+  assert.equal(resolution("git -C /repo push", "git -C /repo push --force-with-lease"), "corrected");
+  assert.equal(resolution("make -C build install", "make -C build clean"), "unknown");
+  assert.equal(resolution("cd /repo\nnpm test", "cd /repo\nls"), "unknown");
+  assert.equal(resolution("cd /repo\nnpm test", "cd /repo\nnpm test -- --ci"), "corrected");
+  assert.equal(resolution("ls | grep foo", "ls -la | wc -l"), "unknown");
+  assert.equal(resolution("npm test 2>&1 | tail -5", "npm test 2>&1 | tail -20"), "corrected");
+  assert.equal(resolution("npm run dev & npm test", "npm test"), "corrected");
+});
