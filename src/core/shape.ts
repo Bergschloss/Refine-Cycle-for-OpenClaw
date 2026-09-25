@@ -31,9 +31,15 @@ const WRONG_TOOL = new RegExp(
   "iu",
 );
 
+/**
+ * An error that says what must be done first ("the pane is not displayed, display it
+ * and retry") fails the same way every time, even when it is reported as a timeout.
+ */
+const PREREQUISITE = /\b(?:is not (?:displayed|open|running|visible|enabled|installed)|must be|needs to be|display the|open the|start the)\b/iu;
+
 export function lessonShape(pattern: AggregatePattern): NotLessonShaped | null {
   const text = `${pattern.shape}\n${pattern.sample}`;
-  if (TRANSIENT.test(text)) return "transient";
+  if (TRANSIENT.test(text) && !PREREQUISITE.test(text)) return "transient";
   if (WRONG_TOOL.test(text)) return "wrong_tool";
   if (pattern.droppedArgument) return "dropped_argument";
   return null;

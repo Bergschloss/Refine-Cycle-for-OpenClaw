@@ -24,8 +24,13 @@ export const SYSTEM_PROMPT = [
   "{\"decision\": \"lesson\" | \"nothing\", \"fingerprint\": \"<the fingerprint shown>\", \"lesson\": \"<one sentence, empty for nothing>\", \"reason\": \"<one short sentence>\"}",
 ].join("\n");
 
+/**
+ * Tool output inside the wrapper keeps no angle brackets at all, so no tag in it,
+ * nested or split (`</untrusted_tool_<untrusted_tool_result>result>`), can close or
+ * reopen the wrapper. Removing tag text instead was defeated by nesting.
+ */
 function untrusted(text: string): string {
-  return `<untrusted_tool_result>${text.replace(/<\s*\/?\s*untrusted_tool_result[^>]*>/gi, "")}</untrusted_tool_result>`;
+  return `<untrusted_tool_result>${text.replace(/</g, "‹").replace(/>/g, "›")}</untrusted_tool_result>`;
 }
 
 function resolutionLine(occurrences: Occurrence[]): string {

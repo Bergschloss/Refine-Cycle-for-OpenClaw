@@ -12,6 +12,7 @@
  * user did not ask for.
  */
 
+import { AsyncLocalStorage } from "node:async_hooks";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -47,6 +48,8 @@ interface CliCommand {
 
 export interface PluginApi {
   id: string;
+  /** "full", "cli-metadata", ...: in "cli-metadata" the runtime is deliberately unavailable. */
+  registrationMode?: string;
   config?: {
     plugins?: {
       entries?: Record<string, { hooks?: { allowConversationAccess?: boolean; allowPromptInjection?: boolean } } | undefined>;
@@ -78,6 +81,28 @@ const PROMPT_HOOK_TIMEOUT_MS = 2_000;
 const MAX_BLOCKS_PER_SESSION = 20;
 const MAX_SESSIONS_REMEMBERED = 500;
 
+/**
+ * OpenClaw runs a turn and its hooks inside an "async work scope" held in these
+ * process-global AsyncLocalStorage slots (src/shared/async-work-scope.ts), and closes
+ * it as soon as agent_end returns. Work started from the hook inherits the scope, so
+ * anything it does later (a model call after a yield) fails with "Async work scope is
+ * closed". The host's own runOutsideAsyncWorkScope() exits exactly these slots; so do
+ * we. On a host without them this simply runs `run`.
+ */
+const HOST_WORK_SCOPE_SLOTS = [Symbol.for("openclaw.asyncWorkScope"), Symbol.for("openclaw.asyncWorkScopeAncestry")];
+
+function runOutsideHostWorkScope<T>(run: () => T): T {
+  let wrapped = run;
+  for (const slot of HOST_WORK_SCOPE_SLOTS) {
+    const storage = (globalThis as Record<PropertyKey, unknown>)[slot];
+    if (storage instanceof AsyncLocalStorage) {
+      const inner = wrapped;
+      wrapped = () => storage.exit(inner);
+    }
+  }
+  return wrapped();
+}
+
 function resolveStateDir(api: PluginApi): string {
   try {
     const dir = api.runtime?.state?.resolveStateDir?.();
@@ -96,6 +121,10 @@ export default function register(api: PluginApi): void {
     log("disabled in settings");
     return;
   }
+  // OpenClaw registers plugins once only to read their CLI command names (taken from
+  // the manifest's cliCommands) and blocks the runtime while doing so. Nothing here may
+  // open the store or recover the journal then; the full registration does it.
+  if (api.registrationMode === "cli-metadata") return;
 
   // OpenClaw only calls before_prompt_build and agent_end for a non-bundled plugin
   // the user has granted conversation access; without it the plugin is inert.
@@ -171,11 +200,20 @@ export default function register(api: PluginApi): void {
     { timeoutMs: PROMPT_HOOK_TIMEOUT_MS },
   );
 
-  const complete = api.runtime?.llm?.complete;
+  // Looked up per call, not at registration: the runtime may be a guarded proxy then.
+  const hostComplete = () => {
+    try {
+      return api.runtime?.llm?.complete;
+    } catch {
+      return undefined;
+    }
+  };
   const llm: Llm | null =
-    complete
+    hostComplete()
       ? {
         async complete(systemPrompt, userMessage, timeoutMs) {
+          const complete = hostComplete();
+          if (!complete) throw new Error("the host offers no model call");
           // The host is asked to abort via `signal`; the plugin does not rely on it.
           let timer: ReturnType<typeof setTimeout> | undefined;
           const timeout = new Promise<never>((_, reject) => {
@@ -238,7 +276,9 @@ export default function register(api: PluginApi): void {
 
   api.on("agent_end", (_event, ctx) => {
     if (storeError || !ctx) return;
-    enqueue(ctx);
+    // The queue is chained outside the turn's work scope, so the learning work (and
+    // its model call) does not run inside a scope the host closes when this returns.
+    runOutsideHostWorkScope(() => enqueue(ctx));
   });
 
   /** `agentId` limits a chat command to that agent's lessons; the command line sees all of them. */
@@ -289,7 +329,7 @@ export default function register(api: PluginApi): void {
         .description("Measurement: run the loop over a recorded corpus (JSONL) into a separate store")
         .action(async (corpus, storeDir, sourcesDir) => {
           const dir = typeof sourcesDir === "string" ? sourcesDir : undefined;
-          const result = await replay({
+          const result = await runOutsideHostWorkScope(() => replay({
             corpusFile: String(corpus),
             storeDir: String(storeDir),
             llm,
@@ -300,7 +340,7 @@ export default function register(api: PluginApi): void {
             // One run, many sessions: the daily cap is for live use, not the harness.
             settings: { ...settings, maxModelCallsPerDay: 100_000 },
             log: (message) => console.log(message),
-          });
+          }));
           console.log(JSON.stringify({ ...result, lessons: result.lessons.length }, null, 2));
         });
     },

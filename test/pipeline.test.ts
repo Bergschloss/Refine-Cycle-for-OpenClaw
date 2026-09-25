@@ -445,3 +445,17 @@ test("failures the host gave no time for are counted as unplaced, not as 'did no
   assert.equal(effect.recurrence[lesson.id], 0);
   assert.equal(effect.unplaced[lesson.id], 2);
 });
+
+test("a failure 'corrected' as often as the occurrence bar in one session is not refused as self-corrected", async () => {
+  const t = new Transcript();
+  for (let i = 0; i < 5; i++) t.call("cron_add", { schedule: "* * *" }, { error: ERROR }).call("cron_add", { schedule: "0 3 * * *" }, { ok: "added" });
+  const decision = await processSession(deps(new FakeHistory().add("s1", t), new ScriptedLlm(lessonReply())), "s1", "main");
+  assert.notEqual(decision.evaluated[0].refusal?.rule, "self_corrected");
+});
+
+test("a timeout that names its own prerequisite is lesson-shaped, not transient", async () => {
+  const error = "screenshot failed: screenshot timed out after 30s: the browser pane is not displayed, display the pane and retry.";
+  const t = () => new Transcript().call("browser_screenshot", {}, { error });
+  const decision = await processSession(deps(new FakeHistory().add("s1", t()).add("s2", t()), new ScriptedLlm()), "s2", "main");
+  assert.notEqual(decision.evaluated[0].refusal?.rule, "not_lesson_shaped:transient");
+});

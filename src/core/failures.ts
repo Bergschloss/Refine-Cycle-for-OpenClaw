@@ -49,7 +49,7 @@ export interface SessionPattern {
 }
 
 /** Bumped whenever extraction changes, so stored summaries from an older parser get re-read. */
-export const SUMMARY_FORMAT = 4;
+export const SUMMARY_FORMAT = 5;
 
 export interface SessionSummary {
   $v: 1;
@@ -259,7 +259,36 @@ function boundedJson(value: unknown, limit: number): string {
   return text.length > limit ? `${text.slice(0, limit)}…` : text;
 }
 
-function resolve(steps: Step[], fingerprints: Map<number, string>, index: number, fp: string, tool: string): Resolution {
+/**
+ * The command a shell-like call runs (its first word). For tools such as Bash, any later
+ * success of the same tool is not a correction of this failure: only a success of the
+ * same command is. Tools without a command argument compare by tool alone.
+ */
+function leadingCommand(args: Record<string, unknown>): string | null {
+  for (const key of ["command", "cmd", "script"]) {
+    const value = args[key];
+    if (typeof value === "string" && value.trim()) {
+      const first = value.trim().split(/\s+/)[0];
+      return first.split(/[\\/]/).pop()!.toLowerCase();
+    }
+  }
+  return null;
+}
+
+function sameAction(failed: Record<string, unknown>, later: Record<string, unknown>): boolean {
+  const a = leadingCommand(failed);
+  const b = leadingCommand(later);
+  return a === null || b === null || a === b;
+}
+
+function resolve(
+  steps: Step[],
+  fingerprints: Map<number, string>,
+  index: number,
+  fp: string,
+  tool: string,
+  args: Record<string, unknown>,
+): Resolution {
   const end = Math.min(steps.length, index + 1 + RESOLUTION_LOOKAHEAD);
   for (let i = index + 1; i < end; i++) {
     const step = steps[i];
@@ -269,7 +298,9 @@ function resolve(steps: Step[], fingerprints: Map<number, string>, index: number
       if (fingerprints.get(i) === fp) return "repeated";
       continue;
     }
-    return step.tool === tool ? "corrected" : "switched";
+    if (step.tool !== tool) return "switched";
+    if (sameAction(args, step.args)) return "corrected";
+    // The same tool succeeded at something else: the failure is not resolved yet.
   }
   return "unknown";
 }
@@ -306,7 +337,7 @@ export function summarizeSession(sessionId: string, agentId: string, rows: Trans
       seq: step.seq,
       eventId: step.eventId,
       toolCallId: step.callId,
-      resolution: resolve(steps, fingerprints, index, fp, step.tool),
+      resolution: resolve(steps, fingerprints, index, fp, step.tool, step.args),
     };
     const already = usedArgs.get(step.tool);
     const dropped = !!already && missingParameters(step.text).some((name) => already.has(name));

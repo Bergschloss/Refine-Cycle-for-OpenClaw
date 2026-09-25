@@ -255,7 +255,13 @@ function refuse(
   if (!(sessions >= minSessions || pattern.count >= minOccurrences)) {
     return { rule: "below_bar", detail: `${pattern.count}× in ${sessions} session(s)` };
   }
-  if (local.occurrences.length > 0 && local.occurrences.every((o) => o.resolution === "corrected")) {
+  // A failure the agent fixed each time is not worth a lesson; one it had to "fix" as
+  // often as the occurrence bar within this very session keeps coming back, so it is.
+  if (
+    local.count < minOccurrences &&
+    local.occurrences.length > 0 &&
+    local.occurrences.every((o) => o.resolution === "corrected")
+  ) {
     return { rule: "self_corrected" };
   }
   const shape = lessonShape(pattern);

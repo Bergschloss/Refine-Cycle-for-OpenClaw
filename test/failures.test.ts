@@ -118,3 +118,14 @@ test("an event with only an ISO timestamp is still placed in time", () => {
   ];
   assert.deepEqual(summarizeSession("s1", "main", rows).patterns[0].times, [Date.parse("2026-09-22T00:45:48.690Z")]);
 });
+
+test("a later success of a different shell command does not count as a correction", () => {
+  const t = new Transcript()
+    .call("Bash", { command: "python3 build.py" }, { error: "exit code 49" })
+    .call("Bash", { command: "ls -la" }, { ok: "files" })
+    .user("again")
+    .call("Bash", { command: "python3 build.py" }, { error: "exit code 49" })
+    .call("Bash", { command: "/usr/bin/python3 build.py --fixed" }, { ok: "built" });
+  const [pattern] = summarizeSession("s1", "main", t.rows).patterns;
+  assert.deepEqual(pattern.occurrences.map((o) => o.resolution), ["unknown", "corrected"]);
+});

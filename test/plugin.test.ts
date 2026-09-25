@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { AsyncLocalStorage } from "node:async_hooks";
 import register, { type PluginApi } from "../src/plugin.ts";
 import { FileStore } from "../src/store.ts";
 import { activate } from "../src/lessons.ts";
@@ -204,4 +205,50 @@ test("a model call the host never answers times out on the plugin's own clock", 
   const decision = JSON.parse(fs.readFileSync(candidate, "utf8"));
   assert.equal(decision.outcome, "model_error");
   assert.match(decision.reply, /timed out/);
+});
+
+test("learning survives the host closing the hook's async work scope (OpenClaw 2026.9.6)", async () => {
+  // OpenClaw keeps the turn's work scope in this process-global slot and closes it
+  // when agent_end returns; a model call made from a closed scope is refused.
+  const slot = Symbol.for("openclaw.asyncWorkScope");
+  const globals = globalThis as Record<PropertyKey, unknown>;
+  const previous = globals[slot];
+  const scopes = new AsyncLocalStorage<{ phase: string }>();
+  globals[slot] = scopes;
+  try {
+    const stateDir = tempDir();
+    const error = "cron expression '* * *' has 3 fields, expected 5";
+    const failing = () => new Transcript().user("go").call("cron_add", { schedule: "* * *" }, { error });
+    writeAgentDb(stateDir, { s1: failing(), s2: failing() });
+    const { hooks } = fakeApi(stateDir, async () => {
+      if (scopes.getStore()?.phase === "closed") throw new Error("Async work scope is closed");
+      return {
+        text: JSON.stringify({ decision: "lesson", fingerprint: fingerprint("cron_add", error), lesson: "When calling cron_add, give five cron fields such as 0 3 * * *.", reason: "r" }),
+      };
+    });
+    const turn = { phase: "open" };
+    scopes.run(turn, () => hooks.get("agent_end")!.handler({}, { sessionId: "s1", agentId: "main" }));
+    turn.phase = "closed";
+    await settle();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const candidate = JSON.parse(fs.readFileSync(path.join(stateDir, "plugin-data", "refine-cycle", "candidates", "s1.json"), "utf8"));
+    assert.equal(candidate.outcome, "lesson", candidate.reply);
+  } finally {
+    if (previous === undefined) delete globals[slot];
+    else globals[slot] = previous;
+  }
+});
+
+test("the cli-metadata registration pass touches neither the runtime nor the disk", () => {
+  const stateDir = tempDir();
+  const runtime = new Proxy({}, { get() { throw new Error("runtime is intentionally unavailable"); } });
+  const hooks: string[] = [];
+  register({
+    id: "refine-cycle",
+    registrationMode: "cli-metadata",
+    runtime: runtime as PluginApi["runtime"],
+    on: (hook) => hooks.push(hook),
+  });
+  assert.deepEqual(hooks, []);
+  assert.equal(fs.existsSync(path.join(stateDir, "plugin-data")), false);
 });
