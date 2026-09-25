@@ -4,12 +4,17 @@
   "private": true,
   "type": "module",
   "description": "An OpenClaw plugin that learns from the agent's own repeated failures.",
-  "engines": { "node": ">=24" },
+  "engines": {
+    "node": ">=24"
+  },
   "scripts": {
-    "test": "node --test --experimental-strip-types \"test/**/*.test.ts\""
+    "test": "node --test --experimental-strip-types \"test/**/*.test.ts\"",
+    "build": "npx -y -p typescript@5.9 -p @types/node@24 tsc -p tsconfig.build.json"
   },
   "openclaw": {
-    "extensions": ["./src/plugin.ts"],
+    "extensions": [
+      "./dist/plugin.js"
+    ],
     "install": {
       "minHostVersion": ">=2026.9.5"
     },
@@ -19,5 +24,11 @@
     "build": {
       "openclawVersion": "2026.9.5"
     }
-  }
+  },
+  "files": [
+    "dist",
+    "openclaw.plugin.json",
+    "README.md",
+    "LICENSE"
+  ]
 }
