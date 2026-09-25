@@ -46,9 +46,9 @@ Through `before_prompt_build`, which prepends a bounded block of the agent's act
 - `src/store.ts`, `src/lessons.ts`: atomic JSON files with `$v`, a cross-process lock, and the journal that makes lesson changes crash-safe.
 - `src/host/`: reading the agent's SQLite history and its skills and instruction files.
 - `src/replay.ts`: the measurement harness, `openclaw refine-cycle replay`.
-- `dist/`: the compiled plugin OpenClaw loads. Rebuild with `npm run build` after changing `src/`; a test fails if it is missing or out of step.
+- `dist/`: the compiled plugin OpenClaw loads. Rebuild with `npm run build` after changing `src/`; a test compiles `src/` and fails if `dist/` differs.
 
-`npm test` runs everything on Node 24+ with no dependencies.
+The plugin has no runtime dependencies. For development, `npm install` brings TypeScript and Node's types; then `npm test`, `npm run typecheck` and `npm run build`, on Node 24+.
 
 ## Research behind it
 

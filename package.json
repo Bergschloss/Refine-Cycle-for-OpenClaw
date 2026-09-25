@@ -9,7 +9,8 @@
   },
   "scripts": {
     "test": "node --test --experimental-strip-types \"test/**/*.test.ts\"",
-    "build": "npx -y -p typescript@5.9 -p @types/node@24 tsc -p tsconfig.build.json"
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit -p ."
   },
   "openclaw": {
     "extensions": [
@@ -30,5 +31,9 @@
     "openclaw.plugin.json",
     "README.md",
     "LICENSE"
-  ]
+  ],
+  "devDependencies": {
+    "@types/node": "24.13.6",
+    "typescript": "5.9.3"
+  }
 }

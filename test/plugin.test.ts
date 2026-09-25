@@ -241,6 +241,9 @@ test("learning survives the host closing the hook's async work scope (OpenClaw 2
 
 test("the cli-metadata registration pass touches neither the runtime nor the disk", () => {
   const stateDir = tempDir();
+  // Where the plugin would fall back to if it went looking for a state directory.
+  const previous = process.env.OPENCLAW_STATE_DIR;
+  process.env.OPENCLAW_STATE_DIR = stateDir;
   const runtime = new Proxy({}, { get() { throw new Error("runtime is intentionally unavailable"); } });
   const hooks: string[] = [];
   register({
@@ -249,6 +252,37 @@ test("the cli-metadata registration pass touches neither the runtime nor the dis
     runtime: runtime as PluginApi["runtime"],
     on: (hook) => hooks.push(hook),
   });
+  if (previous === undefined) delete process.env.OPENCLAW_STATE_DIR;
+  else process.env.OPENCLAW_STATE_DIR = previous;
   assert.deepEqual(hooks, []);
   assert.equal(fs.existsSync(path.join(stateDir, "plugin-data")), false);
+});
+
+test("a host whose model call throws synchronously leaves no timer and no unhandled rejection", async () => {
+  const stateDir = tempDir();
+  const error = "cron expression '* * *' has 3 fields, expected 5";
+  const failing = () => new Transcript().user("go").call("cron_add", { schedule: "* * *" }, { error });
+  writeAgentDb(stateDir, { s1: failing(), s2: failing() });
+  const unhandled: unknown[] = [];
+  const onUnhandled = (reason: unknown) => unhandled.push(reason);
+  process.on("unhandledRejection", onUnhandled);
+  try {
+    const { hooks } = fakeApi(
+      stateDir,
+      () => {
+        throw new Error("cannot override the target agent");
+      },
+      true,
+      undefined,
+      { proposalTimeoutMs: 50 },
+    );
+    hooks.get("agent_end")!.handler({}, { sessionId: "s1", agentId: "main" });
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    const candidate = JSON.parse(fs.readFileSync(path.join(stateDir, "plugin-data", "refine-cycle", "candidates", "s1.json"), "utf8"));
+    assert.equal(candidate.outcome, "model_error");
+    assert.match(candidate.reply, /cannot override the target agent/);
+    assert.deepEqual(unhandled, []);
+  } finally {
+    process.off("unhandledRejection", onUnhandled);
+  }
 });

@@ -129,3 +129,15 @@ test("a later success of a different shell command does not count as a correctio
   const [pattern] = summarizeSession("s1", "main", t.rows).patterns;
   assert.deepEqual(pattern.occurrences.map((o) => o.resolution), ["unknown", "corrected"]);
 });
+
+test("the same command is recognised past cd &&, env prefixes and wrappers", () => {
+  const resolution = (failed: string, later: string) => {
+    const t = new Transcript().call("Bash", { command: failed }, { error: "exit code 1" }).call("Bash", { command: later }, { ok: "done" });
+    return summarizeSession("s1", "main", t.rows).patterns[0].occurrences[0].resolution;
+  };
+  assert.equal(resolution("cd /app && npm test", "cd /app && ls"), "unknown");
+  assert.equal(resolution("cd /app && npm test", "cd /app && npm test -- --watch=false"), "corrected");
+  assert.equal(resolution("python3 a.py", "python3 b.py"), "unknown");
+  assert.equal(resolution("FOO=1 make build", "make build"), "corrected");
+  assert.equal(resolution("sudo systemctl restart x", "systemctl restart x"), "corrected");
+});

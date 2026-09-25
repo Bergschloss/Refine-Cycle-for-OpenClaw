@@ -200,7 +200,9 @@ export default function register(api: PluginApi): void {
     { timeoutMs: PROMPT_HOOK_TIMEOUT_MS },
   );
 
-  // Looked up per call, not at registration: the runtime may be a guarded proxy then.
+  // Read through a guard: during some registration passes the runtime is a proxy that
+  // throws. Whether the host offers a model call at all is decided here, once; the
+  // function itself is looked up again for each call.
   const hostComplete = () => {
     try {
       return api.runtime?.llm?.complete;
@@ -214,20 +216,27 @@ export default function register(api: PluginApi): void {
         async complete(systemPrompt, userMessage, timeoutMs) {
           const complete = hostComplete();
           if (!complete) throw new Error("the host offers no model call");
+          // A synchronous throw from the host becomes a rejection here, so it is handled
+          // like any other failure; the timer is armed only once the call exists.
+          const call = Promise.resolve().then(() =>
+            complete({
+              messages: [{ role: "user", content: userMessage }],
+              systemPrompt,
+              purpose: "refine-cycle: propose a lesson from a repeated failure",
+              maxTokens: 400,
+              temperature: 0,
+              // No agentId: OpenClaw refuses a plugin call that names a target agent
+              // ("cannot override the target agent"); the default is the agent's own model.
+              signal: AbortSignal.timeout(timeoutMs),
+            }),
+          );
+          // If the timeout wins, the call may still reject later: that must not surface
+          // as an unhandled rejection in the host's process.
+          call.catch(() => undefined);
           // The host is asked to abort via `signal`; the plugin does not rely on it.
           let timer: ReturnType<typeof setTimeout> | undefined;
           const timeout = new Promise<never>((_, reject) => {
             timer = setTimeout(() => reject(new Error(`model call timed out after ${timeoutMs} ms`)), timeoutMs);
-          });
-          const call = complete({
-            messages: [{ role: "user", content: userMessage }],
-            systemPrompt,
-            purpose: "refine-cycle: propose a lesson from a repeated failure",
-            maxTokens: 400,
-            temperature: 0,
-            // No agentId: OpenClaw refuses a plugin call that names a target agent
-            // ("cannot override the target agent"); the default is the agent's own model.
-            signal: AbortSignal.timeout(timeoutMs),
           });
           try {
             const result = await Promise.race([call, timeout]);

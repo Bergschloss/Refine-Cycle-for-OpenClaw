@@ -1,25 +1,43 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { createRequire } from "node:module";
+import { fileURLToPath } from "node:url";
 
-// OpenClaw installs a plugin from git or npm only as compiled JavaScript: the
-// package points at dist/plugin.js. The shipped dist must exist for every source
-// file and give the same fingerprints as the source (and the Python original).
-test("dist is built for every source file and matches the golden corpus", async () => {
-  const pkg = JSON.parse(fs.readFileSync(new URL("../package.json", import.meta.url), "utf8"));
-  assert.deepEqual(pkg.openclaw.extensions, ["./dist/plugin.js"]);
-  const walk = (dir: URL, prefix = ""): string[] =>
-    fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) =>
-      entry.isDirectory() ? walk(new URL(`${entry.name}/`, dir), `${prefix}${entry.name}/`) : [`${prefix}${entry.name}`],
-    );
-  for (const file of walk(new URL("../src/", import.meta.url)).filter((f) => f.endsWith(".ts"))) {
-    assert.ok(fs.existsSync(new URL(`../dist/${file.replace(/\.ts$/, ".js")}`, import.meta.url)), `dist/${file} is missing: run npm run build`);
-  }
-  const { fingerprint, normalizeError } = await import(new URL("../dist/core/fingerprint.js", import.meta.url).href);
-  const golden = JSON.parse(fs.readFileSync(new URL("./golden/fingerprint.json", import.meta.url), "utf8"));
-  const wrong = golden.filter(
-    (row: { tool: string; input: string; normalized: string; fingerprint: string }) =>
-      normalizeError(row.input) !== row.normalized || fingerprint(row.tool, row.input) !== row.fingerprint,
+// OpenClaw installs a plugin from git or npm only as compiled JavaScript: the package
+// points at dist/plugin.js, so dist/ is what users run. It must be exactly what
+// `npm run build` makes from src/ today; every other test exercises src/.
+const repo = fileURLToPath(new URL("..", import.meta.url));
+
+function files(dir: string, prefix = ""): string[] {
+  return fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) =>
+    entry.isDirectory() ? files(path.join(dir, entry.name), `${prefix}${entry.name}/`) : [`${prefix}${entry.name}`],
   );
-  assert.equal(wrong.length, 0, `${wrong.length} rows differ in dist: rebuild it`);
+}
+
+test("dist/ is exactly the build of src/ (run npm run build if this fails)", () => {
+  const pkg = JSON.parse(fs.readFileSync(path.join(repo, "package.json"), "utf8"));
+  assert.deepEqual(pkg.openclaw.extensions, ["./dist/plugin.js"]);
+  let ts: typeof import("typescript");
+  try {
+    ts = createRequire(import.meta.url)("typescript");
+  } catch {
+    assert.fail("typescript is not installed: run npm install");
+  }
+  const out = fs.mkdtempSync(path.join(os.tmpdir(), "refine-dist-"));
+  const parsed = ts.getParsedCommandLineOfConfigFile(path.join(repo, "tsconfig.build.json"), { outDir: out }, {
+    ...ts.sys,
+    onUnRecoverableConfigFileDiagnostic: (d) => assert.fail(String(d.messageText)),
+  })!;
+  const emitted = ts.createProgram(parsed.fileNames, parsed.options).emit();
+  assert.equal(emitted.emitSkipped, false);
+  const built = files(out).sort();
+  const shipped = files(path.join(repo, "dist")).sort();
+  assert.deepEqual(shipped, built, "dist/ has different files than the build");
+  const read = (p: string) => fs.readFileSync(p, "utf8").replace(/\r\n/g, "\n");
+  for (const file of built) {
+    assert.equal(read(path.join(repo, "dist", file)), read(path.join(out, file)), `dist/${file} is out of date`);
+  }
 });

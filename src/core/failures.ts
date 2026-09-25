@@ -264,13 +264,22 @@ function boundedJson(value: unknown, limit: number): string {
  * success of the same tool is not a correction of this failure: only a success of the
  * same command is. Tools without a command argument compare by tool alone.
  */
+const WRAPPERS = new Set(["sudo", "env", "npx", "exec", "time", "nohup", "command"]);
+
 function leadingCommand(args: Record<string, unknown>): string | null {
   for (const key of ["command", "cmd", "script"]) {
     const value = args[key];
-    if (typeof value === "string" && value.trim()) {
-      const first = value.trim().split(/\s+/)[0];
-      return first.split(/[\\/]/).pop()!.toLowerCase();
-    }
+    if (typeof value !== "string" || !value.trim()) continue;
+    // The part that does the work: the last segment of a && / || / ; chain that is
+    // not a bare cd, without VAR=value prefixes or wrappers such as sudo or npx.
+    const segments = value.split(/&&|\|\||;/).map((part) => part.trim()).filter(Boolean);
+    const work = [...segments].reverse().find((part) => !/^(?:cd|pushd)\b/i.test(part)) ?? segments[segments.length - 1] ?? "";
+    const words = work.split(/\s+/).filter((word) => !/^[A-Za-z_][A-Za-z0-9_]*=/.test(word));
+    while (words.length > 1 && WRAPPERS.has(words[0].toLowerCase())) words.shift();
+    if (words.length === 0) return null;
+    // The program and its first argument: `python3 a.py` and `python3 b.py` differ.
+    const program = words[0].split(/[\\/]/).pop()!.toLowerCase();
+    return words[1] ? `${program} ${words[1].split(/[\\/]/).pop()!.toLowerCase()}` : program;
   }
   return null;
 }

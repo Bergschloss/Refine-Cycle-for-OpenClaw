@@ -459,3 +459,10 @@ test("a timeout that names its own prerequisite is lesson-shaped, not transient"
   const decision = await processSession(deps(new FakeHistory().add("s1", t()).add("s2", t()), new ScriptedLlm()), "s2", "main");
   assert.notEqual(decision.evaluated[0].refusal?.rule, "not_lesson_shaped:transient");
 });
+
+test("a rate limit that tells you how to space requests is still transient", async () => {
+  const error = "429 rate limit exceeded; requests must be spaced 20s apart";
+  const t = () => new Transcript().call("api_call", {}, { error });
+  const decision = await processSession(deps(new FakeHistory().add("s1", t()).add("s2", t()), new ScriptedLlm()), "s2", "main");
+  assert.equal(decision.evaluated[0].refusal?.rule, "not_lesson_shaped:transient");
+});
