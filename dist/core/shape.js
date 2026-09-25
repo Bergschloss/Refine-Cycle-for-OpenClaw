@@ -22,7 +22,7 @@ const WRONG_TOOL = new RegExp([
  * An error that says what must be done first ("the pane is not displayed, display it
  * and retry") fails the same way every time, even when it is reported as a timeout.
  */
-const PREREQUISITE = /\b(?:is not (?:displayed|open|running|visible|enabled|installed)|display the|open the|start the)\b/iu;
+const PREREQUISITE = /\b(?:is not (?:displayed|open|running|visible|enabled|installed)\b|(?:display|open|start) (?:the|it)\b[^.;\n]{0,40}?\b(?:and (?:retry|try again)|first)\b)/iu;
 export function lessonShape(pattern) {
     const text = `${pattern.shape}\n${pattern.sample}`;
     if (TRANSIENT.test(text) && !PREREQUISITE.test(text))

@@ -141,3 +141,18 @@ test("the same command is recognised past cd &&, env prefixes and wrappers", () 
   assert.equal(resolution("FOO=1 make build", "make build"), "corrected");
   assert.equal(resolution("sudo systemctl restart x", "systemctl restart x"), "corrected");
 });
+
+test("the same command is compared past flags, inside quotes and in inline code", () => {
+  const resolution = (failed: unknown, later: unknown) => {
+    const t = new Transcript().call("Bash", { command: failed }, { error: "exit code 1" }).call("Bash", { command: later }, { ok: "done" });
+    return summarizeSession("s1", "main", t.rows).patterns[0].occurrences[0].resolution;
+  };
+  assert.equal(resolution("bash -c 'npm test'", "bash -c 'ls -la'"), "unknown");
+  assert.equal(resolution("bash -c 'npm test'", "bash -c 'npm test -- --ci'"), "corrected");
+  assert.equal(resolution("python3 -m pytest", "python3 -m pip install x"), "unknown");
+  assert.equal(resolution("node -e 'boom()'", "node -e 'console.log(1)'"), "unknown");
+  assert.equal(resolution('python3 -c "import a; a.go()"', 'python3 -c "import a; a.go(1)"'), "corrected");
+  assert.equal(resolution("npm test", "npm --silent test"), "corrected");
+  assert.equal(resolution(["python3", "a.py"], ["python3", "b.py"]), "unknown");
+  assert.equal(resolution(["python3", "a.py"], ["python3", "a.py", "--fix"]), "corrected");
+});

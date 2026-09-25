@@ -34,7 +34,7 @@ Through `before_prompt_build`, which prepends a bounded block of the agent's act
 - The model call is `api.runtime.llm.complete` on the agent's own route, without `agentId` (naming the agent is an override the host refuses).
 - History is read straight from the agent's SQLite (`transcript_events`), read-only. From 2026.9.6 large events are zstd-compressed in `event_zstd`.
 - A plugin is installed from git or npm only as compiled JavaScript, so `dist/` is committed and `package.json` points at `dist/plugin.js`.
-- Root CLI commands must be listed in the manifest's `cliCommands`; in the `cli-metadata` registration pass the runtime is unavailable, and the plugin returns at once.
+- Root CLI commands must be listed in the manifest's `cliCommands`; in the `cli-metadata` registration pass the runtime is unavailable, and the plugin returns at once. The host runs the command from the full registration: `openclaw refine-cycle list` and `report` were checked on 2026.9.6 with this return in place (2026-09-26).
 
 `scripts/drift-check.ts` compares what the tests assume about the host with a live install.
 

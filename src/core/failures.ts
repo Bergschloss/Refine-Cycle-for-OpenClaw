@@ -265,21 +265,71 @@ function boundedJson(value: unknown, limit: number): string {
  * same command is. Tools without a command argument compare by tool alone.
  */
 const WRAPPERS = new Set(["sudo", "env", "npx", "exec", "time", "nohup", "command"]);
+/** Flags whose value is what runs: `bash -c 'npm test'`, `node -e`, `python3 -m pytest`. */
+const CODE_FLAGS = new Set(["-c", "-e", "-m", "--eval", "--command", "-command"]);
+
+/** Shell words with quotes kept together; `&&`, `||` or `;` outside quotes ends a segment. */
+function shellSegments(text: string): string[][] {
+  const segments: string[][] = [[]];
+  let word = "";
+  let inWord = false;
+  let quote = "";
+  const endWord = () => {
+    if (inWord) segments[segments.length - 1].push(word);
+    word = "";
+    inWord = false;
+  };
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (quote) {
+      if (ch === quote) quote = "";
+      else word += ch;
+    } else if (ch === "'" || ch === '"') {
+      quote = ch;
+      inWord = true;
+    } else if (/\s/u.test(ch)) {
+      endWord();
+    } else if (ch === ";" || ((ch === "&" || ch === "|") && text[i + 1] === ch)) {
+      endWord();
+      segments.push([]);
+      if (ch !== ";") i++;
+    } else {
+      word += ch;
+      inWord = true;
+    }
+  }
+  endWord();
+  return segments.filter((segment) => segment.length > 0);
+}
+
+const baseName = (word: string) => (word.trim().split(/\s+/)[0] ?? "").split(/[\\/]/).pop()!.toLowerCase();
 
 function leadingCommand(args: Record<string, unknown>): string | null {
   for (const key of ["command", "cmd", "script"]) {
     const value = args[key];
-    if (typeof value !== "string" || !value.trim()) continue;
-    // The part that does the work: the last segment of a && / || / ; chain that is
-    // not a bare cd, without VAR=value prefixes or wrappers such as sudo or npx.
-    const segments = value.split(/&&|\|\||;/).map((part) => part.trim()).filter(Boolean);
-    const work = [...segments].reverse().find((part) => !/^(?:cd|pushd)\b/i.test(part)) ?? segments[segments.length - 1] ?? "";
-    const words = work.split(/\s+/).filter((word) => !/^[A-Za-z_][A-Za-z0-9_]*=/.test(word));
-    while (words.length > 1 && WRAPPERS.has(words[0].toLowerCase())) words.shift();
-    if (words.length === 0) return null;
-    // The program and its first argument: `python3 a.py` and `python3 b.py` differ.
-    const program = words[0].split(/[\\/]/).pop()!.toLowerCase();
-    return words[1] ? `${program} ${words[1].split(/[\\/]/).pop()!.toLowerCase()}` : program;
+    let segments: string[][];
+    if (typeof value === "string") segments = shellSegments(value);
+    else if (Array.isArray(value) && value.every((word) => typeof word === "string")) segments = [value as string[]];
+    else continue;
+    if (segments.length === 0) continue;
+    // The part that does the work: the last segment of the chain that is not a bare cd,
+    // without VAR=value prefixes or wrappers such as sudo or npx.
+    const work = [...[...segments].reverse().find((words) => !/^(?:cd|pushd)$/i.test(words[0])) ?? segments[segments.length - 1]];
+    while (work.length > 1 && (WRAPPERS.has(work[0].toLowerCase()) || /^[A-Za-z_][A-Za-z0-9_]*=/.test(work[0]))) work.shift();
+    // The program and its first argument, past flags: `python3 a.py` and `python3 b.py`
+    // differ, and so do `bash -c 'npm test'` and `bash -c 'ls'`.
+    const found = [baseName(work[0])];
+    for (let i = 1; i < work.length; i++) {
+      const word = work[i];
+      if (CODE_FLAGS.has(word.toLowerCase())) {
+        found.push(word.toLowerCase(), baseName(work[i + 1] ?? ""));
+        break;
+      }
+      if (word.startsWith("-")) continue;
+      found.push(baseName(word));
+      break;
+    }
+    return found.join(" ").trim();
   }
   return null;
 }

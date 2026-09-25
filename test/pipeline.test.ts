@@ -466,3 +466,10 @@ test("a rate limit that tells you how to space requests is still transient", asy
   const decision = await processSession(deps(new FakeHistory().add("s1", t()).add("s2", t()), new ScriptedLlm()), "s2", "main");
   assert.equal(decision.evaluated[0].refusal?.rule, "not_lesson_shaped:transient");
 });
+
+test("a network timeout that mentions opening something is still transient", async () => {
+  const error = "ETIMEDOUT: could not open the connection to api.example.com";
+  const t = () => new Transcript().call("api_call", {}, { error });
+  const decision = await processSession(deps(new FakeHistory().add("s1", t()).add("s2", t()), new ScriptedLlm()), "s2", "main");
+  assert.equal(decision.evaluated[0].refusal?.rule, "not_lesson_shaped:transient");
+});

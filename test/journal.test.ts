@@ -172,12 +172,65 @@ test("recovery does not undo a change the user made after the crash", () => {
 test("a stale lock that cannot be removed is 'busy' at once, never a spin", () => {
   const root = tempDir();
   const store = new FileStore(root);
-  // A directory in the lock's place: it exists, looks stale, and unlink cannot remove it.
-  fs.mkdirSync(path.join(root, "budget.lock"));
+  // A stale lock that cannot be moved or removed (no permission on the folder).
+  fs.writeFileSync(path.join(root, "budget.lock"), "dead-owner");
   const old = new Date(Date.now() - 60_000);
   fs.utimesSync(path.join(root, "budget.lock"), old, old);
+  const rename = fs.renameSync;
+  fs.renameSync = () => {
+    throw Object.assign(new Error("operation not permitted"), { code: "EPERM" });
+  };
   const started = Date.now();
-  assert.throws(() => store.lock("budget", 0), StoreError);
-  assert.throws(() => store.lock("budget", 100), StoreError);
+  try {
+    assert.throws(() => store.lock("budget", 0), StoreError);
+    assert.throws(() => store.lock("budget", 100), StoreError);
+  } finally {
+    fs.renameSync = rename;
+  }
   assert.ok(Date.now() - started < 2_000, `took ${Date.now() - started} ms`);
+});
+
+test("a stale lock is taken over, and a fresh lock that replaced it is put back", () => {
+  const dir = tempDir();
+  const store = new FileStore(dir);
+  const file = path.join(dir, "budget.lock");
+  fs.writeFileSync(file, "dead-owner");
+  const old = new Date(Date.now() - 60_000);
+  fs.utimesSync(file, old, old);
+  const release = store.lock("budget", 0);
+  assert.notEqual(fs.readFileSync(file, "utf8"), "dead-owner");
+  assert.throws(() => store.lock("budget", 0), /store is locked/);
+  release();
+  assert.equal(fs.existsSync(file), false);
+  assert.deepEqual(fs.readdirSync(dir).filter((name) => name.endsWith(".stale")), []);
+
+  // Another waiter replaced the stale lock with its own between our stat and our move.
+  fs.writeFileSync(file, "dead-owner");
+  fs.utimesSync(file, old, old);
+  const rename = fs.renameSync;
+  fs.renameSync = (from: fs.PathLike, to: fs.PathLike) => {
+    fs.renameSync = rename;
+    fs.unlinkSync(file);
+    fs.writeFileSync(file, "fresh-owner");
+    rename(from, to);
+  };
+  try {
+    assert.throws(() => store.lock("budget", 0), /store is locked/);
+  } finally {
+    fs.renameSync = rename;
+  }
+  assert.equal(fs.readFileSync(file, "utf8"), "fresh-owner");
+  assert.deepEqual(fs.readdirSync(dir).filter((name) => name.endsWith(".stale")), []);
+});
+
+test("closed journal records are pruned after a week, open ones never", () => {
+  const root = tempDir();
+  const store = new FileStore(root);
+  const at = "2026-09-01T00:00:00.000Z";
+  store.write("journal/old-applied.json", { id: "old-applied", op: "disable", lessonId: "x", state: "applied", at });
+  store.write("journal/new-applied.json", { id: "new-applied", op: "disable", lessonId: "x", state: "applied", at: "2026-09-25T00:00:00.000Z" });
+  store.write("journal/old-intent.json", { id: "old-intent", op: "disable", lessonId: "missing", state: "intent", at });
+  recover(store, new Date("2026-09-26T00:00:00.000Z"));
+  assert.deepEqual(store.list("journal").sort(), ["new-applied", "old-intent"]);
+  assert.equal(store.read<{ state: string }>("journal/old-intent.json")!.state, "applied");
 });

@@ -16,6 +16,7 @@ export function lessonAgent(lesson) {
 /** A lesson with this id already exists and is not a leftover draft; it is never overwritten. */
 export class LessonExistsError extends Error {
 }
+const JOURNAL_KEEP_MS = 7 * 24 * 60 * 60 * 1000;
 /** Scoped by agent: the same failure and text for two agents are two lessons. */
 export function lessonId(agentId, fingerprint, text) {
     return createHash("sha1").update(`${agentId}|${fingerprint}|${text.toLowerCase().trim()}`).digest("hex").slice(0, 10);
@@ -161,8 +162,13 @@ function recoverLocked(store, now) {
             unreadable++;
             continue;
         }
-        if (record.state !== "intent")
+        if (record.state !== "intent") {
+            // A closed record only matters to a crash; kept a week for inspection, then pruned
+            // so recovery on every turn does not read a history that grows forever.
+            if (now.getTime() - Date.parse(record.at) > JOURNAL_KEEP_MS)
+                store.remove(`journal/${name}.json`);
             continue;
+        }
         const current = readLesson(store, record.lessonId);
         if (record.op === "activate") {
             const base = current ?? record.lesson;

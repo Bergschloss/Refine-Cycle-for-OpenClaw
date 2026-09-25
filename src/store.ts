@@ -126,12 +126,24 @@ export class FileStore {
         if ((error as NodeJS.ErrnoException).code === "ENOENT") continue; // released between our two calls
       }
       if (stale) {
+        // Moved aside under a unique name, then checked: between our stat and the move
+        // another waiter may have replaced the stale lock with its own fresh one, and
+        // that one is put back instead of removed.
+        const aside = `${file}.${process.pid}-${randomBytes(4).toString("hex")}.stale`;
         try {
-          fs.unlinkSync(file);
+          fs.renameSync(file, aside);
+          if (Date.now() - fs.statSync(aside).mtimeMs <= STALE_LOCK_MS) {
+            try {
+              fs.linkSync(aside, file);
+            } catch {
+              // a third process took the lock meanwhile; it holds it now
+            }
+          }
+          fs.unlinkSync(aside);
           continue;
         } catch (error) {
           if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
-          // A stale lock we cannot remove (permissions, a file held open) is treated as
+          // A stale lock we cannot move (permissions, a file held open) is treated as
           // held: waiting or giving up below, never looping without a pause.
         }
       }
