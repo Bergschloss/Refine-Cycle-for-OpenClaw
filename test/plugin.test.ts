@@ -20,7 +20,7 @@ function fakeApi(
   pluginConfig: Record<string, unknown> = {},
 ) {
   const hooks = new Map<string, { handler: Handler; timeoutMs?: number }>();
-  const commands = new Map<string, (ctx: { args?: string; agentId?: string }) => unknown>();
+  const commands = new Map<string, (ctx: { args?: string; agentId?: string; sessionKey?: string }) => unknown>();
   const logs: string[] = [];
   const api: PluginApi = {
     id: "refine-cycle",
@@ -119,9 +119,9 @@ test("end to end on a real SQLite file: failures in two sessions become a lesson
 
   const injected = hooks.get("before_prompt_build")!.handler({}, { sessionId: "s3" }) as { prependContext: string };
   assert.match(injected.prependContext, /five cron fields/);
-  const listed = (commands.get("refine")!({ args: "list" }) as { text: string }).text;
+  const listed = (commands.get("refine")!({ args: "list", agentId: "main" }) as { text: string }).text;
   const id = listed.split(" ")[0];
-  assert.match((commands.get("refine")!({ args: `disable ${id}` }) as { text: string }).text, /disabled/);
+  assert.match((commands.get("refine")!({ args: `disable ${id}`, agentId: "main" }) as { text: string }).text, /disabled/);
   assert.equal(hooks.get("before_prompt_build")!.handler({}, { sessionId: "s4" }), undefined);
 });
 
@@ -158,8 +158,8 @@ test("with prompt injection denied, nothing is injected or counted as shown, and
 
 test("/refine with no arguments lists the lessons", () => {
   const { commands } = fakeApi(tempDir());
-  assert.equal((commands.get("refine")!({ args: "" }) as { text: string }).text, "No lessons yet.");
-  assert.equal((commands.get("refine")!({}) as { text: string }).text, "No lessons yet.");
+  assert.equal((commands.get("refine")!({ args: "", agentId: "main" }) as { text: string }).text, "No lessons yet.");
+  assert.equal((commands.get("refine")!({ agentId: "main" }) as { text: string }).text, "No lessons yet.");
 });
 
 test("lessons of one agent are not injected into another agent's prompt", () => {
@@ -189,6 +189,11 @@ test("/refine in chat sees and changes only the calling agent's lessons", () => 
   assert.equal((refine({ args: "list", agentId: "main" }) as { text: string }).text, "No lessons yet.");
   assert.equal((refine({ args: "delete l3", agentId: "main" }) as { text: string }).text, "No lesson l3.");
   assert.match((refine({ args: "list", agentId: "ops" }) as { text: string }).text, /l3 \[active\]/);
+  // Without the host's agentId, the session key names the agent; with neither, nothing is guessed.
+  assert.match((refine({ args: "list", sessionKey: "agent:ops:telegram:direct:42" }) as { text: string }).text, /l3 \[active\]/);
+  assert.match((refine({ args: "delete l3" }) as { text: string }).text, /cannot tell which agent/);
+  assert.match((refine({ args: "list", sessionKey: "main" }) as { text: string }).text, /cannot tell which agent/);
+  assert.equal(store.read<{ status: string }>("lessons/l3.json")!.status, "active");
 });
 
 test("a model call the host never answers times out on the plugin's own clock", async () => {

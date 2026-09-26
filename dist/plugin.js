@@ -23,6 +23,10 @@ import { processSession, recordExposure, report } from "./pipeline.js";
 import { replay } from "./replay.js";
 import { readSettings } from "./settings.js";
 import { FileStore, StoreError } from "./store.js";
+/** The agent a chat command belongs to: the host's, else the one its session key names (`agent:<id>:…`). */
+function commandAgent(ctx) {
+    return ctx?.agentId || /^agent:([^:]+):/i.exec(ctx?.sessionKey ?? "")?.[1] || undefined;
+}
 const PLUGIN_DIR = "refine-cycle";
 const PROMPT_HOOK_TIMEOUT_MS = 2_000;
 const MAX_BLOCKS_PER_SESSION = 20;
@@ -269,7 +273,14 @@ export default function register(api) {
         name: "refine",
         description: "Refine Cycle lessons: list, disable <id>, delete <id>, report",
         acceptsArgs: true,
-        handler: (ctx) => ({ text: control(ctx?.args ?? "", ctx?.agentId || DEFAULT_AGENT) }),
+        handler: (ctx) => {
+            const agentId = commandAgent(ctx);
+            // Guessing an agent could show or change another agent's lessons.
+            if (!agentId && !storeError) {
+                return { text: "Refine Cycle cannot tell which agent this chat belongs to. Use `openclaw refine-cycle` on the command line." };
+            }
+            return { text: control(ctx?.args ?? "", agentId ?? DEFAULT_AGENT) };
+        },
     });
     api.registerCli?.(({ program }) => {
         const root = program.command("refine-cycle").description("Refine Cycle: lessons learned from repeated failures");

@@ -4,7 +4,7 @@
 
 **Refine Cycle** watches your OpenClaw agent's tool failures across sessions. When the same failure comes back, it writes one short lesson and puts it in front of the agent from then on. Later, it records whether the failure came back.
 
-**Cross-session by design.** An agent can fix a mistake inside one conversation and make it again in the next: the same wrong date format, the same missing flag, the same command that never works on your machine. Refine Cycle remembers across conversations, so you stop explaining the same thing twice.
+**Cross-session by design.** An agent can make the same mistake in conversation after conversation: the same wrong date format, the same missing flag, the same command that never works on your machine. Refine Cycle remembers across conversations, so you stop explaining the same thing twice. A mistake the agent puts right by itself a moment later, in the same conversation, is left alone.
 
 **Measured:** on two tasks the agent kept getting wrong, it got the tool call right **20%** of the time on its own and **90%** with the plugin's lesson. A placebo note of the same length scored **7.5%**.
 

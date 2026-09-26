@@ -317,6 +317,11 @@ function applyLesson(deps, decision, lesson, now) {
     const { deferred: _drop, ...rest } = decision;
     // The world may have moved while the lesson waited: another session learned it, or the user withdrew it.
     const same = allLessons(deps.store).find((known) => lessonAgent(known) === lessonAgent(lesson) && known.fingerprint === lesson.fingerprint && known.status !== "draft");
+    // This very lesson is already active: journal recovery finished an activation that a
+    // crash or an error cut short. It was learned from this session.
+    if (same?.id === lesson.id && same.status === "active") {
+        return finish({ ...rest, outcome: "lesson", lessonId: same.id, lessonText: same.text });
+    }
     if (same) {
         const rule = same.status === "active" ? "duplicate" : "withdrawn_by_user";
         return finish({ ...rest, outcome: "refused_after_model", refusal: { rule, detail: same.id } });
@@ -331,9 +336,11 @@ function applyLesson(deps, decision, lesson, now) {
             // Another writer for the same agent got there first (a second process on this store).
             return finish({ ...rest, outcome: "refused_after_model", refusal: { rule: "duplicate", detail: lesson.id } });
         }
-        if (error instanceof StoreError)
-            return finish({ ...rest, outcome: "apply_deferred", deferred: lesson });
-        throw error;
+        // A busy lock, or a write that failed (a full disk, a permission): the lesson waits
+        // for the next run instead of leaving the decision pending for good.
+        if (!(error instanceof StoreError))
+            deps.log(`lesson ${lesson.id} not applied yet: ${String(error)}`);
+        return finish({ ...rest, outcome: "apply_deferred", deferred: lesson });
     }
 }
 function deferredPath(sessionId) {

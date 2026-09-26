@@ -504,3 +504,25 @@ test("the report for one agent counts only that agent's sessions, decisions and 
   assert.equal(other.lessons.active, 0);
   assert.equal(report(d.store).sessions, 3);
 });
+
+test("a lesson whose write failed waits for the next run, and is then recorded as learned", async () => {
+  const history = new FakeHistory().add("s1", failing(5)).add("s2", new Transcript().user("hi"));
+  const d = deps(history, new ScriptedLlm(lessonReply()), { backfillSessions: 0 });
+  const root = d.store.root;
+  let fail = true;
+  (d as { store: FileStore }).store = new FileStore(root, {
+    beforeWrite: (relative) => {
+      if (fail && relative.startsWith("lessons/")) throw Object.assign(new Error("operation not permitted"), { code: "EPERM" });
+    },
+  });
+  assert.equal((await processSession(d, "s1", "main")).outcome, "apply_deferred");
+  assert.equal(activeLessons(d.store).length, 0);
+  fail = false;
+  // Recovery finishes the activation; the sweep then finds this very lesson active.
+  await processSession(d, "s2", "main");
+  assert.equal(activeLessons(d.store).length, 1);
+  const s1 = JSON.parse(fs.readFileSync(path.join(root, "candidates", "s1.json"), "utf8"));
+  assert.equal(s1.outcome, "lesson");
+  assert.equal(s1.lessonId, activeLessons(d.store)[0].id);
+  assert.equal(fs.existsSync(path.join(root, "deferred", "s1.json")), false);
+});

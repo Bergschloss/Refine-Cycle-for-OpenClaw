@@ -37,7 +37,14 @@ interface HookContext {
 
 interface CommandContext {
   args?: string;
+  /** The host's agent for the command's session; absent when the command has no session. */
   agentId?: string;
+  sessionKey?: string;
+}
+
+/** The agent a chat command belongs to: the host's, else the one its session key names (`agent:<id>:…`). */
+function commandAgent(ctx: CommandContext | undefined): string | undefined {
+  return ctx?.agentId || /^agent:([^:]+):/i.exec(ctx?.sessionKey ?? "")?.[1] || undefined;
 }
 
 interface CliCommand {
@@ -323,7 +330,14 @@ export default function register(api: PluginApi): void {
     name: "refine",
     description: "Refine Cycle lessons: list, disable <id>, delete <id>, report",
     acceptsArgs: true,
-    handler: (ctx) => ({ text: control(ctx?.args ?? "", ctx?.agentId || DEFAULT_AGENT) }),
+    handler: (ctx) => {
+      const agentId = commandAgent(ctx);
+      // Guessing an agent could show or change another agent's lessons.
+      if (!agentId && !storeError) {
+        return { text: "Refine Cycle cannot tell which agent this chat belongs to. Use `openclaw refine-cycle` on the command line." };
+      }
+      return { text: control(ctx?.args ?? "", agentId ?? DEFAULT_AGENT) };
+    },
   });
 
   api.registerCli?.(

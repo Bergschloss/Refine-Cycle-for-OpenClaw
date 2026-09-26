@@ -271,7 +271,7 @@ test("the same command: a value written into a flag counts", () => {
   assert.equal(resolution("go test -run=TestLogin ./...", "go test -v -run=TestLogin ./..."), "corrected");
 });
 
-test("the same command: input redirections count, output ones do not, quoted words are arguments", () => {
+test("the same command: input redirections count, 2>&1 does not, quoted words are arguments", () => {
   const resolution = (failed: unknown, later: unknown) => {
     const t = new Transcript().call("Bash", { command: failed }, { error: "exit code 1" }).call("Bash", { command: later }, { ok: "done" });
     return summarizeSession("s1", "main", t.rows).patterns[0].occurrences[0].resolution;

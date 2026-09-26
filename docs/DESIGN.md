@@ -31,6 +31,7 @@ Through `before_prompt_build`, which prepends a bounded block of the agent's act
 
 - `before_prompt_build` and `agent_end` reach a non-bundled plugin only with `plugins.entries.<id>.hooks.allowConversationAccess: true`. Prompt changes apply unless `allowPromptInjection` is `false`.
 - `agent_end` runs inside an async work scope the host closes when the hook returns. Background work is started outside that scope (`runOutsideHostWorkScope` in `src/plugin.ts`), the way the host's own `runOutsideAsyncWorkScope` does; otherwise the model call fails with "Async work scope is closed".
+- A chat command's context carries `agentId` (the host's agent for the command's session) and `sessionKey`; `agentId` is absent when the command has no session (checked in the 2026.9.6 type definitions). `/refine` then reads the agent from an `agent:<id>:…` session key, and otherwise refuses rather than guess.
 - The model call is `api.runtime.llm.complete` on the agent's own route, without `agentId` (naming the agent is an override the host refuses).
 - History is read straight from the agent's SQLite (`transcript_events`), read-only. From 2026.9.6 large events are zstd-compressed in `event_zstd`.
 - A plugin is installed from git or npm only as compiled JavaScript, so `dist/` is committed and `package.json` points at `dist/plugin.js`.
