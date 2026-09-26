@@ -237,3 +237,21 @@ test("comparing commands stays fast on long sessions of long commands", () => {
   summarizeSession("s1", "main", t.rows);
   assert.ok(performance.now() - started < 2_000, `took ${Math.round(performance.now() - started)} ms`);
 });
+
+test("the same command: every argument counts, flags do not", () => {
+  const resolution = (failed: unknown, later: unknown) => {
+    const t = new Transcript().call("Bash", { command: failed }, { error: "exit code 1" }).call("Bash", { command: later }, { ok: "done" });
+    return summarizeSession("s1", "main", t.rows).patterns[0].occurrences[0].resolution;
+  };
+  assert.equal(resolution("python -m pytest tests/test_a.py", "python -m pytest tests/test_b.py"), "unknown");
+  assert.equal(resolution("python3 -m pytest -k test_login", "python3 -m pytest -k test_logout"), "unknown");
+  assert.equal(resolution("python -m pytest tests/test_a.py", "python -m pytest tests/test_a.py -x -q"), "corrected");
+  assert.equal(resolution("sed -i -e 's/a/b/' a.txt", "sed -i -e 's/a/b/' b.txt"), "unknown");
+  assert.equal(resolution("grep -e TODO src/a.ts", "grep -e TODO src/b.ts"), "unknown");
+  assert.equal(resolution("gcc -c -o out.o a.c", "gcc -c -o out.o b.c"), "unknown");
+  assert.equal(resolution("git -c core.editor=true rebase --continue", "git -c core.editor=true status"), "unknown");
+  assert.equal(resolution("git push origin main", "git push origin feature-x"), "unknown");
+  assert.equal(resolution("pytest tests/unit/test_api.py", "pytest tests/integration/test_api.py"), "unknown");
+  assert.equal(resolution("curl -sf http://localhost:3000/health", "curl -sf http://localhost:8080/health"), "unknown");
+  assert.equal(resolution("curl -sf http://localhost:3000/health", "curl -s http://localhost:3000/health"), "corrected");
+});

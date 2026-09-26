@@ -270,7 +270,7 @@ const WRAPPERS = new Set(["sudo", "env", "npx", "exec", "time", "nohup", "comman
 const SHELLS = new Set(["bash", "sh", "zsh", "dash", "ksh", "fish", "pwsh", "powershell", "cmd"]);
 /** Programs whose standard input is code: a heredoc into them is the command itself. */
 const INTERPRETER = /^(?:python[\d.]*|py|node|nodejs|deno|bun|ruby|perl|php|lua|rscript|psql|mysql|sqlite3|duckdb|mongosh|redis-cli)$/;
-/** Flags whose value is inline code or a module: `python3 -c '…'`, `node -e`, `python3 -m pytest`. */
+/** An interpreter's flags whose value is inline code or a module: `python3 -c '…'`, `node -e`, `python3 -m pytest`. */
 const CODE_FLAGS = new Set(["-c", "-e", "--eval", "-m"]);
 /** Flags that take a directory or path before the subcommand: `git -C /repo push`, `npm --prefix app test`. */
 const VALUE_FLAGS = new Set(["-C", "--prefix", "--cwd", "--dir", "--directory", "--git-dir", "--work-tree", "--manifest-path"]);
@@ -408,7 +408,9 @@ function afterOptions(words: string[], valueFlags: Set<string>, operands: number
 function innerCommand(command: string[]): string[] {
   let words = command;
   for (let depth = 0; depth < 4; depth++) {
-    while (words.length > 1 && (WRAPPERS.has(words[0].toLowerCase()) || ASSIGNMENT.test(words[0]))) words = words.slice(1);
+    let skip = 0;
+    while (skip < words.length - 1 && (WRAPPERS.has(words[skip].toLowerCase()) || ASSIGNMENT.test(words[skip]))) skip++;
+    words = words.slice(skip);
     const program = programName(words[0] ?? "");
     const sub = (words[1] ?? "").toLowerCase();
     let rest: string[] = [];
@@ -425,26 +427,30 @@ function innerCommand(command: string[]): string[] {
   return words;
 }
 
-/** One command: the program and its first two arguments, past flags and redirections. */
+/**
+ * One command: the program and every argument that is not a flag, word for word, past
+ * redirections. Flags alone do not make a different command (`npm test` and
+ * `npm test -- --ci` are the same); a different file, branch, URL or test name does.
+ */
 function commandKey(command: string[], depth: number): string {
   const stdin = command.filter((word) => word.startsWith(HEREDOC_MARK)).map((word) => word.slice(HEREDOC_MARK.length));
   const words = innerCommand(command.filter((word) => !word.startsWith(HEREDOC_MARK)));
   if (words.length === 0) return "";
   const program = programName(words[0]);
   const found = [program];
-  let args = 0;
-  for (let i = 1; i < words.length && args < 2; i++) {
+  let script = false;
+  for (let i = 1; i < words.length; i++) {
     const word = words[i];
-    if (args === 0 && SHELLS.has(program) && (/^-[a-z]*c$/i.test(word) || /^-command$/i.test(word) || /^\/c$/i.test(word))) {
+    if (!script && SHELLS.has(program) && (/^-[a-z]*c$/i.test(word) || /^-command$/i.test(word) || /^\/c$/i.test(word))) {
       // A shell running a script (`bash -lc 'cd /repo && pytest'`): compare the script.
-      const script = words[i + 1] ?? "";
-      found.push("-c", depth < 2 ? scriptKey(script, depth + 1) : code(script));
-      return found.join(" ");
+      const text = words[++i] ?? "";
+      found.push("-c", depth < 2 ? scriptKey(text, depth + 1) : code(text));
+      script = true;
+      continue;
     }
-    if (args === 0 && CODE_FLAGS.has(word)) {
-      const value = words[i + 1] ?? "";
-      found.push(word, word === "-m" ? baseName(value) : code(value));
-      return found.join(" ");
+    if (INTERPRETER.test(program) && CODE_FLAGS.has(word)) {
+      found.push(word, code(words[++i] ?? ""));
+      continue;
     }
     if (VALUE_FLAGS.has(word)) {
       i++;
@@ -455,8 +461,7 @@ function commandKey(command: string[], depth: number): string {
       continue;
     }
     if (word.startsWith("-") || /^(?:\d*|&)(?:>>?|<)/.test(word)) continue;
-    found.push(baseName(word));
-    args++;
+    found.push(word);
   }
   // Code fed on standard input is the command: `python3 - <<EOF … EOF`. For anything
   // else (`cat > notes.md <<EOF`) the heredoc is data.

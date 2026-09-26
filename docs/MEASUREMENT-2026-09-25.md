@@ -40,7 +40,7 @@ The placebo did not help: it scored at or below nothing, so the gain comes from 
 
 ## How often it finds a lesson in real use
 
-The plugin was replayed over 125 of the author's real coding-agent dialogs, in the order they happened, with the author's own instruction files and skills as "rules the agent already has":
+The plugin (at commit `5bda1ba`) was replayed over 125 of the author's real coding-agent dialogs, in the order they happened, with the author's own instruction files and skills as "rules the agent already has":
 
 - 54 sessions had tool failures;
 - 5 failures passed every check and went to the model;
