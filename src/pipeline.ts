@@ -159,6 +159,7 @@ export function recordExposure(store: FileStore, sessionId: string, block: Block
   );
   if (fresh.length === 0) return;
   store.write(effectsPath(sessionId), {
+    ...current,
     sessionId,
     exposures: [...exposures, ...fresh.map((id) => ({ lessonId: id, blockHash: block.hash, at: now.toISOString(), shownAtMs }))],
     recurrence: current?.recurrence ?? {},

@@ -473,3 +473,13 @@ test("a network timeout that mentions opening something is still transient", asy
   const decision = await processSession(deps(new FakeHistory().add("s1", t()).add("s2", t()), new ScriptedLlm()), "s2", "main");
   assert.equal(decision.evaluated[0].refusal?.rule, "not_lesson_shaped:transient");
 });
+
+test("recording a new exposure keeps the counts already in the effect record", () => {
+  const store = new FileStore(tempDir());
+  store.write("effects/s1.json", { sessionId: "s1", exposures: [], recurrence: { a: 1 }, unplaced: { a: 2 } });
+  recordExposure(store, "s1", { text: "x", lessonIds: ["a"], hash: "h" }, 0, new Date());
+  const effect = store.read<{ unplaced: Record<string, number>; recurrence: Record<string, number>; exposures: unknown[] }>("effects/s1.json")!;
+  assert.deepEqual(effect.unplaced, { a: 2 });
+  assert.deepEqual(effect.recurrence, { a: 1 });
+  assert.equal(effect.exposures.length, 1);
+});

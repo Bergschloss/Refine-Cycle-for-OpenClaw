@@ -174,7 +174,8 @@ test("the same command: odd argv, git -C, multi-line scripts and pipelines", () 
   assert.equal(resolution("cd /repo\nnpm test", "cd /repo\nls"), "unknown");
   assert.equal(resolution("cd /repo\nnpm test", "cd /repo\nnpm test -- --ci"), "corrected");
   assert.equal(resolution("ls | grep foo", "ls -la | wc -l"), "unknown");
-  assert.equal(resolution("npm test 2>&1 | tail -5", "npm test 2>&1 | tail -20"), "corrected");
+  assert.equal(resolution("npm test 2>&1 | tail -5", "npm test 2>&1 | tail -5 -q"), "corrected");
+  assert.equal(resolution("npm test 2>&1 | tail -5", "npm test 2>&1 | tail -20"), "unknown");
   assert.equal(resolution("npm run dev & npm test", "npm test"), "unknown");
   assert.equal(resolution("npm run dev & npm test", "npm run dev & npm test --ci"), "corrected");
 });
@@ -186,7 +187,8 @@ test("the same command: heredocs, line continuations, shell scripts and whole mu
   };
   assert.equal(resolution("python3 - <<'EOF'\nimport foo\nEOF", "cat > notes.md <<'EOF'\nhi\nEOF"), "unknown");
   assert.equal(resolution("node <<EOF\nboom()\nEOF", "python3 <<EOF\nprint(1)\nEOF"), "unknown");
-  assert.equal(resolution("cat <<EOF > a.txt\nx\nEOF", "cat <<EOF > a.txt\ny\nEOF"), "corrected");
+  assert.equal(resolution("cat <<EOF > a.txt\nx\nEOF", "cat <<EOF > a.txt\nx\nEOF\n"), "corrected");
+  assert.equal(resolution("cat <<EOF > a.txt\nx\nEOF", "cat <<EOF > a.txt\ny\nEOF"), "unknown");
   assert.equal(resolution("python3 train.py \\\n  --out model.bin", "ls \\\n  --out model.bin"), "unknown");
   assert.equal(resolution("bash -c 'cd /repo && pytest'", "bash -c 'cd /repo && ls'"), "unknown");
   assert.equal(resolution("bash -lc 'cd /repo && pytest'", "bash -lc 'cd /repo && git status'"), "unknown");
@@ -208,7 +210,8 @@ test("the same command: code on standard input, << inside quotes, runners and co
   assert.equal(resolution("node <<'EOF'\nboom()\nEOF", "node <<'EOF'\nok()\nEOF"), "unknown");
   assert.equal(resolution("psql -d app <<'SQL'\nselect 1;\nSQL", "psql -d app <<'SQL'\nselect 2;\nSQL"), "unknown");
   assert.equal(resolution("python3 - <<'EOF'\nimport pandas\nEOF", "python3 - <<'EOF'\nimport  pandas\nEOF"), "corrected");
-  assert.equal(resolution("cat > f.md <<'EOF'\none\nEOF", "cat > f.md <<'EOF'\ntwo\nEOF"), "corrected");
+  assert.equal(resolution("cat > f.md <<'EOF'\none\nEOF", "cat > f.md <<'EOF'\ntwo\nEOF"), "unknown");
+  assert.equal(resolution("cat > f.md <<'EOF'\none\nEOF", "cat > f.md <<'EOF'\n  one\nEOF"), "corrected");
   assert.equal(resolution("cat <<EOF > a\nx\nEOF\nnpm test", "cat <<EOF > a\nx\nEOF\nls"), "unknown");
   assert.equal(resolution("bash <<'EOF'\nnpm test\nEOF", "bash <<'EOF'\nls\nEOF"), "unknown");
   // A << inside quotes starts nothing.
@@ -253,7 +256,7 @@ test("the same command: every argument counts, flags do not", () => {
   assert.equal(resolution("git push origin main", "git push origin feature-x"), "unknown");
   assert.equal(resolution("pytest tests/unit/test_api.py", "pytest tests/integration/test_api.py"), "unknown");
   assert.equal(resolution("curl -sf http://localhost:3000/health", "curl -sf http://localhost:8080/health"), "unknown");
-  assert.equal(resolution("curl -sf http://localhost:3000/health", "curl -s http://localhost:3000/health"), "corrected");
+  assert.equal(resolution("curl -s http://localhost:3000/health", "curl -s -f http://localhost:3000/health"), "corrected");
 });
 
 test("the same command: a value written into a flag counts", () => {
@@ -277,11 +280,26 @@ test("the same command: input redirections count, output ones do not, quoted wor
   assert.equal(resolution("sqlite3 app.db <a.sql", "sqlite3 app.db <b.sql"), "unknown");
   assert.equal(resolution("python3 script.py < in1.txt", "python3 script.py < in2.txt"), "unknown");
   assert.equal(resolution("psql -d app < a.sql", "psql -d app < a.sql 2>&1"), "corrected");
-  assert.equal(resolution("npm test > out.log", "npm test > other.log"), "corrected");
-  assert.equal(resolution("npm test >out.log 2>&1", "npm test"), "corrected");
+  assert.equal(resolution("npm test > out.log", "npm test > other.log"), "unknown");
+  assert.equal(resolution("npm test 2>&1", "npm test"), "corrected");
+  assert.equal(resolution("npm test 2>/dev/null", "npm test > /dev/null"), "corrected");
   assert.equal(resolution('rg -n "<Button" src', 'rg -n "<Modal" src'), "unknown");
   assert.equal(resolution('grep ">" a.txt', 'grep ">" b.txt'), "unknown");
   assert.equal(resolution("echo 'a | b'", "echo 'a | c'"), "unknown");
   assert.equal(resolution(["rg", "<Button", "src"], ["rg", "<Modal", "src"]), "unknown");
   assert.equal(resolution('bash -c "npm test"', "bash -c 'npm test'"), "corrected");
+});
+
+test("the same command: where it writes, what a heredoc feeds and glued values count", () => {
+  const resolution = (failed: unknown, later: unknown) => {
+    const t = new Transcript().call("Bash", { command: failed }, { error: "exit code 1" }).call("Bash", { command: later }, { ok: "done" });
+    return summarizeSession("s1", "main", t.rows).patterns[0].occurrences[0].resolution;
+  };
+  assert.equal(resolution("cat > /etc/app/conf.yaml <<'EOF'\na: 1\nEOF", "cat > /tmp/notes.md <<'EOF'\na: 1\nEOF"), "unknown");
+  assert.equal(resolution("echo hello > /root/a.txt", "echo hello > /tmp/b.txt"), "unknown");
+  assert.equal(resolution("echo hello >/root/a.txt", "echo hello >/tmp/b.txt"), "unknown");
+  assert.equal(resolution("kubectl apply -f - <<EOF\nkind: Deployment\nEOF", "kubectl apply -f - <<EOF\nkind: Service\nEOF"), "unknown");
+  assert.equal(resolution("git apply <<'EOF'\n--- a/x\nEOF", "git apply <<'EOF'\n--- a/y\nEOF"), "unknown");
+  assert.equal(resolution("curl -XDELETE http://x/api/1", "curl -XGET http://x/api/1"), "unknown");
+  assert.equal(resolution("curl -XDELETE http://x/api/1", "curl -v -XDELETE http://x/api/1"), "corrected");
 });

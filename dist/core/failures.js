@@ -389,13 +389,13 @@ function innerCommand(command) {
     return words;
 }
 /**
- * One command: the program and every argument that is not a flag, word for word, past
- * redirections. Flags alone do not make a different command (`npm test` and
- * `npm test -- --ci` are the same); a different file, branch, URL or test name does,
- * also when it is written into the flag (`go test -run=TestA` and `-run=TestB`).
- * Output redirections are dropped; an input redirection (`psql < 002.sql`) is what
- * the command runs, and counts. `argv` is a command given as a word list, where no
- * word is shell syntax.
+ * One command: the program and everything it is given, word for word, except
+ * switches. A single-letter switch (`-x`) or a long one without a value (`--ci`)
+ * does not make a different command, so `npm test` and `npm test -- --ci` are the
+ * same; a different file, branch, URL, test name, redirection target or heredoc body
+ * does, also when it is glued to its flag (`-run=TestA`, `-XDELETE`). Only
+ * `2>&1`-style redirections and `/dev/null` are dropped. `argv` is a command given
+ * as a word list, where no word is shell syntax.
  */
 function commandKey(command, depth, argv = false) {
     const stdin = command.filter((word) => word.startsWith(HEREDOC_MARK)).map((word) => word.slice(HEREDOC_MARK.length));
@@ -435,23 +435,29 @@ function commandKey(command, depth, argv = false) {
             continue;
         }
         if (!argv && /^(?:\d*|&)>>?$/.test(word)) {
-            i++; // an output redirection and its target
+            const target = plain(words[++i] ?? "");
+            if (target !== "/dev/null")
+                found.push(">", target); // where the command writes
             continue;
         }
-        if (!argv && /^(?:\d*|&)>/.test(word))
+        if (!argv && /^(?:\d*|&)>/.test(word)) {
+            if (!/^(?:\d*|&)>>?(?:&\d*|\/dev\/null)$/.test(word))
+                found.push(word);
             continue;
+        }
         if (word.startsWith("-")) {
-            if (/^--?[^=]+=/.test(word))
+            // A switch alone does not count; a value written into it does.
+            if (/^--?[^=]+=/.test(word) || /^-[^-].+/.test(word))
                 found.push(word);
             continue;
         }
         found.push(word);
     }
-    // Code fed on standard input is the command: `python3 - <<EOF … EOF`. For anything
-    // else (`cat > notes.md <<EOF`) the heredoc is data.
+    // What a heredoc feeds in is part of the command: code for an interpreter, a manifest
+    // for `kubectl apply -f -`, a file's content for `cat > f`. A shell's is a script.
     if (stdin.length > 0 && SHELLS.has(program))
         found.push("<<", depth < 2 ? scriptKey(stdin.join("\n"), depth + 1) : code(stdin.join("\n")));
-    else if (stdin.length > 0 && INTERPRETER.test(program))
+    else if (stdin.length > 0)
         found.push("<<", code(stdin.join("\n")));
     return found.join(" ");
 }
