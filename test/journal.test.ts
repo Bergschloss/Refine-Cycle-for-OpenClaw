@@ -270,3 +270,19 @@ test("a closed journal record that cannot be removed never fails recovery or a d
   }
   assert.equal(store.read<{ status: string }>("lessons/l1.json")!.status, "disabled");
 });
+
+test("a lock that cannot be signed is not left behind", () => {
+  const root = tempDir();
+  const store = new FileStore(root);
+  const write = fs.writeSync;
+  fs.writeSync = (() => {
+    throw Object.assign(new Error("no space left on device"), { code: "ENOSPC" });
+  }) as typeof fs.writeSync;
+  try {
+    assert.throws(() => store.lock("budget", 0), StoreError);
+  } finally {
+    fs.writeSync = write;
+  }
+  assert.equal(fs.existsSync(path.join(root, "budget.lock")), false);
+  store.lock("budget", 0)();
+});

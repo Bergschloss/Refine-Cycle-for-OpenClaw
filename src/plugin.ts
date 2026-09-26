@@ -290,7 +290,7 @@ export default function register(api: PluginApi): void {
     runOutsideHostWorkScope(() => enqueue(ctx));
   });
 
-  /** `agentId` limits a chat command to that agent's lessons; the command line sees all of them. */
+  /** `agentId` limits a chat command to that agent's lessons and report; the command line sees all agents. */
   const control = (args: string, agentId?: string): string => {
     if (storeError) return `Refine Cycle cannot use its store: ${storeError}`;
     const [verb = "list", id = ""] = args.trim().split(/\s+/).filter(Boolean);
@@ -315,7 +315,7 @@ export default function register(api: PluginApi): void {
       }
       return changed ? `Lesson ${id} ${changed.status}.` : `No lesson ${id}.`;
     }
-    if (verb === "report" || verb === "status") return JSON.stringify(report(store), null, 2);
+    if (verb === "report" || verb === "status") return JSON.stringify(report(store, agentId), null, 2);
     return "Usage: list | disable <id> | delete <id> | report";
   };
 

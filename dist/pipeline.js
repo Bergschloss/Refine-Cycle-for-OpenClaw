@@ -12,7 +12,7 @@ import { findCoveringRule } from "./core/covered.js";
 import { lessonShape } from "./core/shape.js";
 import { buildUserMessage, parseProposal, SYSTEM_PROMPT, validateLesson } from "./core/proposal.js";
 import { formatBlock } from "./core/injection.js";
-import { activate, activeLessons, allLessons, lessonAgent, LessonExistsError, lessonId, recover } from "./lessons.js";
+import { activate, activeLessons, allLessons, DEFAULT_AGENT, lessonAgent, LessonExistsError, lessonId, recover } from "./lessons.js";
 import { safeName, StoreError } from "./store.js";
 const REPLY_KEPT_CHARS = 2000;
 /** Files read between two yields to the event loop: the host's other sessions keep running. */
@@ -205,7 +205,7 @@ export async function processSession(deps, sessionId, agentId) {
     }
     await applyDeferred(deps, agentId, now);
     updateRecurrence(store, summary);
-    const base = { sessionId, at: now.toISOString(), called: false, evaluated: [] };
+    const base = { sessionId, agentId, at: now.toISOString(), called: false, evaluated: [] };
     const prior = store.read(candidatePath(sessionId));
     if (prior?.called)
         return prior;
@@ -226,6 +226,10 @@ export async function processSession(deps, sessionId, agentId) {
     const evaluated = [];
     let chosen = null;
     for (const entry of ordered) {
+        // The already-covered check reads every instruction and skill file: one pattern
+        // at a time, so a session with many patterns does not hold the host's thread.
+        if (evaluated.length > 0)
+            await yieldToHost();
         const refusal = refuse(deps, agentId, entry.pattern, entry.local, sources);
         evaluated.push({
             fingerprint: entry.pattern.fingerprint,
@@ -357,11 +361,20 @@ async function applyDeferred(deps, agentId, now) {
         await yieldToHost();
     }
 }
-export function report(store) {
+/** What the loop decided. With `agentId`, only that agent's sessions and lessons. */
+export function report(store, agentId) {
+    const summaries = new Map();
+    for (const name of store.list("sessions")) {
+        const summary = store.read(`sessions/${name}.json`);
+        if (summary && Array.isArray(summary.patterns))
+            summaries.set(summary.sessionId, summary);
+    }
+    const agentOf = (sessionId, recorded) => recorded || summaries.get(sessionId)?.agentId || DEFAULT_AGENT;
     const decisions = store
         .list("candidates")
         .map((name) => store.read(`candidates/${name}.json`))
-        .filter((d) => !!d);
+        .filter((d) => !!d)
+        .filter((d) => agentId === undefined || agentOf(d.sessionId, d.agentId) === agentId);
     const outcomes = {};
     const refusals = {};
     let restatements = 0;
@@ -380,12 +393,10 @@ export function report(store) {
     }
     const lessons = { active: 0, disabled: 0, deleted: 0, draft: 0 };
     for (const lesson of allLessons(store))
-        lessons[lesson.status]++;
-    const sessions = store.list("sessions");
-    const withFailures = sessions.filter((name) => {
-        const summary = store.read(`sessions/${name}.json`);
-        return !!summary && summary.patterns.length > 0;
-    }).length;
+        if (agentId === undefined || lessonAgent(lesson) === agentId)
+            lessons[lesson.status]++;
+    const sessions = [...summaries.values()].filter((summary) => agentId === undefined || agentOf(summary.sessionId) === agentId);
+    const withFailures = sessions.filter((summary) => summary.patterns.length > 0).length;
     return {
         sessions: sessions.length,
         sessionsWithFailures: withFailures,

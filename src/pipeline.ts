@@ -13,7 +13,7 @@ import { findCoveringRule, type Covering, type Source } from "./core/covered.ts"
 import { lessonShape } from "./core/shape.ts";
 import { buildUserMessage, parseProposal, SYSTEM_PROMPT, validateLesson } from "./core/proposal.ts";
 import { formatBlock, type Block } from "./core/injection.ts";
-import { activate, activeLessons, allLessons, lessonAgent, LessonExistsError, lessonId, recover, type Lesson } from "./lessons.ts";
+import { activate, activeLessons, allLessons, DEFAULT_AGENT, lessonAgent, LessonExistsError, lessonId, recover, type Lesson } from "./lessons.ts";
 import { safeName, StoreError, type FileStore } from "./store.ts";
 import type { Settings } from "./settings.ts";
 
@@ -69,6 +69,8 @@ export type Outcome =
 
 export interface Decision {
   sessionId: string;
+  /** The agent the session belongs to; absent in records written before it was kept. */
+  agentId?: string;
   at: string;
   outcome: Outcome;
   /** True once a model call was made (or started) for this session: never again for it. */
@@ -304,7 +306,7 @@ export async function processSession(deps: Deps, sessionId: string, agentId: str
   await applyDeferred(deps, agentId, now);
   updateRecurrence(store, summary);
 
-  const base = { sessionId, at: now.toISOString(), called: false, evaluated: [] as Evaluated[] };
+  const base = { sessionId, agentId, at: now.toISOString(), called: false, evaluated: [] as Evaluated[] };
   const prior = store.read<Decision>(candidatePath(sessionId));
   if (prior?.called) return prior;
   const finish = (decision: Decision): Decision => {
@@ -326,6 +328,9 @@ export async function processSession(deps: Deps, sessionId: string, agentId: str
   const evaluated: Evaluated[] = [];
   let chosen: (typeof ordered)[number] | null = null;
   for (const entry of ordered) {
+    // The already-covered check reads every instruction and skill file: one pattern
+    // at a time, so a session with many patterns does not hold the host's thread.
+    if (evaluated.length > 0) await yieldToHost();
     const refusal = refuse(deps, agentId, entry.pattern, entry.local, sources);
     evaluated.push({
       fingerprint: entry.pattern.fingerprint,
@@ -473,11 +478,19 @@ export interface Report {
   restatementsCaught: number;
 }
 
-export function report(store: FileStore): Report {
+/** What the loop decided. With `agentId`, only that agent's sessions and lessons. */
+export function report(store: FileStore, agentId?: string): Report {
+  const summaries = new Map<string, SessionSummary>();
+  for (const name of store.list("sessions")) {
+    const summary = store.read<SessionSummary>(`sessions/${name}.json`);
+    if (summary && Array.isArray(summary.patterns)) summaries.set(summary.sessionId, summary);
+  }
+  const agentOf = (sessionId: string, recorded?: string) => recorded || summaries.get(sessionId)?.agentId || DEFAULT_AGENT;
   const decisions = store
     .list("candidates")
     .map((name) => store.read<Decision>(`candidates/${name}.json`))
-    .filter((d): d is Decision & { $v: number } => !!d);
+    .filter((d): d is Decision & { $v: number } => !!d)
+    .filter((d) => agentId === undefined || agentOf(d.sessionId, d.agentId) === agentId);
   const outcomes: Record<string, number> = {};
   const refusals: Record<string, number> = {};
   let restatements = 0;
@@ -493,12 +506,9 @@ export function report(store: FileStore): Report {
     }
   }
   const lessons = { active: 0, disabled: 0, deleted: 0, draft: 0 };
-  for (const lesson of allLessons(store)) lessons[lesson.status]++;
-  const sessions = store.list("sessions");
-  const withFailures = sessions.filter((name) => {
-    const summary = store.read<SessionSummary>(`sessions/${name}.json`);
-    return !!summary && summary.patterns.length > 0;
-  }).length;
+  for (const lesson of allLessons(store)) if (agentId === undefined || lessonAgent(lesson) === agentId) lessons[lesson.status]++;
+  const sessions = [...summaries.values()].filter((summary) => agentId === undefined || agentOf(summary.sessionId) === agentId);
+  const withFailures = sessions.filter((summary) => summary.patterns.length > 0).length;
   return {
     sessions: sessions.length,
     sessionsWithFailures: withFailures,

@@ -230,7 +230,7 @@ export default function register(api) {
         // its model call) does not run inside a scope the host closes when this returns.
         runOutsideHostWorkScope(() => enqueue(ctx));
     });
-    /** `agentId` limits a chat command to that agent's lessons; the command line sees all of them. */
+    /** `agentId` limits a chat command to that agent's lessons and report; the command line sees all agents. */
     const control = (args, agentId) => {
         if (storeError)
             return `Refine Cycle cannot use its store: ${storeError}`;
@@ -262,7 +262,7 @@ export default function register(api) {
             return changed ? `Lesson ${id} ${changed.status}.` : `No lesson ${id}.`;
         }
         if (verb === "report" || verb === "status")
-            return JSON.stringify(report(store), null, 2);
+            return JSON.stringify(report(store, agentId), null, 2);
         return "Usage: list | disable <id> | delete <id> | report";
     };
     api.registerCommand?.({

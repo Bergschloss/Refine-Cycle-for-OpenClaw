@@ -13,6 +13,10 @@
  *   journal/<id>.json         intent before every lesson change, marked after
  *   budget/<YYYY-MM-DD>.json  model calls spent that day
  *   effects/<id>.json         which lessons a session was shown, and whether the failure came back
+ *   deferred/<id>.json        a validated lesson the lock kept from being applied, retried next run
+ *   backfill/<agent>.json     when that agent's recent sessions were last re-read
+ *   replay-result.json        the output of `openclaw refine-cycle replay`, in a replay's own store
+ *   <name>.lock               a cross-process lock; <name>.lock.takeover while a stale one is removed
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -97,7 +101,15 @@ export class FileStore {
             try {
                 const token = `${process.pid}-${randomBytes(8).toString("hex")}`;
                 const fd = fs.openSync(file, "wx");
-                fs.writeSync(fd, token);
+                try {
+                    fs.writeSync(fd, token);
+                }
+                catch (error) {
+                    // A lock we could not sign (a full disk) is not left behind for 30 s.
+                    fs.closeSync(fd);
+                    fs.rmSync(file, { force: true });
+                    throw error;
+                }
                 fs.closeSync(fd);
                 return () => {
                     // Only the holder removes it: a holder that outlived the stale limit must not

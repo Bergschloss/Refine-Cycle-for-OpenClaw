@@ -483,3 +483,24 @@ test("recording a new exposure keeps the counts already in the effect record", (
   assert.deepEqual(effect.recurrence, { a: 1 });
   assert.equal(effect.exposures.length, 1);
 });
+
+test("the report for one agent counts only that agent's sessions, decisions and lessons", async () => {
+  const history = new FakeHistory().add("s1", failing()).add("s2", failing()).add("o1", new Transcript().say("hi"));
+  const d = deps(history, new ScriptedLlm(lessonReply()));
+  for (const id of ["s1", "s2"]) await processSession(d, id, "main");
+  await processSession(d, "o1", "other");
+  // A decision recorded before the agent was kept is placed by its session summary.
+  const old = d.store.read<Record<string, unknown>>("candidates/o1.json")!;
+  delete old.agentId;
+  d.store.write("candidates/o1.json", old);
+  const main = report(d.store, "main");
+  assert.equal(main.sessions, 2);
+  assert.equal(main.outcomes.no_failures, undefined);
+  assert.equal(main.lessons.active, 1);
+  const other = report(d.store, "other");
+  assert.equal(other.sessions, 1);
+  assert.equal(other.outcomes.no_failures, 1);
+  assert.equal(other.modelCalls, 0);
+  assert.equal(other.lessons.active, 0);
+  assert.equal(report(d.store).sessions, 3);
+});
