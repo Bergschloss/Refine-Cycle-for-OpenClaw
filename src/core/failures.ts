@@ -268,22 +268,35 @@ function boundedJson(value: unknown, limit: number): string {
  */
 const WRAPPERS = new Set(["sudo", "env", "npx", "exec", "time", "nohup", "command"]);
 const SHELLS = new Set(["bash", "sh", "zsh", "dash", "ksh", "fish", "pwsh", "powershell", "cmd"]);
+/** Programs whose standard input is code: a heredoc into them is the command itself. */
+const INTERPRETER = /^(?:python[\d.]*|py|node|nodejs|deno|bun|ruby|perl|php|lua|rscript|psql|mysql|sqlite3|duckdb|mongosh|redis-cli)$/;
 /** Flags whose value is inline code or a module: `python3 -c '…'`, `node -e`, `python3 -m pytest`. */
 const CODE_FLAGS = new Set(["-c", "-e", "--eval", "-m"]);
 /** Flags that take a directory or path before the subcommand: `git -C /repo push`, `npm --prefix app test`. */
 const VALUE_FLAGS = new Set(["-C", "--prefix", "--cwd", "--dir", "--directory", "--git-dir", "--work-tree", "--manifest-path"]);
 const ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=/;
-const HEREDOC = /(?<!<)<<(?!<)-?[ \t]*(['"]?)([A-Za-z_]\w*)\1([^\n]*)(?:\n(?:[\s\S]*?\n)?[ \t]*\2[ \t]*(?=\n|$)|[\s\S]*$)/g;
+/** Project runners and container tools that run another command: that command is compared. */
+const RUNNERS = new Set(["uv", "poetry", "pipenv", "pdm", "hatch", "rye", "conda", "mamba", "micromamba", "pixi"]);
+const RUNNER_VALUE_FLAGS = new Set(["-n", "--name", "-p", "--prefix", "--with", "--env", "-e", "--env-file", "--python", "--project", "--directory", "--package", "--group", "--extra"]);
+const CONTAINERS = new Set(["docker", "podman", "nerdctl"]);
+const CONTAINER_VALUE_FLAGS = new Set([
+  "-e", "--env", "--env-file", "-u", "--user", "-w", "--workdir", "-v", "--volume", "-p", "--publish", "--name",
+  "--network", "--entrypoint", "--platform", "--mount", "-m", "--memory", "--cpus", "--gpus", "-l", "--label",
+  "--add-host", "--device", "--shm-size", "--ulimit", "--cap-add", "--pull", "--restart", "-h", "--hostname", "--index",
+]);
+const TIMEOUT_VALUE_FLAGS = new Set(["-s", "--signal", "-k", "--kill-after"]);
+/** A heredoc in a word list: this prefix, then the heredoc's body. */
+const HEREDOC_MARK = "\u0001";
 
 /**
  * Shell words with quotes kept together. A newline, `;`, `&&`, `||` or a background `&`
  * outside quotes ends a segment; a pipe stays in it as its own `|` word; comments are
- * dropped. Line continuations are joined and heredoc bodies removed first: neither is
- * a command of its own.
+ * dropped and line continuations joined. A heredoc (only outside quotes) becomes one
+ * word holding its body, and its lines are not commands of their own.
  */
-function shellSegments(script: string): string[][] {
-  const text = script.replace(/\\\r?\n/g, " ").replace(HEREDOC, "$3");
+function shellSegments(text: string): string[][] {
   const segments: string[][] = [[]];
+  const pending: { segment: string[]; at: number; delimiter: string; tabs: boolean }[] = [];
   let word = "";
   let inWord = false;
   let quote = "";
@@ -291,6 +304,24 @@ function shellSegments(script: string): string[][] {
     if (inWord) segments[segments.length - 1].push(word);
     word = "";
     inWord = false;
+  };
+  /** Reads the bodies of the heredocs started on the line just ended; returns the last index read. */
+  const readBodies = (from: number): number => {
+    let at = from;
+    for (const doc of pending) {
+      const lines: string[] = [];
+      while (at < text.length) {
+        let end = text.indexOf("\n", at);
+        if (end < 0) end = text.length;
+        const line = text.slice(at, end).replace(/\r$/, "");
+        at = end + 1;
+        if ((doc.tabs ? line.replace(/^\t+/, "") : line).trim() === doc.delimiter) break;
+        lines.push(line);
+      }
+      doc.segment[doc.at] = HEREDOC_MARK + lines.join("\n");
+    }
+    pending.length = 0;
+    return at - 1;
   };
   for (let i = 0; i < text.length; i++) {
     const ch = text[i];
@@ -301,16 +332,41 @@ function shellSegments(script: string): string[][] {
     } else if (ch === "'" || ch === '"') {
       quote = ch;
       inWord = true;
+    } else if (ch === "\\" && (next === "\n" || (next === "\r" && text[i + 2] === "\n"))) {
+      endWord();
+      i += next === "\r" ? 2 : 1;
     } else if (ch === "\\" && next !== undefined) {
       word += next;
       inWord = true;
       i++;
     } else if (ch === "#" && !inWord) {
       while (i + 1 < text.length && text[i + 1] !== "\n") i++;
+    } else if (ch === "<" && next === "<" && text[i + 2] !== "<" && text[i - 1] !== "<") {
+      endWord();
+      let j = i + 2;
+      const tabs = text[j] === "-";
+      if (tabs) j++;
+      while (text[j] === " " || text[j] === "\t") j++;
+      let delimiter = "";
+      if (text[j] === "'" || text[j] === '"') {
+        const close = text.indexOf(text[j], j + 1);
+        delimiter = text.slice(j + 1, close < 0 ? text.length : close);
+        j = close < 0 ? text.length : close + 1;
+      } else {
+        while (j < text.length && !/[\s;&|<>()'"]/u.test(text[j])) delimiter += text[j++];
+      }
+      delimiter = delimiter.replace(/\\/g, "");
+      if (delimiter) {
+        const segment = segments[segments.length - 1];
+        segment.push(HEREDOC_MARK);
+        pending.push({ segment, at: segment.length - 1, delimiter, tabs });
+      }
+      i = j - 1;
     } else if (ch === "\n" || ch === ";" || (ch === "&" && next === "&") || (ch === "|" && next === "|")) {
       endWord();
       segments.push([]);
       if (ch === "&" || ch === "|") i++;
+      else if (ch === "\n" && pending.length > 0) i = readBodies(i + 1);
     } else if (ch === "&" && next !== ">" && text[i - 1] !== ">" && text[i - 1] !== "<") {
       endWord();
       segments.push([]);
@@ -325,18 +381,56 @@ function shellSegments(script: string): string[][] {
     }
   }
   endWord();
+  if (pending.length > 0) readBodies(text.length);
   return segments.filter((segment) => segment.length > 0);
 }
 
 const baseName = (word: string) => (word.trim().split(/\s+/)[0] ?? "").split(/[\\/]/).pop()!.toLowerCase();
+const programName = (word: string) => baseName(word).replace(/\.exe$/, "");
 const code = (text: string) => text.replace(/\s+/g, " ").trim();
 
-/** One command: the program and its first two arguments, past wrappers, flags and redirections. */
+/** The words after leading options, then after `operands` more words (a container, a duration). */
+function afterOptions(words: string[], valueFlags: Set<string>, operands: number): string[] {
+  let i = 0;
+  while (i < words.length) {
+    const word = words[i];
+    if (word === "--") {
+      i++;
+      break;
+    }
+    if (!word.startsWith("-") || word.length === 1) break;
+    i += valueFlags.has(word) ? 2 : 1;
+  }
+  return words.slice(i + operands);
+}
+
+/** The command that does the work, past env assignments, wrappers, runners and containers. */
+function innerCommand(command: string[]): string[] {
+  let words = command;
+  for (let depth = 0; depth < 4; depth++) {
+    while (words.length > 1 && (WRAPPERS.has(words[0].toLowerCase()) || ASSIGNMENT.test(words[0]))) words = words.slice(1);
+    const program = programName(words[0] ?? "");
+    const sub = (words[1] ?? "").toLowerCase();
+    let rest: string[] = [];
+    if (program === "timeout") rest = afterOptions(words.slice(1), TIMEOUT_VALUE_FLAGS, 1);
+    else if (RUNNERS.has(program) && sub === "run") rest = afterOptions(words.slice(2), RUNNER_VALUE_FLAGS, 0);
+    else if (CONTAINERS.has(program) && (sub === "exec" || sub === "run")) rest = afterOptions(words.slice(2), CONTAINER_VALUE_FLAGS, 1);
+    else if (CONTAINERS.has(program) && sub === "compose" && /^(?:exec|run)$/i.test(words[2] ?? "")) {
+      rest = afterOptions(words.slice(3), CONTAINER_VALUE_FLAGS, 1);
+    } else if (program === "docker-compose" && (sub === "exec" || sub === "run")) rest = afterOptions(words.slice(2), CONTAINER_VALUE_FLAGS, 1);
+    else if (program === "kubectl" && sub === "exec" && words.includes("--")) rest = words.slice(words.indexOf("--") + 1);
+    if (rest.length === 0) return words;
+    words = rest;
+  }
+  return words;
+}
+
+/** One command: the program and its first two arguments, past flags and redirections. */
 function commandKey(command: string[], depth: number): string {
-  const words = [...command];
-  while (words.length > 1 && (WRAPPERS.has(words[0].toLowerCase()) || ASSIGNMENT.test(words[0]))) words.shift();
+  const stdin = command.filter((word) => word.startsWith(HEREDOC_MARK)).map((word) => word.slice(HEREDOC_MARK.length));
+  const words = innerCommand(command.filter((word) => !word.startsWith(HEREDOC_MARK)));
   if (words.length === 0) return "";
-  const program = baseName(words[0]).replace(/\.exe$/, "");
+  const program = programName(words[0]);
   const found = [program];
   let args = 0;
   for (let i = 1; i < words.length && args < 2; i++) {
@@ -345,12 +439,12 @@ function commandKey(command: string[], depth: number): string {
       // A shell running a script (`bash -lc 'cd /repo && pytest'`): compare the script.
       const script = words[i + 1] ?? "";
       found.push("-c", depth < 2 ? scriptKey(script, depth + 1) : code(script));
-      break;
+      return found.join(" ");
     }
     if (args === 0 && CODE_FLAGS.has(word)) {
       const value = words[i + 1] ?? "";
       found.push(word, word === "-m" ? baseName(value) : code(value));
-      break;
+      return found.join(" ");
     }
     if (VALUE_FLAGS.has(word)) {
       i++;
@@ -364,6 +458,10 @@ function commandKey(command: string[], depth: number): string {
     found.push(baseName(word));
     args++;
   }
+  // Code fed on standard input is the command: `python3 - <<EOF … EOF`. For anything
+  // else (`cat > notes.md <<EOF`) the heredoc is data.
+  if (stdin.length > 0 && SHELLS.has(program)) found.push("<<", depth < 2 ? scriptKey(stdin.join("\n"), depth + 1) : code(stdin.join("\n")));
+  else if (stdin.length > 0 && INTERPRETER.test(program)) found.push("<<", code(stdin.join("\n")));
   return found.join(" ");
 }
 
@@ -396,10 +494,9 @@ function leadingCommand(args: Record<string, unknown>): string | null {
   return null;
 }
 
-function sameAction(failed: Record<string, unknown>, later: Record<string, unknown>): boolean {
-  const a = leadingCommand(failed);
-  const b = leadingCommand(later);
-  return a === null || b === null || a === b;
+/** Whether a later success ran the same command as the failure; no command compares by tool. */
+function sameAction(failed: string | null, later: string | null): boolean {
+  return failed === null || later === null || failed === later;
 }
 
 function resolve(
@@ -408,7 +505,7 @@ function resolve(
   index: number,
   fp: string,
   tool: string,
-  args: Record<string, unknown>,
+  commandAt: (index: number) => string | null,
 ): Resolution {
   const end = Math.min(steps.length, index + 1 + RESOLUTION_LOOKAHEAD);
   for (let i = index + 1; i < end; i++) {
@@ -420,7 +517,7 @@ function resolve(
       continue;
     }
     if (step.tool !== tool) return "switched";
-    if (sameAction(args, step.args)) return "corrected";
+    if (sameAction(commandAt(index), commandAt(i))) return "corrected";
     // The same tool succeeded at something else: the failure is not resolved yet.
   }
   return "unknown";
@@ -433,6 +530,15 @@ export function summarizeSession(sessionId: string, agentId: string, rows: Trans
   steps.forEach((step, index) => {
     if (step.kind === "result" && step.isError && step.text) fingerprints.set(index, fingerprint(step.tool, step.text));
   });
+  // Each call's command is parsed once, however many failures look ahead at it.
+  const commands = new Map<number, string | null>();
+  const commandAt = (i: number) => {
+    if (!commands.has(i)) {
+      const step = steps[i];
+      commands.set(i, step.kind === "result" ? leadingCommand(step.args) : null);
+    }
+    return commands.get(i)!;
+  };
   const byFingerprint = new Map<string, SessionPattern>();
   /** Argument names each tool has been called with successfully so far. */
   const usedArgs = new Map<string, Set<string>>();
@@ -458,7 +564,7 @@ export function summarizeSession(sessionId: string, agentId: string, rows: Trans
       seq: step.seq,
       eventId: step.eventId,
       toolCallId: step.callId,
-      resolution: resolve(steps, fingerprints, index, fp, step.tool, step.args),
+      resolution: resolve(steps, fingerprints, index, fp, step.tool, commandAt),
     };
     const already = usedArgs.get(step.tool);
     const dropped = !!already && missingParameters(step.text).some((name) => already.has(name));

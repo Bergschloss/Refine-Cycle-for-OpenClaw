@@ -1,4 +1,4 @@
-import { test } from "node:test";
+import { after, test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
@@ -27,6 +27,7 @@ test("dist/ is exactly the build of src/ (run npm run build if this fails)", () 
     assert.fail("typescript is not installed: run npm install");
   }
   const out = fs.mkdtempSync(path.join(os.tmpdir(), "refine-dist-"));
+  after(() => fs.rmSync(out, { recursive: true, force: true }));
   const parsed = ts.getParsedCommandLineOfConfigFile(path.join(repo, "tsconfig.build.json"), { outDir: out }, {
     ...ts.sys,
     onUnRecoverableConfigFileDiagnostic: (d) => assert.fail(String(d.messageText)),

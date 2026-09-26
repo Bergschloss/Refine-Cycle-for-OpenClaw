@@ -197,3 +197,43 @@ test("the same command: heredocs, line continuations, shell scripts and whole mu
   assert.equal(resolution("npm run build", "npm run build -- --verbose"), "corrected");
   assert.equal(resolution("uv run pytest", "uv run ruff check"), "unknown");
 });
+
+test("the same command: code on standard input, << inside quotes, runners and containers", () => {
+  const resolution = (failed: unknown, later: unknown) => {
+    const t = new Transcript().call("Bash", { command: failed }, { error: "exit code 1" }).call("Bash", { command: later }, { ok: "done" });
+    return summarizeSession("s1", "main", t.rows).patterns[0].occurrences[0].resolution;
+  };
+  // A heredoc into an interpreter is the code that runs; into anything else it is data.
+  assert.equal(resolution("python3 - <<'EOF'\nimport pandas\nEOF", "python3 - <<'EOF'\nprint(1)\nEOF"), "unknown");
+  assert.equal(resolution("node <<'EOF'\nboom()\nEOF", "node <<'EOF'\nok()\nEOF"), "unknown");
+  assert.equal(resolution("psql -d app <<'SQL'\nselect 1;\nSQL", "psql -d app <<'SQL'\nselect 2;\nSQL"), "unknown");
+  assert.equal(resolution("python3 - <<'EOF'\nimport pandas\nEOF", "python3 - <<'EOF'\nimport  pandas\nEOF"), "corrected");
+  assert.equal(resolution("cat > f.md <<'EOF'\none\nEOF", "cat > f.md <<'EOF'\ntwo\nEOF"), "corrected");
+  assert.equal(resolution("cat <<EOF > a\nx\nEOF\nnpm test", "cat <<EOF > a\nx\nEOF\nls"), "unknown");
+  assert.equal(resolution("bash <<'EOF'\nnpm test\nEOF", "bash <<'EOF'\nls\nEOF"), "unknown");
+  // A << inside quotes starts nothing.
+  assert.equal(resolution("echo 'a << b'\nnpm test", "echo 'a << b'\nls"), "unknown");
+  assert.equal(resolution('python3 -c "print(1 << 2)"\nnpm test', 'python3 -c "print(1 << 2)"\nls'), "unknown");
+  // Runners and containers compare the command they run.
+  assert.equal(resolution("uv run python train.py", "uv run python -c 'print(1)'"), "unknown");
+  assert.equal(resolution("uv run python -c 'import torch'", "uv run python -c 'print(1)'"), "unknown");
+  assert.equal(resolution("uv run --with pandas pytest -x", "uv run pytest -q"), "corrected");
+  assert.equal(resolution("poetry run python manage.py migrate", "poetry run python manage.py check"), "unknown");
+  assert.equal(resolution("conda run -n ml python train.py", "conda run -n ml pip list"), "unknown");
+  assert.equal(resolution("docker exec -it web python manage.py migrate", "docker exec -it web ls"), "unknown");
+  assert.equal(resolution("docker compose exec web pytest", "docker compose exec web ls"), "unknown");
+  assert.equal(resolution("docker run --rm -v $PWD:/app img pytest", "docker run --rm -v $PWD:/app img ls"), "unknown");
+  assert.equal(resolution("kubectl exec pod -- pytest", "kubectl exec pod -- ls"), "unknown");
+  assert.equal(resolution("timeout 60 npm test", "timeout 60 npm run build"), "unknown");
+  assert.equal(resolution("timeout 60 npm test", "timeout 120 npm test"), "corrected");
+});
+
+test("comparing commands stays fast on long sessions of long commands", () => {
+  const long = `python3 -c '${"x = 1\n".repeat(10_000)}'`;
+  const t = new Transcript();
+  for (let i = 0; i < 100; i++) t.call("Bash", { command: `${long}\n# run ${i}` }, { error: "exit code 1" });
+  for (let i = 0; i < 24; i++) t.call("Bash", { command: `${long}\n# ok ${i}` }, { ok: "done" });
+  const started = performance.now();
+  summarizeSession("s1", "main", t.rows);
+  assert.ok(performance.now() - started < 2_000, `took ${Math.round(performance.now() - started)} ms`);
+});

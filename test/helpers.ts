@@ -88,6 +88,14 @@ export class FakeHistory implements History {
   }
 }
 
+const created: string[] = [];
+process.once("exit", () => {
+  for (const dir of created) fs.rmSync(dir, { recursive: true, force: true });
+});
+
+/** A fresh directory, removed when the test process exits. */
 export function tempDir(prefix = "refine-test-"): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+  created.push(dir);
+  return dir;
 }
