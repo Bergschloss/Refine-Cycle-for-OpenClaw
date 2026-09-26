@@ -267,3 +267,21 @@ test("the same command: a value written into a flag counts", () => {
   assert.equal(resolution("terraform plan -var-file=prod.tfvars", "terraform plan -var-file=dev.tfvars"), "unknown");
   assert.equal(resolution("go test -run=TestLogin ./...", "go test -v -run=TestLogin ./..."), "corrected");
 });
+
+test("the same command: input redirections count, output ones do not, quoted words are arguments", () => {
+  const resolution = (failed: unknown, later: unknown) => {
+    const t = new Transcript().call("Bash", { command: failed }, { error: "exit code 1" }).call("Bash", { command: later }, { ok: "done" });
+    return summarizeSession("s1", "main", t.rows).patterns[0].occurrences[0].resolution;
+  };
+  assert.equal(resolution("psql -d app < migrations/001.sql", "psql -d app < migrations/002.sql"), "unknown");
+  assert.equal(resolution("sqlite3 app.db <a.sql", "sqlite3 app.db <b.sql"), "unknown");
+  assert.equal(resolution("python3 script.py < in1.txt", "python3 script.py < in2.txt"), "unknown");
+  assert.equal(resolution("psql -d app < a.sql", "psql -d app < a.sql 2>&1"), "corrected");
+  assert.equal(resolution("npm test > out.log", "npm test > other.log"), "corrected");
+  assert.equal(resolution("npm test >out.log 2>&1", "npm test"), "corrected");
+  assert.equal(resolution('rg -n "<Button" src', 'rg -n "<Modal" src'), "unknown");
+  assert.equal(resolution('grep ">" a.txt', 'grep ">" b.txt'), "unknown");
+  assert.equal(resolution("echo 'a | b'", "echo 'a | c'"), "unknown");
+  assert.equal(resolution(["rg", "<Button", "src"], ["rg", "<Modal", "src"]), "unknown");
+  assert.equal(resolution('bash -c "npm test"', "bash -c 'npm test'"), "corrected");
+});

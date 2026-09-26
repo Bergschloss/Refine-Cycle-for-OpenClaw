@@ -287,6 +287,9 @@ const CONTAINER_VALUE_FLAGS = new Set([
 const TIMEOUT_VALUE_FLAGS = new Set(["-s", "--signal", "-k", "--kill-after"]);
 /** A heredoc in a word list: this prefix, then the heredoc's body. */
 const HEREDOC_MARK = "\u0001";
+/** A word that was quoted or escaped, in whole or in part: never an operator, a flag or a redirection. */
+const QUOTED_MARK = "\u0002";
+const plain = (word: string) => (word.startsWith(QUOTED_MARK) ? word.slice(QUOTED_MARK.length) : word);
 
 /**
  * Shell words with quotes kept together. A newline, `;`, `&&`, `||` or a background `&`
@@ -299,11 +302,13 @@ function shellSegments(text: string): string[][] {
   const pending: { segment: string[]; at: number; delimiter: string; tabs: boolean }[] = [];
   let word = "";
   let inWord = false;
+  let quoted = false;
   let quote = "";
   const endWord = () => {
-    if (inWord) segments[segments.length - 1].push(word);
+    if (inWord) segments[segments.length - 1].push(quoted ? QUOTED_MARK + word : word);
     word = "";
     inWord = false;
+    quoted = false;
   };
   /** Reads the bodies of the heredocs started on the line just ended; returns the last index read. */
   const readBodies = (from: number): number => {
@@ -332,12 +337,14 @@ function shellSegments(text: string): string[][] {
     } else if (ch === "'" || ch === '"') {
       quote = ch;
       inWord = true;
+      quoted = true;
     } else if (ch === "\\" && (next === "\n" || (next === "\r" && text[i + 2] === "\n"))) {
       endWord();
       i += next === "\r" ? 2 : 1;
     } else if (ch === "\\" && next !== undefined) {
       word += next;
       inWord = true;
+      quoted = true;
       i++;
     } else if (ch === "#" && !inWord) {
       while (i + 1 < text.length && text[i + 1] !== "\n") i++;
@@ -409,15 +416,15 @@ function innerCommand(command: string[]): string[] {
   let words = command;
   for (let depth = 0; depth < 4; depth++) {
     let skip = 0;
-    while (skip < words.length - 1 && (WRAPPERS.has(words[skip].toLowerCase()) || ASSIGNMENT.test(words[skip]))) skip++;
+    while (skip < words.length - 1 && (WRAPPERS.has(plain(words[skip]).toLowerCase()) || ASSIGNMENT.test(plain(words[skip])))) skip++;
     words = words.slice(skip);
-    const program = programName(words[0] ?? "");
-    const sub = (words[1] ?? "").toLowerCase();
+    const program = programName(plain(words[0] ?? ""));
+    const sub = plain(words[1] ?? "").toLowerCase();
     let rest: string[] = [];
     if (program === "timeout") rest = afterOptions(words.slice(1), TIMEOUT_VALUE_FLAGS, 1);
     else if (RUNNERS.has(program) && sub === "run") rest = afterOptions(words.slice(2), RUNNER_VALUE_FLAGS, 0);
     else if (CONTAINERS.has(program) && (sub === "exec" || sub === "run")) rest = afterOptions(words.slice(2), CONTAINER_VALUE_FLAGS, 1);
-    else if (CONTAINERS.has(program) && sub === "compose" && /^(?:exec|run)$/i.test(words[2] ?? "")) {
+    else if (CONTAINERS.has(program) && sub === "compose" && /^(?:exec|run)$/i.test(plain(words[2] ?? ""))) {
       rest = afterOptions(words.slice(3), CONTAINER_VALUE_FLAGS, 1);
     } else if (program === "docker-compose" && (sub === "exec" || sub === "run")) rest = afterOptions(words.slice(2), CONTAINER_VALUE_FLAGS, 1);
     else if (program === "kubectl" && sub === "exec" && words.includes("--")) rest = words.slice(words.indexOf("--") + 1);
@@ -432,36 +439,51 @@ function innerCommand(command: string[]): string[] {
  * redirections. Flags alone do not make a different command (`npm test` and
  * `npm test -- --ci` are the same); a different file, branch, URL or test name does,
  * also when it is written into the flag (`go test -run=TestA` and `-run=TestB`).
+ * Output redirections are dropped; an input redirection (`psql < 002.sql`) is what
+ * the command runs, and counts. `argv` is a command given as a word list, where no
+ * word is shell syntax.
  */
-function commandKey(command: string[], depth: number): string {
+function commandKey(command: string[], depth: number, argv = false): string {
   const stdin = command.filter((word) => word.startsWith(HEREDOC_MARK)).map((word) => word.slice(HEREDOC_MARK.length));
   const words = innerCommand(command.filter((word) => !word.startsWith(HEREDOC_MARK)));
   if (words.length === 0) return "";
-  const program = programName(words[0]);
+  const program = programName(plain(words[0]));
   const found = [program];
   let script = false;
   for (let i = 1; i < words.length; i++) {
     const word = words[i];
+    if (word.startsWith(QUOTED_MARK)) {
+      found.push(plain(word));
+      continue;
+    }
     if (!script && SHELLS.has(program) && (/^-[a-z]*c$/i.test(word) || /^-command$/i.test(word) || /^\/c$/i.test(word))) {
       // A shell running a script (`bash -lc 'cd /repo && pytest'`): compare the script.
-      const text = words[++i] ?? "";
+      const text = plain(words[++i] ?? "");
       found.push("-c", depth < 2 ? scriptKey(text, depth + 1) : code(text));
       script = true;
       continue;
     }
     if (INTERPRETER.test(program) && CODE_FLAGS.has(word)) {
-      found.push(word, code(words[++i] ?? ""));
+      found.push(word, code(plain(words[++i] ?? "")));
       continue;
     }
     if (VALUE_FLAGS.has(word)) {
       i++;
       continue;
     }
-    if (/^(?:\d*|&)(?:>>?|<)$/.test(word)) {
-      i++; // a redirection and its target
+    if (!argv && /^\d*<$/.test(word)) {
+      found.push("<", plain(words[++i] ?? "")); // the input the command runs
       continue;
     }
-    if (/^(?:\d*|&)(?:>>?|<)/.test(word)) continue;
+    if (!argv && /^\d*<[^<]/.test(word)) {
+      found.push(word);
+      continue;
+    }
+    if (!argv && /^(?:\d*|&)>>?$/.test(word)) {
+      i++; // an output redirection and its target
+      continue;
+    }
+    if (!argv && /^(?:\d*|&)>/.test(word)) continue;
     if (word.startsWith("-")) {
       if (/^--?[^=]+=/.test(word)) found.push(word);
       continue;
@@ -497,7 +519,7 @@ function leadingCommand(args: Record<string, unknown>): string | null {
     let found = "";
     if (typeof value === "string") found = scriptKey(value, 0);
     else if (Array.isArray(value) && value.length > 0 && value.every((word) => typeof word === "string")) {
-      found = commandKey(value as string[], 0);
+      found = commandKey(value as string[], 0, true);
     }
     if (found) return found;
   }
