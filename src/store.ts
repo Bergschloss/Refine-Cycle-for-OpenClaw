@@ -134,7 +134,9 @@ export class FileStore {
   /**
    * Remove a stale lock, one waiter at a time: only the waiter that creates the
    * takeover guard may remove it, and only if it is still stale under the guard, so a
-   * fresh lock another waiter took meanwhile is never removed. False when the lock
+   * fresh lock another waiter took meanwhile is not removed. (A holder that went silent
+   * past the stale limit and then released at this very instant is the one exception;
+   * holds last milliseconds.) False when the lock
    * stays (another waiter is taking over, or it cannot be removed: permissions, a
    * file held open); the caller then waits or gives up, never loops without a pause.
    */

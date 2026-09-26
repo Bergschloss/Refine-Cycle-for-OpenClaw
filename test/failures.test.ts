@@ -136,7 +136,7 @@ test("the same command is recognised past cd &&, env prefixes and wrappers", () 
     return summarizeSession("s1", "main", t.rows).patterns[0].occurrences[0].resolution;
   };
   assert.equal(resolution("cd /app && npm test", "cd /app && ls"), "unknown");
-  assert.equal(resolution("cd /app && npm test", "cd /app && npm test -- --watch=false"), "corrected");
+  assert.equal(resolution("cd /app && npm test", "cd /app && npm test -- --ci"), "corrected");
   assert.equal(resolution("python3 a.py", "python3 b.py"), "unknown");
   assert.equal(resolution("FOO=1 make build", "make build"), "corrected");
   assert.equal(resolution("sudo systemctl restart x", "systemctl restart x"), "corrected");
@@ -254,4 +254,16 @@ test("the same command: every argument counts, flags do not", () => {
   assert.equal(resolution("pytest tests/unit/test_api.py", "pytest tests/integration/test_api.py"), "unknown");
   assert.equal(resolution("curl -sf http://localhost:3000/health", "curl -sf http://localhost:8080/health"), "unknown");
   assert.equal(resolution("curl -sf http://localhost:3000/health", "curl -s http://localhost:3000/health"), "corrected");
+});
+
+test("the same command: a value written into a flag counts", () => {
+  const resolution = (failed: unknown, later: unknown) => {
+    const t = new Transcript().call("Bash", { command: failed }, { error: "exit code 1" }).call("Bash", { command: later }, { ok: "done" });
+    return summarizeSession("s1", "main", t.rows).patterns[0].occurrences[0].resolution;
+  };
+  assert.equal(resolution("go test -run=TestLogin ./...", "go test -run=TestLogout ./..."), "unknown");
+  assert.equal(resolution("npm run build --workspace=packages/api", "npm run build --workspace=packages/web"), "unknown");
+  assert.equal(resolution("python train.py --config=a.yaml", "python train.py --config=b.yaml"), "unknown");
+  assert.equal(resolution("terraform plan -var-file=prod.tfvars", "terraform plan -var-file=dev.tfvars"), "unknown");
+  assert.equal(resolution("go test -run=TestLogin ./...", "go test -v -run=TestLogin ./..."), "corrected");
 });

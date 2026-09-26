@@ -430,7 +430,8 @@ function innerCommand(command: string[]): string[] {
 /**
  * One command: the program and every argument that is not a flag, word for word, past
  * redirections. Flags alone do not make a different command (`npm test` and
- * `npm test -- --ci` are the same); a different file, branch, URL or test name does.
+ * `npm test -- --ci` are the same); a different file, branch, URL or test name does,
+ * also when it is written into the flag (`go test -run=TestA` and `-run=TestB`).
  */
 function commandKey(command: string[], depth: number): string {
   const stdin = command.filter((word) => word.startsWith(HEREDOC_MARK)).map((word) => word.slice(HEREDOC_MARK.length));
@@ -460,7 +461,11 @@ function commandKey(command: string[], depth: number): string {
       i++; // a redirection and its target
       continue;
     }
-    if (word.startsWith("-") || /^(?:\d*|&)(?:>>?|<)/.test(word)) continue;
+    if (/^(?:\d*|&)(?:>>?|<)/.test(word)) continue;
+    if (word.startsWith("-")) {
+      if (/^--?[^=]+=/.test(word)) found.push(word);
+      continue;
+    }
     found.push(word);
   }
   // Code fed on standard input is the command: `python3 - <<EOF … EOF`. For anything
