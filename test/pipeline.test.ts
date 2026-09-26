@@ -526,3 +526,37 @@ test("a lesson whose write failed waits for the next run, and is then recorded a
   assert.equal(s1.lessonId, activeLessons(d.store)[0].id);
   assert.equal(fs.existsSync(path.join(root, "deferred", "s1.json")), false);
 });
+
+test("a lesson waiting behind the lock is proposed once, and counted once when applied", async () => {
+  const history = new FakeHistory().add("a", failing(5)).add("b", failing(5)).add("c", new Transcript().user("hi"));
+  const llm = new ScriptedLlm(lessonReply(), lessonReply());
+  const d = deps(history, llm, { backfillSessions: 0 });
+  const release = d.store.lock("lessons", 0);
+  assert.equal((await processSession(d, "a", "main")).outcome, "apply_deferred");
+  // Session b meets the same failure while a's lesson waits: no second model call.
+  const b = await processSession(d, "b", "main");
+  assert.equal(b.called, false);
+  assert.equal(b.evaluated[0].refusal?.rule, "lesson_pending");
+  release();
+  await processSession(d, "c", "main");
+  const r = report(d.store);
+  assert.equal(r.outcomes.lesson, 1);
+  assert.equal(r.modelCalls, 1);
+  assert.equal(r.lessons.active, 1);
+});
+
+test("an active lesson with this lesson's id from another session is a duplicate, not this session's lesson", async () => {
+  const history = new FakeHistory().add("s1", failing(5)).add("s3", new Transcript().user("hi"));
+  const d = deps(history, new ScriptedLlm(lessonReply()), { backfillSessions: 0 });
+  assert.equal((await processSession(d, "s1", "main")).outcome, "lesson");
+  const [first] = activeLessons(d.store);
+  d.store.write("candidates/s2.json", {
+    sessionId: "s2", at: "x", called: true, evaluated: [], outcome: "apply_deferred",
+    deferred: { ...first, sourceSessionId: "s2" },
+  });
+  d.store.write("deferred/s2.json", { sessionId: "s2" });
+  await processSession(d, "s3", "main");
+  const s2 = JSON.parse(fs.readFileSync(path.join(d.store.root, "candidates", "s2.json"), "utf8"));
+  assert.equal(s2.outcome, "refused_after_model");
+  assert.equal(s2.refusal.rule, "duplicate");
+});

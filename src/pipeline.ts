@@ -279,6 +279,10 @@ function refuse(
   }
   // The user took this lesson away; learning it again would undo their decision.
   if (same) return { rule: "withdrawn_by_user", detail: `${same.id} (${same.status})` };
+  // A validated lesson for it is waiting behind a busy lock: a second model call would
+  // only propose it again.
+  const pending = pendingLesson(deps.store, agentId, pattern.fingerprint);
+  if (pending) return { rule: "lesson_pending", detail: pending };
   const active = known.filter((lesson) => lesson.status === "active");
   const lessonSources = active.map((lesson) => ({ name: `lesson:${lesson.id}`, text: lesson.text }));
   const covering = findCoveringRule(pattern.tool, pattern.shape, [...sources(), ...lessonSources]);
@@ -423,9 +427,9 @@ function applyLesson(deps: Deps, decision: Decision, lesson: Omit<Lesson, "statu
   const same = allLessons(deps.store).find(
     (known) => lessonAgent(known) === lessonAgent(lesson as Lesson) && known.fingerprint === lesson.fingerprint && known.status !== "draft",
   );
-  // This very lesson is already active: journal recovery finished an activation that a
-  // crash or an error cut short. It was learned from this session.
-  if (same?.id === lesson.id && same.status === "active") {
+  // This very lesson, from this session, is already active: journal recovery finished an
+  // activation that a crash or an error cut short. It was learned from this session.
+  if (same?.id === lesson.id && same.status === "active" && same.sourceSessionId === decision.sessionId) {
     return finish({ ...rest, outcome: "lesson", lessonId: same.id, lessonText: same.text });
   }
   if (same) {
@@ -446,6 +450,17 @@ function applyLesson(deps: Deps, decision: Decision, lesson: Omit<Lesson, "statu
     if (!(error instanceof StoreError)) deps.log(`lesson ${lesson.id} not applied yet: ${String(error)}`);
     return finish({ ...rest, outcome: "apply_deferred", deferred: lesson });
   }
+}
+
+/** The id of a validated lesson for this agent and failure that waits to be applied, if any. */
+function pendingLesson(store: FileStore, agentId: string, fingerprint: string): string | null {
+  for (const name of store.list("deferred")) {
+    const marker = store.read<{ sessionId: string }>(`deferred/${name}.json`);
+    const decision = marker && store.read<Decision>(candidatePath(marker.sessionId));
+    const lesson = decision?.outcome === "apply_deferred" ? decision.deferred : undefined;
+    if (lesson && lesson.fingerprint === fingerprint && lessonAgent(lesson as Lesson) === agentId) return lesson.id;
+  }
+  return null;
 }
 
 function deferredPath(sessionId: string): string {
