@@ -286,3 +286,18 @@ test("a lock that cannot be signed is not left behind", () => {
   assert.equal(fs.existsSync(path.join(root, "budget.lock")), false);
   store.lock("budget", 0)();
 });
+
+test("a write that fails leaves no temp file behind", () => {
+  const root = tempDir();
+  const store = new FileStore(root);
+  const rename = fs.renameSync;
+  fs.renameSync = () => {
+    throw Object.assign(new Error("operation not permitted"), { code: "EPERM" });
+  };
+  try {
+    assert.throws(() => store.write("candidates/s1.json", { a: 1 }), /operation not permitted/);
+  } finally {
+    fs.renameSync = rename;
+  }
+  assert.deepEqual(fs.readdirSync(path.join(root, "candidates")), []);
+});

@@ -79,13 +79,20 @@ export class FileStore {
         const body = JSON.stringify({ ...value, $v: SCHEMA_VERSION }, null, 1);
         const fd = fs.openSync(temp, "w");
         try {
-            fs.writeSync(fd, body);
-            fs.fsyncSync(fd);
+            try {
+                fs.writeSync(fd, body);
+                fs.fsyncSync(fd);
+            }
+            finally {
+                fs.closeSync(fd);
+            }
+            fs.renameSync(temp, target);
         }
-        finally {
-            fs.closeSync(fd);
+        catch (error) {
+            // A write that failed (a full disk, a locked target) leaves no temp file behind.
+            fs.rmSync(temp, { force: true });
+            throw error;
         }
-        fs.renameSync(temp, target);
     }
     /**
      * An exclusive lock across processes (the gateway, a CLI run, a replay into the
