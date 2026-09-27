@@ -8,6 +8,7 @@ import { FileStore } from "../src/store.ts";
 import { activeLessons, allLessons, setStatus } from "../src/lessons.ts";
 import { fingerprint } from "../src/core/fingerprint.ts";
 import type { Source } from "../src/core/covered.ts";
+import { SYSTEM_PROMPT } from "../src/core/proposal.ts";
 import { FakeHistory, tempDir, Transcript } from "./helpers.ts";
 
 const ERROR = "cron expression '* * *' has 3 fields, expected 5";
@@ -128,6 +129,20 @@ test("a failure the agent never fixed shows the model no fix", async () => {
   await processSession(d, "s2", "main");
   assert.equal(llm.calls.length, 1);
   assert.doesNotMatch(llm.calls[0].user, /then succeeded/);
+});
+
+test("a fix whose arguments the history did not keep is not shown as evidence", async () => {
+  const bare = () =>
+    new Transcript().call("cron_add", {}, { error: ERROR }).call("cron_add", {}, { ok: "added" });
+  const llm = new ScriptedLlm(lessonReply());
+  const d = deps(new FakeHistory().add("s1", bare()).add("s2", bare()), llm);
+  await processSession(d, "s2", "main");
+  assert.equal(llm.calls.length, 1);
+  assert.doesNotMatch(llm.calls[0].user, /then succeeded/);
+});
+
+test("the system prompt does not ask for a fix, so a failure with none is judged as before", () => {
+  assert.doesNotMatch(SYSTEM_PROMPT, /succeeded|own fix/);
 });
 
 test("transient failures and wrong-tool failures are not lesson-shaped", async () => {

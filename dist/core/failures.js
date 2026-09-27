@@ -561,7 +561,9 @@ export function summarizeSession(sessionId, agentId, rows) {
         const { resolution, fixedAt } = resolve(steps, fingerprints, index, fp, step.tool, commandAt);
         const occurrence = { seq: step.seq, eventId: step.eventId, toolCallId: step.callId, resolution };
         const fixedStep = fixedAt === undefined ? undefined : steps[fixedAt];
-        const correctionArgs = fixedStep?.kind === "result" ? boundedJson(fixedStep.args, ARGS_CHARS) : "";
+        // A fix is evidence only when its arguments are known: a corpus or host that kept
+        // no arguments would show the model "{}", which says nothing about what changed.
+        const correctionArgs = fixedStep?.kind === "result" && Object.keys(fixedStep.args).length > 0 ? boundedJson(fixedStep.args, ARGS_CHARS) : "";
         const already = usedArgs.get(step.tool);
         const dropped = !!already && missingParameters(step.text).some((name) => already.has(name));
         const pattern = byFingerprint.get(fp);
