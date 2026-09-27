@@ -5,7 +5,7 @@
   "type": "module",
   "description": "An OpenClaw plugin that learns from the agent's own repeated failures.",
   "engines": {
-    "node": ">=24"
+    "node": ">=24.16.0 <25 || >=26.1.0"
   },
   "scripts": {
     "test": "node --test --experimental-strip-types \"test/**/*.test.ts\"",

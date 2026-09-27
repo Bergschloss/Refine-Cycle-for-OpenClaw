@@ -40,21 +40,21 @@ On 125 of the author's real coding-agent dialogs, replayed in order, the plugin 
 
 ## Install
 
-Tested on OpenClaw 2026.9.6 (2026.9.5 is supported), Node 24 or newer.
+Tested on OpenClaw 2026.9.6 (2026.9.5 is supported). The plugin runs inside OpenClaw, so it needs what OpenClaw itself needs: Node 24.16+ or 26.1+.
 
-**1. Install the plugin.** OpenClaw asks you to trust the source and to accept what the plugin can do; review both, then:
+**1. Install the plugin.** OpenClaw warns that a git source is outside ClawHub review and asks `Install this non-ClawHub plugin source? [y/N]`; review the source, then answer `y`. `--accept-capabilities` accepts what the plugin declares it can do. In a script, with no terminal to answer the question, add `--force` after reviewing the source.
 
 ```bash
 openclaw plugins install git:github.com/Bergschloss/Refine-Cycle-for-OpenClaw --accept-capabilities
 ```
 
-**2. Let it see your sessions.** OpenClaw gives a plugin your conversation only when you allow it. Without this, Refine Cycle stays idle and says so in the log.
+**2. Let it see your sessions.** OpenClaw gives a plugin your conversation only when you allow it. Without this, Refine Cycle stays idle and says so in the log. A running gateway picks this setting up without a restart.
 
 ```bash
 openclaw config set plugins.entries.refine-cycle.hooks.allowConversationAccess true
 ```
 
-**3. Restart the gateway**, so the plugin loads.
+**3. Restart the gateway**, so it loads the newly installed plugin. `openclaw gateway restart` restarts a gateway installed as a service; a gateway you started by hand (`openclaw gateway run`) you stop and start again yourself.
 
 ```bash
 openclaw gateway restart

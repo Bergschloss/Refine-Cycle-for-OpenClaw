@@ -36,6 +36,7 @@ Through `before_prompt_build`, which prepends a bounded block of the agent's act
 - The model call is `api.runtime.llm.complete` on the agent's own route, without `agentId` (naming the agent is an override the host refuses).
 - History is read straight from the agent's SQLite (`transcript_events`), read-only. From 2026.9.6 large events are zstd-compressed in `event_zstd`.
 - A plugin is installed from git or npm only as compiled JavaScript, so `dist/` is committed and `package.json` points at `dist/plugin.js`.
+- OpenClaw 2026.9.6 declares `engines.node` `>=24.16.0 <25 || >=26.1.0`; the plugin runs in its process and declares the same. A fresh `plugins install git:…` asks `[y/N]` on a terminal and cancels without one unless `--force` is given; `allowConversationAccess` is hot-reloaded by a running gateway (checked on a fresh 2026.9.6 install, 2026-09-27).
 - Root CLI commands must be listed in the manifest's `cliCommands`; in the `cli-metadata` registration pass the runtime is unavailable, and the plugin returns at once. The host runs the command from the full registration: `openclaw refine-cycle list` and `report` were checked on 2026.9.6 with this return in place (2026-09-26).
 
 `scripts/drift-check.ts` compares what the tests assume about the host with a live install.
