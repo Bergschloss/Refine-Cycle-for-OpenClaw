@@ -172,7 +172,7 @@ export default function register(api) {
                     maxTokens: 400,
                     temperature: 0,
                     // No agentId: OpenClaw refuses a plugin call that names a target agent
-                    // ("cannot override the target agent"); the default is the agent's own model.
+                    // ("cannot override the target agent"); the host then uses its default agent's model.
                     signal: AbortSignal.timeout(timeoutMs),
                 }));
                 // If the timeout wins, the call may still reject later: that must not surface

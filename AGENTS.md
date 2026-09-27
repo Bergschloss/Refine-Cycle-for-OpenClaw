@@ -109,8 +109,8 @@ The history is the user's private conversations.
 
 - Never commit real session content, replay corpora, stores or reports built from them. Test
   fixtures are synthetic.
-- Real sessions go only to the model the user's agent already uses, the way the agent would
-  send them.
+- Real sessions go only to the model OpenClaw uses for the user's default agent (the plugin's
+  background call cannot choose another), the way the agent would send them.
 - Reports about real data carry numbers and lesson texts, not conversation content.
 - The repository is public: no hostnames, IP addresses, key paths, tokens or account details.
 

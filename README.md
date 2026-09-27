@@ -20,10 +20,10 @@
 
 ## You stay in control
 
-- At most one model call per session and three a day, on the model and account your agent already uses. The plugin has no key of its own.
+- At most one model call per session and three a day, on the model and account OpenClaw uses for your default agent. The plugin has no key of its own.
 - `/refine list` shows your lessons and their status; `/refine disable <id>` and `/refine delete <id>` take one away, and a lesson you took away is never learned again.
 - It never edits your `AGENTS.md`, `SOUL.md`, skills or memory. Lessons live in the plugin's own folder.
-- It does not filter your conversation or its lessons. The evidence for a lesson goes to the model your agent already uses, as your agent would send it; the lessons and the plugin's records stay on your machine.
+- It does not filter your conversation or its lessons. The evidence for a lesson (the failing call's error and arguments, and the call that fixed it) goes to that model, as your agent would send it; the lessons and the plugin's records, which keep short excerpts of failed calls, stay in its folder on your machine. With several agents, the evidence from every agent goes to the default agent's model: OpenClaw does not let a plugin's background call choose the agent.
 - If a hook fails or the store is unreadable, your agent's turn goes on as if the plugin were not there, and the log says why.
 
 ## How it works
