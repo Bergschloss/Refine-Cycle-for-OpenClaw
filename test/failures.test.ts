@@ -328,3 +328,31 @@ test("the same command: a call without a command on either side is compared by t
   assert.equal(resolution({ description: "check" }, { command: "npm test" }), "corrected");
   assert.equal(resolution({}, {}), "corrected");
 });
+
+test("a fix after another tool's step in between is still the fix (the Codex runtime's exec)", () => {
+  const resolutionOf = (t: Transcript, tool: string) => summarizeSession("s1", "main", t.rows).patterns.find((p) => p.tool === tool)!;
+  // As recorded live on OpenClaw 2026.9.6: fail, exec ok, fix ok.
+  const fixed = new Transcript()
+    .user("go")
+    .call("set_timezone", { tz: "CET" }, { error: "unknown timezone 'CET'" })
+    .call("exec", { input: "…" }, { ok: "done" })
+    .call("set_timezone", { tz: "Europe/Paris" }, { ok: "set" });
+  const pattern = resolutionOf(fixed, "set_timezone");
+  assert.equal(pattern.occurrences[0].resolution, "corrected");
+  assert.equal(pattern.correctionArgs, '{"tz":"Europe/Paris"}');
+  // Another tool, then nothing more of this one: switched, as before.
+  const moved = new Transcript().user("go").call("set_timezone", { tz: "CET" }, { error: "unknown timezone 'CET'" }).call("exec", {}, { ok: "done" }).user("ok");
+  assert.equal(resolutionOf(moved, "set_timezone").occurrences[0].resolution, "switched");
+  // Another tool, then a different command of this one: not a fix.
+  const other = new Transcript()
+    .call("Bash", { command: "npm test" }, { error: "exit code 1" })
+    .call("exec", {}, { ok: "done" })
+    .call("Bash", { command: "ls" }, { ok: "files" });
+  assert.equal(resolutionOf(other, "Bash").occurrences[0].resolution, "switched");
+  // Another tool, then the same failure again: repeated.
+  const again = new Transcript()
+    .call("set_timezone", { tz: "CET" }, { error: "unknown timezone 'CET'" })
+    .call("exec", {}, { ok: "done" })
+    .call("set_timezone", { tz: "CET" }, { error: "unknown timezone 'CET'" });
+  assert.equal(resolutionOf(again, "set_timezone").occurrences[0].resolution, "repeated");
+});

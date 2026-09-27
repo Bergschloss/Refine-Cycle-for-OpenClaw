@@ -551,6 +551,9 @@ function resolve(
   commandAt: (index: number) => string | null,
 ): { resolution: Resolution; fixedAt?: number } {
   const end = Math.min(steps.length, index + 1 + RESOLUTION_LOOKAHEAD);
+  // A success of another tool in between (OpenClaw's Codex runtime runs an `exec` step
+  // around most calls) does not end the look: the fix may come right after it.
+  let switched = false;
   for (let i = index + 1; i < end; i++) {
     const step = steps[i];
     if (step.kind === "user") break;
@@ -559,11 +562,14 @@ function resolve(
       if (fingerprints.get(i) === fp) return { resolution: "repeated" };
       continue;
     }
-    if (step.tool !== tool) return { resolution: "switched" };
+    if (step.tool !== tool) {
+      switched = true;
+      continue;
+    }
     if (sameAction(commandAt(index), commandAt(i))) return { resolution: "corrected", fixedAt: i };
     // The same tool succeeded at something else: the failure is not resolved yet.
   }
-  return { resolution: "unknown" };
+  return { resolution: switched ? "switched" : "unknown" };
 }
 
 export function summarizeSession(sessionId: string, agentId: string, rows: TranscriptRow[]): SessionSummary {
