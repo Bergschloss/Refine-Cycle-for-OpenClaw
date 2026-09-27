@@ -439,11 +439,20 @@ export async function processSession(deps: Deps, sessionId: string, agentId: str
 function applyLesson(deps: Deps, decision: Decision, lesson: Omit<Lesson, "status" | "changedAt">, now: Date): Decision {
   const marker = deferredPath(decision.sessionId);
   const finish = (next: Decision): Decision => {
-    // The marker goes first: a crash after it leaves a marker the sweep can resolve,
-    // never a deferred lesson nothing points to.
-    if (next.outcome === "apply_deferred") deps.store.write(marker, { sessionId: decision.sessionId });
-    deps.store.write(candidatePath(decision.sessionId), next);
-    if (next.outcome !== "apply_deferred") deps.store.remove(marker);
+    try {
+      // The marker goes first: a crash after it leaves a marker the sweep can resolve,
+      // never a deferred lesson nothing points to.
+      if (next.outcome === "apply_deferred") deps.store.write(marker, { sessionId: decision.sessionId });
+      deps.store.write(candidatePath(decision.sessionId), next);
+      if (next.outcome !== "apply_deferred") deps.store.remove(marker);
+    } catch (error) {
+      // Nowhere left to keep it (a full disk, a store that turned read-only): the log is
+      // the last place the model's work can be seen, so it says what was lost.
+      if (next.outcome !== "lesson") {
+        deps.log(`lesson ${lesson.id} for ${lesson.fingerprint} was validated but could not be saved (${String(error)}): ${lesson.text}`);
+      }
+      throw error;
+    }
     return next;
   };
   const { deferred: _drop, ...rest } = decision;

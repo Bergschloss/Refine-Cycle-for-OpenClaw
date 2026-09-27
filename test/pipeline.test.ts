@@ -716,3 +716,22 @@ test("history that cannot be read is recorded as such, so the report shows it", 
   assert.match(decision!.reply, /unable to open database/);
   assert.equal(report(d.store).outcomes.history_unreadable, 1);
 });
+
+
+test("a validated lesson the full disk kept from being saved is named in the log, not lost silently", async () => {
+  const history = new FakeHistory().add("s1", failing(5));
+  const d = deps(history, new ScriptedLlm(lessonReply()));
+  let full = false;
+  const store = new FileStore(d.store.root, {
+    beforeWrite: (relative) => {
+      if (full && !relative.startsWith("budget/")) throw Object.assign(new Error("ENOSPC: no space left on device, write"), { code: "ENOSPC" });
+    },
+  });
+  // The disk fills while the model answers.
+  const llm: Llm = { complete: async () => { full = true; return lessonReply(); } };
+  await assert.rejects(processSession({ ...d, store, llm }, "s1", "main"), /ENOSPC/);
+  assert.ok(
+    d.logs.some((line) => line.includes("was validated but could not be saved") && line.includes("five-field cron expression")),
+    d.logs.join("\n"),
+  );
+});
