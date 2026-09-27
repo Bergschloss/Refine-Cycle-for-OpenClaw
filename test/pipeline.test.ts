@@ -702,3 +702,17 @@ test("recurrence is counted from the first time the lesson was shown", async () 
   const effect = JSON.parse(fs.readFileSync(path.join(d.store.root, "effects", "s2.json"), "utf8"));
   assert.equal(effect.recurrence[lesson.id], 3);
 });
+
+
+test("history that cannot be read is recorded as such, so the report shows it", async () => {
+  const history: FakeHistory = new FakeHistory();
+  history.readSession = () => {
+    throw new Error("unable to open database file");
+  };
+  const d = deps(history, new ScriptedLlm(lessonReply()));
+  await assert.rejects(processSession(d, "s1", "main"), /unable to open database/);
+  const decision = d.store.read<{ outcome: string; reply: string }>("candidates/s1.json");
+  assert.equal(decision?.outcome, "history_unreadable");
+  assert.match(decision!.reply, /unable to open database/);
+  assert.equal(report(d.store).outcomes.history_unreadable, 1);
+});

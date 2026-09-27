@@ -203,7 +203,24 @@ export async function processSession(deps, sessionId, agentId) {
         deps.log(`journal recovery: ${JSON.stringify(recovered)}`);
     }
     await yieldToHost();
-    const summary = summarizeAndStore(deps, sessionId, agentId);
+    let summary;
+    try {
+        summary = summarizeAndStore(deps, sessionId, agentId);
+    }
+    catch (error) {
+        if (error instanceof StoreError)
+            throw error;
+        // The host's history could not be read (a missing or locked database, a new
+        // schema): say so where the report looks, not only in the log.
+        const decision = {
+            sessionId, agentId, at: now.toISOString(), outcome: "history_unreadable", called: false, evaluated: [],
+            reply: String(error).slice(0, 300),
+        };
+        const prior = store.read(candidatePath(sessionId));
+        if (!prior?.called)
+            store.write(candidatePath(sessionId), decision);
+        throw error;
+    }
     await yieldToHost();
     try {
         await backfill(deps, agentId, sessionId, now);
