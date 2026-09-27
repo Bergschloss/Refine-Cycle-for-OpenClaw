@@ -1,5 +1,7 @@
 # Refine Cycle for OpenClaw
 
+[![tests](https://github.com/Bergschloss/Refine-Cycle-for-OpenClaw/actions/workflows/tests.yml/badge.svg)](https://github.com/Bergschloss/Refine-Cycle-for-OpenClaw/actions/workflows/tests.yml) ![OpenClaw 2026.9.6](https://img.shields.io/badge/OpenClaw-2026.9.6-blue) ![License: MIT](https://img.shields.io/badge/license-MIT-green)
+
 **Your agent keeps repeating the same mistake. This makes it stop.**
 
 **Refine Cycle** watches your OpenClaw agent's tool failures across sessions. When the same failure comes back, it writes one short lesson and puts it in front of the agent from then on. Later, it records whether the failure came back.
