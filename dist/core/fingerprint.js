@@ -256,7 +256,11 @@ const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[
  * Hashes the full normalized text, so errors sharing a long prefix stay distinct.
  */
 export function fingerprint(toolName, content) {
+    return fingerprintOfShape(toolName, normalizeError(content));
+}
+/** `fingerprint()` for an error already normalized: the same id, without normalizing twice. */
+export function fingerprintOfShape(toolName, shape) {
     // Python encodes with errors="replace": a lone surrogate becomes "?".
-    const key = `${toolName || ""}|${normalizeError(content)}`.replace(LONE_SURROGATE, "?");
+    const key = `${toolName || ""}|${shape}`.replace(LONE_SURROGATE, "?");
     return createHash("sha1").update(key, "utf8").digest("hex").slice(0, 12);
 }

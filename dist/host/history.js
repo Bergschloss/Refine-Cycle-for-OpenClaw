@@ -35,27 +35,42 @@ function eventText(row) {
         return zlib.zstdDecompressSync(row.event_zstd).toString("utf8");
     return null;
 }
-export function sqliteHistory(file) {
+/** Rows read per query; the host gets its turn between two of them. */
+const ROWS_PER_SLICE = 500;
+export function sqliteHistory(file, pause = () => new Promise((resolve) => setImmediate(resolve))) {
     return {
-        readSession(sessionId) {
-            return withDatabase(file, (db) => {
+        /**
+         * In slices of rows by `seq`: a real 28,775-row session (31 MB) took 360 ms to read
+         * and parse in one query, and a long-lived chat session is read again after every turn.
+         */
+        async readSession(sessionId) {
+            const db = new DatabaseSync(file, { readOnly: true });
+            try {
                 const columns = hasColumn(db, "event_zstd") ? "seq, event_json, event_zstd" : "seq, event_json";
-                const rows = db
-                    .prepare(`SELECT ${columns} FROM transcript_events WHERE session_id = ? ORDER BY seq`)
-                    .all(sessionId);
+                const query = db.prepare(`SELECT ${columns} FROM transcript_events WHERE session_id = ? AND seq > ? ORDER BY seq LIMIT ${ROWS_PER_SLICE}`);
                 const out = [];
-                for (const row of rows) {
-                    try {
-                        const text = eventText(row);
-                        if (text !== null)
-                            out.push({ seq: Number(row.seq), event: JSON.parse(text) });
+                let after = Number.MIN_SAFE_INTEGER;
+                for (;;) {
+                    const rows = query.all(sessionId, after);
+                    for (const row of rows) {
+                        try {
+                            const text = eventText(row);
+                            if (text !== null)
+                                out.push({ seq: Number(row.seq), event: JSON.parse(text) });
+                        }
+                        catch {
+                            // A row the host wrote and we cannot decode is not ours to judge; skip it.
+                        }
                     }
-                    catch {
-                        // A row the host wrote and we cannot decode is not ours to judge; skip it.
-                    }
+                    if (rows.length < ROWS_PER_SLICE)
+                        return out;
+                    after = Number(rows[rows.length - 1].seq);
+                    await pause();
                 }
-                return out;
-            });
+            }
+            finally {
+                db.close();
+            }
         },
         recentSessions(limit) {
             if (limit <= 0)

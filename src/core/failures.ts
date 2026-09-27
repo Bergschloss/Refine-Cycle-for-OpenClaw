@@ -10,7 +10,7 @@
  * only the tail hid the first failure in 58% of repeated-failure groups.
  */
 
-import { fingerprint, normalizeError } from "./fingerprint.ts";
+import { fingerprintOfShape, normalizeError } from "./fingerprint.ts";
 import { py } from "./pyre.ts";
 
 /** One row of OpenClaw's `transcript_events`, with `event_json` already parsed. */
@@ -573,12 +573,53 @@ function resolve(
 }
 
 export function summarizeSession(sessionId: string, agentId: string, rows: TranscriptRow[]): SessionSummary {
+  const run = summarize(sessionId, agentId, rows);
+  for (;;) {
+    const step = run.next();
+    if (step.done) return step.value;
+  }
+}
+
+/**
+ * `summarizeSession()` in slices of at most about `sliceMs` of work, awaiting `pause`
+ * between them. Normalizing errors is the expensive part: a real 28,775-row session
+ * took 2 s in one piece, and on the gateway that is 2 s in which no other session moves.
+ */
+export async function summarizeSessionInSlices(
+  sessionId: string,
+  agentId: string,
+  rows: TranscriptRow[],
+  pause: () => Promise<void>,
+  sliceMs = 20,
+): Promise<SessionSummary> {
+  const run = summarize(sessionId, agentId, rows);
+  let sliceStart = performance.now();
+  for (;;) {
+    const step = run.next();
+    if (step.done) return step.value;
+    if (performance.now() - sliceStart >= sliceMs) {
+      await pause();
+      sliceStart = performance.now();
+    }
+  }
+}
+
+/** The work of `summarizeSession()`, yielding after each unit that may be expensive. */
+function* summarize(sessionId: string, agentId: string, rows: TranscriptRow[]): Generator<void, SessionSummary> {
   const steps = toSteps(rows);
-  // Each failed row is fingerprinted once; resolve() looks ahead over the same rows.
+  yield;
+  // Each failed row is normalized and fingerprinted once; resolve() looks ahead over the same rows.
   const fingerprints = new Map<number, string>();
-  steps.forEach((step, index) => {
-    if (step.kind === "result" && step.isError && step.text) fingerprints.set(index, fingerprint(step.tool, step.text));
-  });
+  const shapes = new Map<number, string>();
+  for (let index = 0; index < steps.length; index++) {
+    const step = steps[index];
+    if (step.kind === "result" && step.isError && step.text) {
+      const shape = normalizeError(step.text);
+      shapes.set(index, shape);
+      fingerprints.set(index, fingerprintOfShape(step.tool, shape));
+      yield;
+    }
+  }
   // Each call's command is parsed once, however many failures look ahead at it.
   const commands = new Map<number, string | null>();
   const commandAt = (i: number) => {
@@ -594,19 +635,21 @@ export function summarizeSession(sessionId: string, agentId: string, rows: Trans
   let errorCount = 0;
   let suppressed = 0;
 
-  steps.forEach((step, index) => {
-    if (step.kind !== "result") return;
+  for (let index = 0; index < steps.length; index++) {
+    const step = steps[index];
+    if (step.kind !== "result") continue;
     if (!step.isError) {
       const seen = usedArgs.get(step.tool) ?? new Set<string>();
       for (const key of Object.keys(step.args)) seen.add(key);
       usedArgs.set(step.tool, seen);
-      return;
+      continue;
     }
-    if (!step.text) return;
+    if (!step.text) continue;
+    yield;
     errorCount++;
     if (isSelfCorrectingError(step.text)) {
       suppressed++;
-      return;
+      continue;
     }
     const fp = fingerprints.get(index)!;
     const { resolution, fixedAt } = resolve(steps, fingerprints, index, fp, step.tool, commandAt);
@@ -623,7 +666,7 @@ export function summarizeSession(sessionId: string, agentId: string, rows: Trans
       byFingerprint.set(fp, {
         fingerprint: fp,
         tool: step.tool,
-        shape: normalizeError(step.text),
+        shape: shapes.get(index)!,
         sample: step.text.slice(0, SAMPLE_CHARS),
         sampleArgs: boundedJson(step.args, ARGS_CHARS),
         count: 1,
@@ -633,7 +676,7 @@ export function summarizeSession(sessionId: string, agentId: string, rows: Trans
         droppedArgument: dropped,
         correctionArgs,
       });
-      return;
+      continue;
     }
     pattern.count++;
     pattern.seqs.push(step.seq);
@@ -641,7 +684,7 @@ export function summarizeSession(sessionId: string, agentId: string, rows: Trans
     if (pattern.occurrences.length < OCCURRENCES_KEPT) pattern.occurrences.push(occurrence);
     pattern.droppedArgument ||= dropped;
     pattern.correctionArgs ||= correctionArgs;
-  });
+  }
 
   const lastSeq = rows.reduce((max, row) => Math.max(max, row.seq), -1);
   return {

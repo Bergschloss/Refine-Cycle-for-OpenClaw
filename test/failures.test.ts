@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { aggregate, isSelfCorrectingError, missingParameters, summarizeSession } from "../src/core/failures.ts";
+import { aggregate, isSelfCorrectingError, missingParameters, summarizeSession, summarizeSessionInSlices } from "../src/core/failures.ts";
 import { fingerprint } from "../src/core/fingerprint.ts";
 import { Transcript } from "./helpers.ts";
 
@@ -355,4 +355,24 @@ test("a fix after another tool's step in between is still the fix (the Codex run
     .call("exec", {}, { ok: "done" })
     .call("set_timezone", { tz: "CET" }, { error: "unknown timezone 'CET'" });
   assert.equal(resolutionOf(again, "set_timezone").occurrences[0].resolution, "repeated");
+});
+
+test("a long session is summarized in slices that give the host its turn, with the same result", async () => {
+  const t = new Transcript().user("go");
+  for (let i = 0; i < 300; i++) {
+    t.call("Bash", { command: `make step-${i % 40}` }, i % 3 ? { error: `make: *** No rule to make target 'step-${i % 40}' at /srv/app/${i}. Stop.` } : { ok: "ok" });
+  }
+  const whole = summarizeSession("s1", "main", t.rows);
+  let pauses = 0;
+  let longest = 0;
+  let last = performance.now();
+  const sliced = await summarizeSessionInSlices("s1", "main", t.rows, async () => {
+    pauses++;
+    longest = Math.max(longest, performance.now() - last);
+    await new Promise((resolve) => setImmediate(resolve));
+    last = performance.now();
+  }, 0);
+  assert.deepEqual(sliced, whole);
+  assert.ok(pauses >= 200, `paused ${pauses} times`);
+  assert.ok(longest < 50, `longest slice ${Math.round(longest)} ms`);
 });

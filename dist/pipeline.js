@@ -7,7 +7,7 @@
  * can be refused without a model call; only one survivor per session may reach
  * the model, and only within the day's budget, which is spent before the call.
  */
-import { aggregate, summarizeSession, SUMMARY_FORMAT } from "./core/failures.js";
+import { aggregate, summarizeSessionInSlices, SUMMARY_FORMAT } from "./core/failures.js";
 import { findCoveringRule } from "./core/covered.js";
 import { lessonShape } from "./core/shape.js";
 import { buildUserMessage, parseProposal, SYSTEM_PROMPT, validateLesson } from "./core/proposal.js";
@@ -109,8 +109,8 @@ function sessionPath(sessionId) {
 function candidatePath(sessionId) {
     return `candidates/${safeName(sessionId)}.json`;
 }
-function summarizeAndStore(deps, sessionId, agentId) {
-    const summary = summarizeSession(sessionId, agentId, deps.history.readSession(sessionId));
+async function summarizeAndStore(deps, sessionId, agentId) {
+    const summary = await summarizeSessionInSlices(sessionId, agentId, await deps.history.readSession(sessionId), yieldToHost);
     deps.store.write(sessionPath(sessionId), summary);
     return summary;
 }
@@ -133,7 +133,7 @@ async function backfill(deps, agentId, except, now) {
         const stored = deps.store.read(sessionPath(sessionId));
         if (stored && stored.format === SUMMARY_FORMAT && stored.lastSeq >= lastSeq)
             continue;
-        summarizeAndStore(deps, sessionId, agentId);
+        await summarizeAndStore(deps, sessionId, agentId);
         await yieldToHost();
     }
     deps.store.write(markPath, { at: now.toISOString() });
@@ -205,7 +205,7 @@ export async function processSession(deps, sessionId, agentId) {
     await yieldToHost();
     let summary;
     try {
-        summary = summarizeAndStore(deps, sessionId, agentId);
+        summary = await summarizeAndStore(deps, sessionId, agentId);
     }
     catch (error) {
         if (error instanceof StoreError)

@@ -97,18 +97,41 @@ export function py(source, flags = "") {
     }
     return new RegExp(out, [...new Set(flags + extra + "u")].join(""));
 }
+/** The `g`/`d` (or anchored) variant of a pattern, built once: V8 compiles each RegExp object on its own. */
+const derived = new WeakMap();
+function variant(pattern, key, build) {
+    let byKey = derived.get(pattern);
+    if (!byKey)
+        derived.set(pattern, (byKey = new Map()));
+    let re = byKey.get(key);
+    if (!re)
+        byKey.set(key, (re = build()));
+    return re;
+}
 /**
  * Python `re.sub` with a callable: non-overlapping matches, left to right.
  * `pattern` must not carry the `g` flag; this adds `g` and `d` itself.
  */
 export function sub(pattern, text, replace) {
-    const flags = [...new Set(pattern.flags + "gd")].join("");
-    const re = new RegExp(pattern.source, flags);
-    let out = "";
-    let last = 0;
+    // The shared variant is used up before `replace` could reach it again: matches are collected first.
+    const re = variant(pattern, "sub", () => new RegExp(pattern.source, [...new Set(pattern.flags + "gd")].join("")));
+    re.lastIndex = 0;
+    const matches = [];
     let m;
     while ((m = re.exec(text)) !== null) {
-        const exec = m;
+        matches.push(m);
+        if (m[0].length === 0) {
+            // An empty match: move past one character, as Python does.
+            const next = m.index;
+            if (next >= text.length)
+                break;
+            const cp = text.codePointAt(next);
+            re.lastIndex = next + (cp > 0xffff ? 2 : 1);
+        }
+    }
+    let out = "";
+    let last = 0;
+    for (const exec of matches) {
         const indices = exec.indices;
         out += text.slice(last, exec.index);
         out += replace({
@@ -117,15 +140,11 @@ export function sub(pattern, text, replace) {
             span: (g) => (indices && indices[g] ? [indices[g][0], indices[g][1]] : undefined),
         });
         last = exec.index + exec[0].length;
-        if (exec[0].length === 0) {
-            // An empty match: copy one character and move past it, as Python does.
-            if (last < text.length) {
-                const cp = text.codePointAt(last);
-                const width = cp > 0xffff ? 2 : 1;
-                out += text.slice(last, last + width);
-                last += width;
-            }
-            re.lastIndex = last;
+        if (exec[0].length === 0 && last < text.length) {
+            const cp = text.codePointAt(last);
+            const width = cp > 0xffff ? 2 : 1;
+            out += text.slice(last, last + width);
+            last += width;
         }
     }
     return out + text.slice(last);
@@ -136,13 +155,13 @@ export function subText(pattern, text, replacement) {
 }
 /** True when `pattern` matches at the very start of `text` (Python `re.match`). */
 export function matchStart(pattern, text) {
-    const re = new RegExp(pattern.source, [...new Set(pattern.flags + "y")].join(""));
+    const re = variant(pattern, "start", () => new RegExp(pattern.source, [...new Set(pattern.flags + "y")].join("")));
     re.lastIndex = 0;
     return re.test(text);
 }
 /** True when `pattern` matches the whole of `text` (Python `re.fullmatch`). */
 export function fullMatch(pattern, text) {
-    const re = new RegExp(`^(?:${pattern.source})$`, pattern.flags.replace(/[gy]/g, ""));
+    const re = variant(pattern, "full", () => new RegExp(`^(?:${pattern.source})$`, pattern.flags.replace(/[gy]/g, "")));
     return re.test(text);
 }
 const SPACE_CLASS = new RegExp(`[${SPACE}]`, "u");

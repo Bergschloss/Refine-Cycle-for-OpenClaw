@@ -8,7 +8,7 @@
  * the model, and only within the day's budget, which is spent before the call.
  */
 
-import { aggregate, summarizeSession, SUMMARY_FORMAT, type AggregatePattern, type SessionPattern, type SessionSummary, type TranscriptRow } from "./core/failures.ts";
+import { aggregate, summarizeSessionInSlices, SUMMARY_FORMAT, type AggregatePattern, type SessionPattern, type SessionSummary, type TranscriptRow } from "./core/failures.ts";
 import { findCoveringRule, type Covering, type Source } from "./core/covered.ts";
 import { lessonShape } from "./core/shape.ts";
 import { buildUserMessage, parseProposal, SYSTEM_PROMPT, validateLesson } from "./core/proposal.ts";
@@ -18,7 +18,7 @@ import { safeName, StoreError, type FileStore } from "./store.ts";
 import type { Settings } from "./settings.ts";
 
 export interface History {
-  readSession(sessionId: string): TranscriptRow[];
+  readSession(sessionId: string): TranscriptRow[] | Promise<TranscriptRow[]>;
   /** The most recently active sessions, newest first, with their highest `seq`. */
   recentSessions(limit: number): Array<{ sessionId: string; lastSeq: number }>;
 }
@@ -204,8 +204,8 @@ function candidatePath(sessionId: string): string {
   return `candidates/${safeName(sessionId)}.json`;
 }
 
-function summarizeAndStore(deps: Deps, sessionId: string, agentId: string): SessionSummary {
-  const summary = summarizeSession(sessionId, agentId, deps.history.readSession(sessionId));
+async function summarizeAndStore(deps: Deps, sessionId: string, agentId: string): Promise<SessionSummary> {
+  const summary = await summarizeSessionInSlices(sessionId, agentId, await deps.history.readSession(sessionId), yieldToHost);
   deps.store.write(sessionPath(sessionId), summary);
   return summary;
 }
@@ -229,7 +229,7 @@ async function backfill(deps: Deps, agentId: string, except: string, now: Date):
     if (sessionId === except) continue;
     const stored = deps.store.read<SessionSummary>(sessionPath(sessionId));
     if (stored && stored.format === SUMMARY_FORMAT && stored.lastSeq >= lastSeq) continue;
-    summarizeAndStore(deps, sessionId, agentId);
+    await summarizeAndStore(deps, sessionId, agentId);
     await yieldToHost();
   }
   deps.store.write(markPath, { at: now.toISOString() });
@@ -306,7 +306,7 @@ export async function processSession(deps: Deps, sessionId: string, agentId: str
   await yieldToHost();
   let summary: SessionSummary;
   try {
-    summary = summarizeAndStore(deps, sessionId, agentId);
+    summary = await summarizeAndStore(deps, sessionId, agentId);
   } catch (error) {
     if (error instanceof StoreError) throw error;
     // The host's history could not be read (a missing or locked database, a new
