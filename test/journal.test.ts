@@ -301,3 +301,58 @@ test("a write that fails leaves no temp file behind", () => {
   }
   assert.deepEqual(fs.readdirSync(path.join(root, "candidates")), []);
 });
+
+
+// -- K2 (2026-09-27): tests for mutations the suite let survive ----------------------
+
+test("recovery does not undo a change made after the crashed one, and a tombstone stays one", () => {
+  const root = tempDir();
+  const store = new FileStore(root);
+  store.open();
+  activate(store, lesson("later1"), NOW);
+  activate(store, lesson("tomb01"), NOW);
+  // A disable cut short at 10:00; the lesson was changed again at 11:00 (still active).
+  const active = store.read<Record<string, unknown>>("lessons/later1.json")!;
+  store.write("lessons/later1.json", { ...active, changedAt: "2026-09-24T11:00:00.000Z" });
+  store.write("journal/crashed-disable.json", {
+    id: "crashed-disable", op: "disable", lessonId: "later1", state: "intent", at: "2026-09-24T10:00:00.000Z", previousStatus: "active",
+  });
+  // A disable intent written after the lesson was deleted (at 09:00) must not revive it as disabled.
+  const tomb = store.read<Record<string, unknown>>("lessons/tomb01.json")!;
+  store.write("lessons/tomb01.json", { ...tomb, status: "deleted", changedAt: "2026-09-24T09:00:00.000Z" });
+  store.write("journal/after-delete.json", {
+    id: "after-delete", op: "disable", lessonId: "tomb01", state: "intent", at: "2026-09-24T10:00:00.000Z", previousStatus: "deleted",
+  });
+  recover(store, new Date("2026-09-24T12:00:00Z"));
+  assert.equal(store.read<{ status: string }>("lessons/later1.json")!.status, "active");
+  assert.equal(store.read<{ status: string }>("lessons/tomb01.json")!.status, "deleted");
+});
+
+test("a holder whose stale lock was taken over does not remove the new holder's lock", () => {
+  const root = tempDir();
+  const store = new FileStore(root);
+  store.open();
+  const releaseOld = store.lock("lessons", 0);
+  const file = path.join(root, "lessons.lock");
+  const old = new Date(Date.now() - 60_000);
+  fs.utimesSync(file, old, old);
+  const releaseNew = store.lock("lessons", 0); // takes over the stale lock
+  releaseOld(); // the old holder wakes up and releases
+  assert.ok(fs.existsSync(file), "the new holder's lock is still there");
+  assert.throws(() => store.lock("lessons", 0), StoreError);
+  releaseNew();
+  assert.ok(!fs.existsSync(file));
+});
+
+test("a zero-timeout lock attempt on a held lock never sleeps", () => {
+  const root = tempDir();
+  const store = new FileStore(root);
+  store.open();
+  const release = store.lock("budget", 0);
+  const started = performance.now();
+  for (let i = 0; i < 20; i++) assert.throws(() => store.lock("budget", 0), StoreError);
+  const elapsed = performance.now() - started;
+  release();
+  // A single 25 ms pause per attempt would take at least 500 ms.
+  assert.ok(elapsed < 250, `20 attempts took ${Math.round(elapsed)} ms`);
+});

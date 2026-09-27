@@ -613,3 +613,92 @@ test("an active lesson with this lesson's id from another session is a duplicate
   assert.equal(s2.outcome, "refused_after_model");
   assert.equal(s2.refusal.rule, "duplicate");
 });
+
+
+// -- K2 (2026-09-27): tests for mutations the suite let survive ----------------------
+
+test("with a one-session bar, a failure fixed only some of the time is not self-corrected", async () => {
+  // Fails, fails again (repeated), then the fix: one occurrence repeated, one corrected.
+  const t = new Transcript()
+    .user("schedule")
+    .call("cron_add", { schedule: "* * *" }, { error: ERROR })
+    .call("cron_add", { schedule: "* * *" }, { error: ERROR })
+    .call("cron_add", { schedule: "0 3 * * *" }, { ok: "added" });
+  const llm = new ScriptedLlm(lessonReply());
+  const decision = await processSession(deps(new FakeHistory().add("s1", t), llm, { minSessions: 1 }), "s1", "main");
+  assert.equal(decision.evaluated[0].refusal, undefined);
+  assert.equal(llm.calls.length, 1);
+});
+
+test("a budget record that cannot be read stops the call instead of being overwritten", async () => {
+  const llm = new ScriptedLlm(lessonReply());
+  const d = deps(new FakeHistory().add("s1", failing(5)), llm);
+  fs.mkdirSync(path.join(d.store.root, "budget"), { recursive: true });
+  fs.writeFileSync(path.join(d.store.root, "budget", "2026-09-24.json"), "{ torn");
+  const decision = await processSession(d, "s1", "main");
+  assert.equal(decision.evaluated[0].refusal?.rule, "budget_unreadable");
+  assert.equal(llm.calls.length, 0);
+  assert.equal(fs.readFileSync(path.join(d.store.root, "budget", "2026-09-24.json"), "utf8"), "{ torn");
+});
+
+test("a busy budget lock refuses at once: no wait on the gateway thread, no unlocked spend", async () => {
+  const llm = new ScriptedLlm(lessonReply());
+  const d = deps(new FakeHistory().add("s1", failing(5)), llm);
+  const release = d.store.lock("budget");
+  const started = Date.now();
+  const decision = await processSession(d, "s1", "main");
+  release();
+  assert.ok(Date.now() - started < 1_000, `waited ${Date.now() - started} ms`);
+  assert.equal(decision.evaluated[0].refusal?.rule, "budget_busy");
+  assert.equal(llm.calls.length, 0);
+});
+
+test("a session the budget says was already called is recorded as called", async () => {
+  const llm = new ScriptedLlm(lessonReply());
+  const d = deps(new FakeHistory().add("s1", failing(5)), llm);
+  d.store.write("budget/2026-09-24.json", { day: "2026-09-24", calls: [{ sessionId: "s1", fingerprint: FP, at: "x" }] });
+  const decision = await processSession(d, "s1", "main");
+  assert.equal(decision.evaluated[0].refusal?.rule, "already_called");
+  assert.equal(decision.called, true);
+  assert.equal(llm.calls.length, 0);
+});
+
+test("the deferred sweep applies only the ending agent's lessons, and not while learning is off", async () => {
+  const history = new FakeHistory().add("s1", failing(5)).add("m1", new Transcript().user("hi"));
+  const d = deps(history, new ScriptedLlm(lessonReply()), { backfillSessions: 0 });
+  const release = d.store.lock("lessons");
+  assert.equal((await processSession(d, "s1", "ops")).outcome, "apply_deferred");
+  release();
+  await processSession(d, "m1", "main");
+  assert.equal(activeLessons(d.store).length, 0, "another agent's session does not apply it");
+  await processSession({ ...d, settings: { ...d.settings, learnEnabled: false } }, "m1", "ops");
+  assert.equal(activeLessons(d.store).length, 0, "not while learning is off");
+  await processSession(d, "m1", "ops");
+  assert.equal(activeLessons(d.store, "ops").length, 1);
+});
+
+test("a lesson pending for another agent does not hold back this agent's lesson", async () => {
+  const history = new FakeHistory().add("o1", failing(5)).add("m1", failing(5));
+  const llm = new ScriptedLlm(lessonReply(), lessonReply());
+  const d = deps(history, llm, { backfillSessions: 0 });
+  const release = d.store.lock("lessons");
+  assert.equal((await processSession(d, "o1", "ops")).outcome, "apply_deferred");
+  const mine = await processSession(d, "m1", "main");
+  release();
+  assert.notEqual(mine.evaluated[0].refusal?.rule, "lesson_pending");
+  assert.equal(llm.calls.length, 2);
+});
+
+test("recurrence is counted from the first time the lesson was shown", async () => {
+  const history = new FakeHistory().add("s1", failing(5));
+  const d = deps(history, new ScriptedLlm(lessonReply()));
+  await processSession(d, "s1", "main");
+  const [lesson] = activeLessons(d.store);
+  // failing(3): failed results at rows 2, 4 and 6. First shown after row 1, again after row 5.
+  history.add("s2", failing(3));
+  recordExposure(d.store, "s2", { text: "x", lessonIds: [lesson.id], hash: "h1" }, Transcript.time(1), new Date());
+  recordExposure(d.store, "s2", { text: "y", lessonIds: [lesson.id], hash: "h2" }, Transcript.time(5), new Date());
+  await processSession(d, "s2", "main");
+  const effect = JSON.parse(fs.readFileSync(path.join(d.store.root, "effects", "s2.json"), "utf8"));
+  assert.equal(effect.recurrence[lesson.id], 3);
+});

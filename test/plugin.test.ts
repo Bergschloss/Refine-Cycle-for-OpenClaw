@@ -291,3 +291,38 @@ test("a host whose model call throws synchronously leaves no timer and no unhand
     process.off("unhandledRejection", onUnhandled);
   }
 });
+
+
+// -- K2 (2026-09-27): tests for mutations the suite let survive ----------------------
+
+function seedLesson(stateDir: string, id: string, agentId: string): void {
+  const store = new FileStore(path.join(stateDir, "plugin-data", "refine-cycle"));
+  store.open();
+  activate(store, {
+    id, text: `When calling cron_add for ${agentId}, give five fields.`, fingerprint: "0123456789ab", tool: "cron_add",
+    createdAt: new Date().toISOString(), sourceSessionId: "s0", evidence: { sessionIds: [], eventIds: [] }, reason: "", agentId,
+  }, new Date());
+}
+
+test("chat /refine takes the host's agentId over the one a session key names", () => {
+  const stateDir = tempDir();
+  seedLesson(stateDir, "opslesson", "ops");
+  seedLesson(stateDir, "mainlesson", "main");
+  const { commands } = fakeApi(stateDir);
+  const text = (commands.get("refine")!({ args: "list", agentId: "ops", sessionKey: "agent:main:telegram:1" }) as { text: string }).text;
+  assert.match(text, /opslesson/);
+  assert.doesNotMatch(text, /mainlesson/);
+});
+
+test("chat /refine disable on a busy store answers at once instead of waiting", () => {
+  const stateDir = tempDir();
+  seedLesson(stateDir, "busylesson", "main");
+  const { commands } = fakeApi(stateDir);
+  const store = new FileStore(path.join(stateDir, "plugin-data", "refine-cycle"));
+  const release = store.lock("lessons", 0);
+  const started = Date.now();
+  const text = (commands.get("refine")!({ args: "disable busylesson", agentId: "main" }) as { text: string }).text;
+  release();
+  assert.ok(Date.now() - started < 1_000, `waited ${Date.now() - started} ms`);
+  assert.match(text, /busy/);
+});

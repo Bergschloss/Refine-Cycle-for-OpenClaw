@@ -303,3 +303,28 @@ test("the same command: where it writes, what a heredoc feeds and glued values c
   assert.equal(resolution("curl -XDELETE http://x/api/1", "curl -XGET http://x/api/1"), "unknown");
   assert.equal(resolution("curl -XDELETE http://x/api/1", "curl -v -XDELETE http://x/api/1"), "corrected");
 });
+
+
+test("the same command: a directory given to the command or cd'd into first does not make another command", () => {
+  const resolution = (failed: unknown, later: unknown) => {
+    const t = new Transcript().call("Bash", { command: failed }, { error: "exit code 1" }).call("Bash", { command: later }, { ok: "done" });
+    return summarizeSession("s1", "main", t.rows).patterns[0].occurrences[0].resolution;
+  };
+  // Running the same command in the right place is the fix.
+  assert.equal(resolution("git push", "git -C /repo push"), "corrected");
+  assert.equal(resolution("npm test", "cd /app && npm test"), "corrected");
+  assert.equal(resolution("npm test", "npm --prefix app test"), "corrected");
+  // A quoted word is the same argument as the bare word.
+  assert.equal(resolution('grep "TODO" a.txt', "grep TODO a.txt"), "corrected");
+  assert.equal(resolution('grep "TODO" a.txt', "grep TODO b.txt"), "unknown");
+});
+
+test("the same command: a call without a command on either side is compared by tool", () => {
+  const resolution = (failedArgs: Record<string, unknown>, laterArgs: Record<string, unknown>) => {
+    const t = new Transcript().call("Bash", failedArgs, { error: "exit code 1" }).call("Bash", laterArgs, { ok: "done" });
+    return summarizeSession("s1", "main", t.rows).patterns[0].occurrences[0].resolution;
+  };
+  assert.equal(resolution({ command: "npm test" }, { description: "check" }), "corrected");
+  assert.equal(resolution({ description: "check" }, { command: "npm test" }), "corrected");
+  assert.equal(resolution({}, {}), "corrected");
+});
