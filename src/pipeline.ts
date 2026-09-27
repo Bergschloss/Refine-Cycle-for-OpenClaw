@@ -574,3 +574,65 @@ export function report(store: FileStore, agentId?: string): Report {
     restatementsCaught: restatements,
   };
 }
+
+const OUTCOME_WORDS: Record<string, string> = {
+  no_failures: "no tool failures",
+  all_refused: "nothing worth a model call",
+  nothing: "the model found nothing to learn",
+  lesson: "a lesson learned",
+  refused_after_model: "the model's lesson was refused",
+  model_error: "the model call failed",
+  invalid_reply: "the model's reply could not be read",
+  model_unavailable: "no model call available",
+  apply_deferred: "a lesson waits to be saved",
+  pending: "a model call that did not finish",
+  learning_disabled: "learning is off",
+  history_unreadable: "the history could not be read",
+};
+
+const RULE_WORDS: Record<string, string> = {
+  below_bar: "did not repeat enough",
+  self_corrected: "seen in one session and fixed each time",
+  "not_lesson_shaped:transient": "a timeout or an outage",
+  "not_lesson_shaped:wrong_tool": "the agent called a tool that does not exist",
+  "not_lesson_shaped:dropped_argument": "an argument already used was left out",
+  covered_by_lesson: "an active lesson covers it",
+  lesson_over_cap: "an active lesson covers it but does not fit in the prompt",
+  withdrawn_by_user: "you disabled or deleted its lesson",
+  lesson_pending: "its lesson waits to be saved",
+  already_covered: "your instructions or skills already say it",
+  budget_spent: "the day's model calls were used up",
+  budget_busy: "another process held the budget",
+  budget_unreadable: "the budget record could not be read",
+  already_called: "this session already had its model call",
+  model_unavailable: "no model call available",
+  "after_model:restatement": "the lesson repeated your instructions",
+  "after_model:duplicate": "the lesson was already known",
+  "after_model:withdrawn_by_user": "you had withdrawn that lesson",
+  "after_model:off_topic": "the lesson did not name the failing tool",
+  "after_model:ungrounded": "the lesson named a failure that was not seen",
+  "after_model:too_long": "the lesson was too long",
+  "after_model:markup": "the lesson contained markup",
+  "after_model:empty": "the lesson was empty",
+};
+
+/** The report for people: what the loop did, in words, with the rule names kept for lookup. */
+export function describeReport(r: Report): string {
+  const counted = (entries: Record<string, number>, words: Record<string, string>) =>
+    Object.entries(entries)
+      .sort((a, b) => b[1] - a[1])
+      .map(([key, n]) => `  ${n} × ${words[key] ?? key}${words[key] ? ` (${key})` : ""}`);
+  const decided = Object.values(r.outcomes).reduce((sum, n) => sum + n, 0);
+  const others = [
+    r.lessons.disabled && `${r.lessons.disabled} disabled`,
+    r.lessons.deleted && `${r.lessons.deleted} deleted`,
+    r.lessons.draft && `${r.lessons.draft} draft`,
+  ].filter(Boolean);
+  const lines = [
+    `Lessons: ${r.lessons.active} active${others.length ? `, ${others.join(", ")}` : ""}.`,
+    `Sessions read: ${r.sessions}, ${r.sessionsWithFailures} with tool failures. Model calls: ${r.modelCalls}.`,
+  ];
+  if (decided > 0) lines.push(`Turns the loop looked at: ${decided}`, ...counted(r.outcomes, OUTCOME_WORDS));
+  if (Object.keys(r.refusals).length > 0) lines.push("Failures not turned into a lesson, and why:", ...counted(r.refusals, RULE_WORDS));
+  return lines.join("\n");
+}

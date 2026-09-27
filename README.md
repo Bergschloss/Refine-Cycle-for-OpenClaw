@@ -21,7 +21,7 @@
 ## You stay in control
 
 - At most one model call per session and three a day, on the model and account your agent already uses. The plugin has no key of its own.
-- `/refine list` shows every lesson; `/refine disable <id>` and `/refine delete <id>` take one away, and a lesson you took away is never learned again.
+- `/refine list` shows your lessons and their status; `/refine disable <id>` and `/refine delete <id>` take one away, and a lesson you took away is never learned again.
 - It never edits your `AGENTS.md`, `SOUL.md`, skills or memory. Lessons live in the plugin's own folder.
 - It does not filter your conversation or its lessons. The evidence for a lesson goes to the model your agent already uses, as your agent would send it; the lessons and the plugin's records stay on your machine.
 - If a hook fails or the store is unreadable, your agent's turn goes on as if the plugin were not there, and the log says why.
@@ -73,9 +73,9 @@ openclaw refine-cycle list
 | `/refine list` | `openclaw refine-cycle list` | Lessons and their status |
 | `/refine disable <id>` | `openclaw refine-cycle disable <id>` | Stop showing a lesson |
 | `/refine delete <id>` | `openclaw refine-cycle delete <id>` | Delete a lesson (kept as a tombstone) |
-| `/refine report` | `openclaw refine-cycle report` | What the loop decided, by rule |
+| `/refine report` | `openclaw refine-cycle report` | What the loop decided and why, in words (`--json` on the command line for the numbers) |
 
-In chat, the commands see only the lessons of the agent you are talking to.
+In chat, the commands see only the lessons of the agent you are talking to. On the command line they see every agent, and `list` says whose each lesson is; a command that did not do what was asked (an unknown id, a busy store) exits with status 1.
 
 ## Settings
 

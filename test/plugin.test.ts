@@ -326,3 +326,65 @@ test("chat /refine disable on a busy store answers at once instead of waiting", 
   assert.ok(Date.now() - started < 1_000, `waited ${Date.now() - started} ms`);
   assert.match(text, /busy/);
 });
+
+
+// -- K6 (2026-09-27): the texts a person reads --------------------------------------
+
+test("chat /refine report is written for a person, with the rule names kept", () => {
+  const stateDir = tempDir();
+  seedLesson(stateDir, "reportlesson", "main");
+  const { commands } = fakeApi(stateDir);
+  const text = (commands.get("refine")!({ args: "report", agentId: "main" }) as { text: string }).text;
+  assert.match(text, /^Lessons: 1 active\./);
+  assert.match(text, /Sessions read: 0, 0 with tool failures\. Model calls: 0\./);
+  assert.throws(() => JSON.parse(text));
+});
+
+test("the command line lists every agent's lessons with their agent, reports JSON on request, and exits 1 on failure", async () => {
+  const stateDir = tempDir();
+  seedLesson(stateDir, "opslesson", "ops");
+  const actions = new Map<string, (...args: unknown[]) => unknown>();
+  const program = {
+    command(spec: string) {
+      const name = spec.split(" ")[0];
+      const node = {
+        command: (sub: string) => program.command(sub),
+        description: () => node,
+        option: () => node,
+        action: (handler: (...args: unknown[]) => unknown) => {
+          actions.set(name, handler);
+          return node;
+        },
+      };
+      return node;
+    },
+  };
+  const api: PluginApi = {
+    id: "refine-cycle",
+    config: { plugins: { entries: { "refine-cycle": { hooks: { allowConversationAccess: true } } } } },
+    runtime: { state: { resolveStateDir: () => stateDir } },
+    logger: {},
+    on: () => {},
+    registerCli: (registrar) => registrar({ program: program as never }),
+  };
+  register(api);
+  const printed: string[] = [];
+  const log = console.log;
+  const exitCode = process.exitCode;
+  console.log = (line: string) => printed.push(line);
+  try {
+    await actions.get("list")!();
+    assert.match(printed.at(-1)!, /^opslesson \[active\] \(agent ops\) When calling cron_add/);
+    process.exitCode = undefined;
+    await actions.get("disable")!("nope");
+    assert.equal(printed.at(-1), "No lesson nope.");
+    assert.equal(process.exitCode, 1);
+    process.exitCode = undefined;
+    await actions.get("report")!({ json: true });
+    assert.equal(JSON.parse(printed.at(-1)!).lessons.active, 1);
+    assert.equal(process.exitCode, undefined);
+  } finally {
+    console.log = log;
+    process.exitCode = exitCode;
+  }
+});

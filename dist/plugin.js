@@ -19,7 +19,7 @@ import { formatBlock } from "./core/injection.js";
 import { sqliteHistory, agentDatabasePath } from "./host/history.js";
 import { readSources } from "./host/sources.js";
 import { activeLessons, allLessons, DEFAULT_AGENT, lessonAgent, recover, setStatus } from "./lessons.js";
-import { processSession, recordExposure, report } from "./pipeline.js";
+import { describeReport, processSession, recordExposure, report } from "./pipeline.js";
 import { replay } from "./replay.js";
 import { readSettings } from "./settings.js";
 import { FileStore, StoreError } from "./store.js";
@@ -234,24 +234,29 @@ export default function register(api) {
         // its model call) does not run inside a scope the host closes when this returns.
         runOutsideHostWorkScope(() => enqueue(ctx));
     });
-    /** `agentId` limits a chat command to that agent's lessons and report; the command line sees all agents. */
-    const control = (args, agentId) => {
+    /**
+     * `agentId` limits a chat command to that agent's lessons and report; the command line sees all agents.
+     * `ok` is false when the command did not do what was asked (no such lesson, a busy store, bad usage).
+     */
+    const control = (args, agentId, json = false) => {
         if (storeError)
-            return `Refine Cycle cannot use its store: ${storeError}`;
+            return { text: `Refine Cycle cannot use its store: ${storeError}`, ok: false };
         const [verb = "list", id = ""] = args.trim().split(/\s+/).filter(Boolean);
         const now = new Date();
         const mine = allLessons(store).filter((lesson) => agentId === undefined || lessonAgent(lesson) === agentId);
         if (verb === "list") {
             const lessons = mine.filter((lesson) => lesson.status !== "deleted");
             if (lessons.length === 0)
-                return "No lessons yet.";
-            return lessons.map((lesson) => `${lesson.id} [${lesson.status}] ${lesson.text}`).join("\n");
+                return { text: "No lessons yet.", ok: true };
+            // The command line lists every agent's lessons, so it says whose each one is.
+            const owner = (lesson) => (agentId === undefined ? ` (agent ${lessonAgent(lesson)})` : "");
+            return { text: lessons.map((lesson) => `${lesson.id} [${lesson.status}]${owner(lesson)} ${lesson.text}`).join("\n"), ok: true };
         }
         if (verb === "disable" || verb === "delete") {
             if (!id)
-                return `Usage: ${verb} <lesson id>`;
+                return { text: `Usage: ${verb} <lesson id>`, ok: false };
             if (!mine.some((lesson) => lesson.id === id))
-                return `No lesson ${id}.`;
+                return { text: `No lesson ${id}.`, ok: false };
             recover(store, now); // non-blocking: skipped while another process holds the lock
             let changed;
             try {
@@ -260,14 +265,16 @@ export default function register(api) {
             }
             catch (error) {
                 if (error instanceof StoreError)
-                    return "The lesson store is busy; try again in a moment.";
+                    return { text: "The lesson store is busy; try again in a moment.", ok: false };
                 throw error;
             }
-            return changed ? `Lesson ${id} ${changed.status}.` : `No lesson ${id}.`;
+            return changed ? { text: `Lesson ${id} ${changed.status}.`, ok: true } : { text: `No lesson ${id}.`, ok: false };
         }
-        if (verb === "report" || verb === "status")
-            return JSON.stringify(report(store, agentId), null, 2);
-        return "Usage: list | disable <id> | delete <id> | report";
+        if (verb === "report" || verb === "status") {
+            const numbers = report(store, agentId);
+            return { text: json ? JSON.stringify(numbers, null, 2) : describeReport(numbers), ok: true };
+        }
+        return { text: "Usage: list | disable <id> | delete <id> | report", ok: false };
     };
     api.registerCommand?.({
         name: "refine",
@@ -279,15 +286,25 @@ export default function register(api) {
             if (!agentId && !storeError) {
                 return { text: "Refine Cycle cannot tell which agent this chat belongs to. Use `openclaw refine-cycle` on the command line." };
             }
-            return { text: control(ctx?.args ?? "", agentId ?? DEFAULT_AGENT) };
+            return { text: control(ctx?.args ?? "", agentId ?? DEFAULT_AGENT).text };
         },
     });
+    /** Print a command-line result; a command that did not do what was asked exits 1, for scripts. */
+    const print = (result) => {
+        console.log(result.text);
+        if (!result.ok)
+            process.exitCode = 1;
+    };
     api.registerCli?.(({ program }) => {
         const root = program.command("refine-cycle").description("Refine Cycle: lessons learned from repeated failures");
-        root.command("list").description("List lessons").action(() => console.log(control("list")));
-        root.command("disable <id>").description("Stop injecting a lesson").action((id) => console.log(control(`disable ${String(id)}`)));
-        root.command("delete <id>").description("Delete a lesson (kept as a tombstone)").action((id) => console.log(control(`delete ${String(id)}`)));
-        root.command("report").description("What the learning loop decided, by rule").action(() => console.log(control("report")));
+        root.command("list").description("List lessons, with the agent each belongs to").action(() => print(control("list")));
+        root.command("disable <id>").description("Stop injecting a lesson").action((id) => print(control(`disable ${String(id)}`)));
+        root.command("delete <id>").description("Delete a lesson (kept as a tombstone)").action((id) => print(control(`delete ${String(id)}`)));
+        root
+            .command("report")
+            .description("What the learning loop decided, by rule; --json for the raw numbers")
+            .option("--json", "the raw numbers as JSON")
+            .action((options) => print(control("report", undefined, options?.json === true)));
         root
             .command("replay <corpus> <storeDir> [sourcesDir]")
             .description("Measurement: run the loop over a recorded corpus (JSONL) into a separate store")
