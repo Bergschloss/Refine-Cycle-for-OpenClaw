@@ -157,9 +157,13 @@ function refuse(deps, agentId, pattern, local, sources) {
     if (!(sessions >= minSessions || pattern.count >= minOccurrences)) {
         return { rule: "below_bar", detail: `${pattern.count}× in ${sessions} session(s)` };
     }
-    // A failure the agent fixed each time is not worth a lesson; one it had to "fix" as
-    // often as the occurrence bar within this very session keeps coming back, so it is.
-    if (local.count < minOccurrences &&
+    // A failure seen in this one session only, and fixed each time, is not worth a call.
+    // The recurrence bar already refuses it with the default settings; this keeps it so
+    // when the bar is lowered to one session. A failure that comes back in another
+    // session is never refused for having been fixed: the agent makes it every time,
+    // and the fix it found is the evidence the lesson is written from.
+    if (sessions === 1 &&
+        local.count < minOccurrences &&
         local.occurrences.length > 0 &&
         local.occurrences.every((o) => o.resolution === "corrected")) {
         return { rule: "self_corrected" };
@@ -265,7 +269,7 @@ export async function processSession(deps, sessionId, agentId) {
     finish({ ...base, evaluated, called: true, outcome: "pending", fingerprint: fp });
     let reply;
     try {
-        reply = await deps.llm.complete(SYSTEM_PROMPT, buildUserMessage(chosen.pattern, chosen.local.occurrences, settings.maxLessonChars), settings.proposalTimeoutMs);
+        reply = await deps.llm.complete(SYSTEM_PROMPT, buildUserMessage(chosen.pattern, chosen.local.occurrences, settings.maxLessonChars, chosen.local.correctionArgs || chosen.pattern.correctionArgs), settings.proposalTimeoutMs);
     }
     catch (error) {
         return finish({ ...base, evaluated, called: true, outcome: "model_error", fingerprint: fp, reply: String(error).slice(0, 300) });

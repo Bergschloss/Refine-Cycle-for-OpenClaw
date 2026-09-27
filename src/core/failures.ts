@@ -46,10 +46,15 @@ export interface SessionPattern {
   times: number[];
   /** The error names a parameter this tool had already been given successfully earlier in the session. */
   droppedArgument: boolean;
+  /**
+   * The arguments of the call that fixed the first corrected occurrence, bounded JSON;
+   * empty when the agent never fixed it here (and in summaries from before format 6).
+   */
+  correctionArgs?: string;
 }
 
 /** Bumped whenever extraction changes, so stored summaries from an older parser get re-read. */
-export const SUMMARY_FORMAT = 5;
+export const SUMMARY_FORMAT = 6;
 
 export interface SessionSummary {
   $v: 1;
@@ -536,6 +541,7 @@ function sameAction(failed: string | null, later: string | null): boolean {
   return failed === null || later === null || failed === later;
 }
 
+/** What followed a failure; for `corrected`, the index of the call that succeeded. */
 function resolve(
   steps: Step[],
   fingerprints: Map<number, string>,
@@ -543,21 +549,21 @@ function resolve(
   fp: string,
   tool: string,
   commandAt: (index: number) => string | null,
-): Resolution {
+): { resolution: Resolution; fixedAt?: number } {
   const end = Math.min(steps.length, index + 1 + RESOLUTION_LOOKAHEAD);
   for (let i = index + 1; i < end; i++) {
     const step = steps[i];
     if (step.kind === "user") break;
     if (step.kind !== "result") continue;
     if (step.isError) {
-      if (fingerprints.get(i) === fp) return "repeated";
+      if (fingerprints.get(i) === fp) return { resolution: "repeated" };
       continue;
     }
-    if (step.tool !== tool) return "switched";
-    if (sameAction(commandAt(index), commandAt(i))) return "corrected";
+    if (step.tool !== tool) return { resolution: "switched" };
+    if (sameAction(commandAt(index), commandAt(i))) return { resolution: "corrected", fixedAt: i };
     // The same tool succeeded at something else: the failure is not resolved yet.
   }
-  return "unknown";
+  return { resolution: "unknown" };
 }
 
 export function summarizeSession(sessionId: string, agentId: string, rows: TranscriptRow[]): SessionSummary {
@@ -597,12 +603,10 @@ export function summarizeSession(sessionId: string, agentId: string, rows: Trans
       return;
     }
     const fp = fingerprints.get(index)!;
-    const occurrence: Occurrence = {
-      seq: step.seq,
-      eventId: step.eventId,
-      toolCallId: step.callId,
-      resolution: resolve(steps, fingerprints, index, fp, step.tool, commandAt),
-    };
+    const { resolution, fixedAt } = resolve(steps, fingerprints, index, fp, step.tool, commandAt);
+    const occurrence: Occurrence = { seq: step.seq, eventId: step.eventId, toolCallId: step.callId, resolution };
+    const fixedStep = fixedAt === undefined ? undefined : steps[fixedAt];
+    const correctionArgs = fixedStep?.kind === "result" ? boundedJson(fixedStep.args, ARGS_CHARS) : "";
     const already = usedArgs.get(step.tool);
     const dropped = !!already && missingParameters(step.text).some((name) => already.has(name));
     const pattern = byFingerprint.get(fp);
@@ -618,6 +622,7 @@ export function summarizeSession(sessionId: string, agentId: string, rows: Trans
         seqs: [step.seq],
         times: [step.at],
         droppedArgument: dropped,
+        correctionArgs,
       });
       return;
     }
@@ -626,6 +631,7 @@ export function summarizeSession(sessionId: string, agentId: string, rows: Trans
     pattern.times.push(step.at);
     if (pattern.occurrences.length < OCCURRENCES_KEPT) pattern.occurrences.push(occurrence);
     pattern.droppedArgument ||= dropped;
+    pattern.correctionArgs ||= correctionArgs;
   });
 
   const lastSeq = rows.reduce((max, row) => Math.max(max, row.seq), -1);
@@ -652,6 +658,8 @@ export interface AggregatePattern {
   count: number;
   sessionIds: string[];
   droppedArgument: boolean;
+  /** A call that fixed this failure in some session, if the agent ever fixed it. */
+  correctionArgs: string;
 }
 
 /**
@@ -673,12 +681,14 @@ export function aggregate(summaries: SessionSummary[]): Map<string, AggregatePat
           count: pattern.count,
           sessionIds: [summary.sessionId],
           droppedArgument: pattern.droppedArgument,
+          correctionArgs: pattern.correctionArgs ?? "",
         });
         continue;
       }
       entry.count += pattern.count;
       if (!entry.sessionIds.includes(summary.sessionId)) entry.sessionIds.push(summary.sessionId);
       entry.droppedArgument ||= pattern.droppedArgument;
+      entry.correctionArgs ||= pattern.correctionArgs ?? "";
     }
   }
   return out;

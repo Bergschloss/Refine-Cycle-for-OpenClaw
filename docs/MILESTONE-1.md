@@ -25,7 +25,7 @@ Budget: 10–15 person-days. Nothing from the "not built" list in the README goe
 6. **Cheap refusals, before any model call.**
    - The session was already processed.
    - The failure is below the recurrence bar: `sessions_seen >= 2` or `count >= 5` (configurable).
-   - The error was self-corrected in the same session.
+   - The error was self-corrected, and it was seen in this one session only. (Changed 2026-09-27, owner decision: a failure that comes back in another session is never refused for having been fixed; the fix goes to the model as evidence. With the default bar a one-session failure fixed each time is already below the bar, so this rule only acts when `minSessions` is 1.)
    - The failure is not lesson-shaped: the agent dropped an argument it had already used, or chose the wrong tool, or hit a transient error.
    - An active lesson already covers it.
    - The day budget is spent.

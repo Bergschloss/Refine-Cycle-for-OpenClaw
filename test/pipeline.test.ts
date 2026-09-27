@@ -83,13 +83,51 @@ test("five occurrences in one session clear the bar", async () => {
   assert.equal(decision.outcome, "lesson");
 });
 
-test("a failure the agent corrected every time in this session is refused", async () => {
-  const fixed = new Transcript().call("cron_add", { schedule: "* * *" }, { error: ERROR }).call("cron_add", { schedule: "0 3 * * *" }, { ok: "added" });
+function fixedRightAway(): Transcript {
+  return new Transcript()
+    .user("schedule the backup")
+    .call("cron_add", { schedule: "* * *" }, { error: ERROR })
+    .call("cron_add", { schedule: "0 3 * * *" }, { ok: "added" })
+    .say("Scheduled.");
+}
+
+test("a failure the agent makes in every session is learned even when it fixes it each time, from its own fix", async () => {
   const llm = new ScriptedLlm(lessonReply());
-  const d = deps(new FakeHistory().add("s1", failing()).add("s2", fixed), llm);
+  const d = deps(new FakeHistory().add("s1", fixedRightAway()).add("s2", fixedRightAway()), llm);
   const decision = await processSession(d, "s2", "main");
-  assert.equal(decision.evaluated[0].refusal?.rule, "self_corrected");
+  assert.equal(decision.outcome, "lesson");
+  assert.equal(decision.evaluated[0].refusal, undefined);
+  assert.equal(llm.calls.length, 1);
+  // The successful follow-up call is shown to the model as the fix.
+  assert.match(llm.calls[0].user, /then succeeded \(the agent's own fix\): <untrusted_tool_result>\{"schedule":"0 3 \* \* \*"\}/);
+});
+
+test("a failure fixed in one session and failed uncorrected in another is learned too", async () => {
+  const llm = new ScriptedLlm(lessonReply());
+  const d = deps(new FakeHistory().add("s1", failing()).add("s2", fixedRightAway()), llm);
+  const decision = await processSession(d, "s2", "main");
+  assert.equal(decision.outcome, "lesson");
+  assert.equal(llm.calls.length, 1);
+});
+
+test("a failure seen once, in one session, and fixed right away costs no model call", async () => {
+  const llm = new ScriptedLlm(lessonReply());
+  const decision = await processSession(deps(new FakeHistory().add("s1", fixedRightAway()), llm), "s1", "main");
+  assert.equal(decision.evaluated[0].refusal?.rule, "below_bar");
   assert.equal(llm.calls.length, 0);
+  // With the bar lowered to one session, it is still not worth a call.
+  const lowered = new ScriptedLlm(lessonReply());
+  const low = await processSession(deps(new FakeHistory().add("s1", fixedRightAway()), lowered, { minSessions: 1 }), "s1", "main");
+  assert.equal(low.evaluated[0].refusal?.rule, "self_corrected");
+  assert.equal(lowered.calls.length, 0);
+});
+
+test("a failure the agent never fixed shows the model no fix", async () => {
+  const llm = new ScriptedLlm(lessonReply());
+  const d = deps(new FakeHistory().add("s1", failing()).add("s2", failing()), llm);
+  await processSession(d, "s2", "main");
+  assert.equal(llm.calls.length, 1);
+  assert.doesNotMatch(llm.calls[0].user, /then succeeded/);
 });
 
 test("transient failures and wrong-tool failures are not lesson-shaped", async () => {
