@@ -1,0 +1,59 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    # The plugin is written on Windows and runs on Linux servers: a green run on
+    # one OS proves nothing about the other (paths, line endings, file locking).
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        node-version: ["24"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+
+      # Dev dependencies only (TypeScript and Node's types); the plugin has none.
+      - run: npm ci
+
+      - run: npm run typecheck
+
+      # Test-count floor: a suite whose entry point or glob matches nothing exits 0
+      # having run zero tests. The floor sits a little under the live count; raise it
+      # only together with the tests it guards.
+      - name: Run tests
+        shell: bash
+        run: |
+          set -o pipefail
+          npm test 2>&1 | tee suite.log
+          ran=$(grep -oE 'tests [0-9]+' suite.log | tail -1 | grep -oE '[0-9]+' || echo 0)
+          floor=100
+          echo "ran=$ran floor=$floor"
+          if [ "$ran" -lt "$floor" ]; then
+            echo "::error::Test floor breached: ran $ran tests, floor is $floor."
+            exit 1
+          fi
+
+      # dist/ is what OpenClaw installs: it must be exactly the build of src/.
+      - name: dist/ matches the build
+        shell: bash
+        run: |
+          npm run build
+          git diff --exit-code --stat -- dist
