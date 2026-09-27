@@ -48,6 +48,12 @@ Tested on OpenClaw 2026.9.6 (2026.9.5 is supported). The plugin runs inside Open
 openclaw plugins install git:github.com/Bergschloss/Refine-Cycle-for-OpenClaw --accept-capabilities
 ```
 
+Once the plugin is published on ClawHub (not yet), it will also install from there, with ClawHub's review and provenance instead of the git warning:
+
+```bash
+openclaw plugins install clawhub:refine-cycle-openclaw --accept-capabilities
+```
+
 **2. Let it see your sessions.** OpenClaw gives a plugin your conversation only when you allow it. Without this, Refine Cycle stays idle and says so in the log. A running gateway picks this setting up without a restart.
 
 ```bash
