@@ -735,3 +735,101 @@ test("a validated lesson the full disk kept from being saved is named in the log
     d.logs.join("\n"),
   );
 });
+
+// -- The queue for failures that never reached the model (owner decision 2026-09-28) --
+
+function nothingReply(fp: string): string {
+  return JSON.stringify({ decision: "nothing", fingerprint: fp, lesson: "", reason: "no clear fix" });
+}
+
+/** One session with failures of several tools, in this order; `n` failures each. */
+function mixed(...tools: Array<[string, number]>): Transcript {
+  const t = new Transcript().user("do the work");
+  for (const [tool, n] of tools) for (let i = 0; i < n; i++) t.call(tool, { x: 1 }, { error: `${tool} rejected the value 'x'` });
+  return t.say("done");
+}
+const fpOf = (tool: string) => fingerprint(tool, `${tool} rejected the value 'x'`);
+
+test("a session with no failure of its own spends its call on a failure that never reached the model", async () => {
+  // s1's one call goes to alpha (more occurrences); beta passed every rule and waits.
+  const history = new FakeHistory().add("s1", mixed(["alpha", 6], ["beta", 5])).add("s2", new Transcript().user("hi").say("hello"));
+  const llm = new ScriptedLlm(nothingReply(fpOf("alpha")), nothingReply(fpOf("beta")));
+  const d = deps(history, llm, { backfillSessions: 0 });
+  assert.equal((await processSession(d, "s1", "main")).fingerprint, fpOf("alpha"));
+  const s2 = await processSession(d, "s2", "main");
+  assert.equal(s2.queued, true);
+  assert.equal(s2.fingerprint, fpOf("beta"));
+  assert.equal(s2.outcome, "nothing");
+  assert.equal(s2.evaluated.at(-1)?.queued, true);
+  assert.equal(llm.calls.length, 2);
+  assert.match(llm.calls[1].user, new RegExp(fpOf("beta")));
+});
+
+test("the queue never offers a failure the model already answered, and an empty queue costs no call", async () => {
+  const history = new FakeHistory()
+    .add("s1", mixed(["alpha", 6], ["beta", 5]))
+    .add("s2", new Transcript().user("hi"))
+    .add("s3", new Transcript().user("hi again"));
+  const llm = new ScriptedLlm(nothingReply(fpOf("alpha")), nothingReply(fpOf("beta")), nothingReply(fpOf("alpha")));
+  const d = deps(history, llm, { backfillSessions: 0 });
+  await processSession(d, "s1", "main");
+  await processSession(d, "s2", "main");
+  const s3 = await processSession(d, "s3", "main");
+  assert.equal(s3.outcome, "no_failures");
+  assert.equal(s3.called, false);
+  assert.equal(llm.calls.length, 2);
+});
+
+test("the queue does not change the budget: one call a session, the day's cap, reserved first", async () => {
+  const history = new FakeHistory().add("s1", mixed(["alpha", 6], ["beta", 5])).add("s2", new Transcript().user("hi"));
+  const llm = new ScriptedLlm(nothingReply(fpOf("alpha")), nothingReply(fpOf("beta")));
+  const d = deps(history, llm, { backfillSessions: 0, maxModelCallsPerDay: 1 });
+  await processSession(d, "s1", "main");
+  const s2 = await processSession(d, "s2", "main");
+  assert.equal(s2.outcome, "no_failures");
+  assert.equal(llm.calls.length, 1);
+  // A session that already had its call does not get a second one from the queue.
+  const again = deps(new FakeHistory().add("s1", mixed(["alpha", 6], ["beta", 5])), new ScriptedLlm(nothingReply(fpOf("alpha")), nothingReply(fpOf("beta"))), { backfillSessions: 0 });
+  await processSession(again, "s1", "main");
+  const repeat = await processSession(again, "s1", "main");
+  assert.equal(repeat.fingerprint, fpOf("alpha"));
+  assert.equal(JSON.parse(fs.readFileSync(path.join(again.store.root, "budget", "2026-09-24.json"), "utf8")).calls.length, 1);
+});
+
+test("the queue takes the oldest waiting failure, and only one the rules let through", async () => {
+  // gamma happened before beta; delta is below the bar and is never offered.
+  const history = new FakeHistory()
+    .add("s1", mixed(["gamma", 5], ["alpha", 7], ["beta", 5], ["delta", 1]))
+    .add("s2", new Transcript().user("hi"))
+    .add("s3", new Transcript().user("hi"))
+    .add("s4", new Transcript().user("hi"));
+  const llm = new ScriptedLlm(nothingReply(fpOf("alpha")), nothingReply(fpOf("gamma")), nothingReply(fpOf("beta")));
+  const d = deps(history, llm, { backfillSessions: 0 });
+  await processSession(d, "s1", "main");
+  assert.equal((await processSession(d, "s2", "main")).fingerprint, fpOf("gamma"));
+  assert.equal((await processSession(d, "s3", "main")).fingerprint, fpOf("beta"));
+  const s4 = await processSession(d, "s4", "main");
+  assert.equal(s4.called, false);
+  assert.equal(llm.calls.length, 3);
+});
+
+test("a failure whose call ended in an error stays in the queue", async () => {
+  const history = new FakeHistory()
+    .add("s1", mixed(["alpha", 6], ["beta", 5]))
+    .add("s2", new Transcript().user("hi"))
+    .add("s3", new Transcript().user("hi"));
+  let n = 0;
+  const llm: Llm = {
+    complete: async () => {
+      n++;
+      if (n === 2) throw new Error("provider down");
+      return n === 1 ? nothingReply(fpOf("alpha")) : nothingReply(fpOf("beta"));
+    },
+  };
+  const d = deps(history, llm, { backfillSessions: 0 });
+  await processSession(d, "s1", "main");
+  assert.equal((await processSession(d, "s2", "main")).outcome, "model_error");
+  const s3 = await processSession(d, "s3", "main");
+  assert.equal(s3.fingerprint, fpOf("beta"));
+  assert.equal(s3.outcome, "nothing");
+});

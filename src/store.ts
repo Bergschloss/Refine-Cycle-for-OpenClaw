@@ -14,6 +14,7 @@
  *   budget/<YYYY-MM-DD>.json  model calls spent that day
  *   effects/<id>.json         which lessons a session was shown, and whether the failure came back
  *   deferred/<id>.json        a validated lesson the lock kept from being applied, retried next run
+ *   proposed/<agent>--<fp>.json  a failure sent to the model: written with the budget reservation, completed with the answer
  *   backfill/<agent>.json     when that agent's recent sessions were last re-read
  *   replay-result.json        the output of `openclaw refine-cycle replay`, in a replay's own store
  *   <name>.lock               a cross-process lock; <name>.lock.takeover while a stale one is removed

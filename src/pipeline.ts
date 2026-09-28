@@ -52,6 +52,8 @@ export interface Evaluated {
   count: number;
   sessions: number;
   refusal?: Refusal;
+  /** Not this session's own failure: taken from the agent's queue of failures that never reached the model. */
+  queued?: true;
 }
 
 export type Outcome =
@@ -76,6 +78,8 @@ export interface Decision {
   outcome: Outcome;
   /** True once a model call was made (or started) for this session: never again for it. */
   called: boolean;
+  /** The call went to a failure from the agent's queue, not one of this session's own. */
+  queued?: boolean;
   evaluated: Evaluated[];
   fingerprint?: string;
   reply?: string;
@@ -106,8 +110,8 @@ function budgetPath(now: Date): string {
   return `budget/${now.toISOString().slice(0, 10)}.json`;
 }
 
-/** Spend one call before making it. False when the day is spent or its record cannot be trusted. */
-function reserveCall(store: FileStore, now: Date, max: number, sessionId: string, fingerprint: string): Refusal | null {
+/** Spend one call before making it, and mark its failure proposed. A refusal when the day is spent or its record cannot be trusted. */
+function reserveCall(store: FileStore, now: Date, max: number, sessionId: string, agentId: string, fingerprint: string): Refusal | null {
   let release: () => void;
   try {
     release = store.lock("budget", 0);
@@ -116,10 +120,23 @@ function reserveCall(store: FileStore, now: Date, max: number, sessionId: string
     throw error;
   }
   try {
-    return reserveLocked(store, now, max, sessionId, fingerprint);
+    const refusal = reserveLocked(store, now, max, sessionId, fingerprint);
+    // Written under the same lock, right after the budget: a call spent is a failure
+    // proposed, and the queue never offers it again as a failure nobody has seen.
+    if (!refusal) store.write(proposedPath(agentId, fingerprint), { agentId, fingerprint, sessionId, at: now.toISOString() });
+    return refusal;
   } finally {
     release();
   }
+}
+
+/**
+ * Without the lock, whether this session could still get its call today. Only a
+ * shortcut before the queue's scan: the reservation itself decides, under the lock.
+ */
+function callLeft(store: FileStore, now: Date, max: number, sessionId: string): boolean {
+  const calls = store.read<BudgetDay>(budgetPath(now))?.calls ?? [];
+  return calls.length < max && !calls.some((call) => call.sessionId === sessionId);
 }
 
 function reserveLocked(store: FileStore, now: Date, max: number, sessionId: string, fingerprint: string): Refusal | null {
@@ -135,6 +152,134 @@ function reserveLocked(store: FileStore, now: Date, max: number, sessionId: stri
     calls: [...calls, { sessionId, fingerprint, at: now.toISOString() }],
   });
   return null;
+}
+
+// -- Proposed marks and the queue ---------------------------------------------------
+
+/** How the model answered for a failure: a lesson (valid or not), nothing, an unreadable reply, or no answer (an error). */
+export type Answer = "lesson" | "nothing" | "invalid" | "error";
+
+/** A failure that was sent to the model: written when its call is reserved, completed with the answer. */
+export interface ProposedMark {
+  agentId: string;
+  fingerprint: string;
+  /** The session that spent the call. */
+  sessionId: string;
+  at: string;
+  answer?: Answer;
+  answeredAt?: string;
+  /** The sessions the failure had been seen in when the model answered. */
+  sessionIds?: string[];
+}
+
+function proposedPath(agentId: string, fingerprint: string): string {
+  return `proposed/${safeName(`${agentId}--${fingerprint}`)}.json`;
+}
+
+export function readProposed(store: FileStore, agentId: string, fingerprint: string): ProposedMark | undefined {
+  const mark = store.read<ProposedMark>(proposedPath(agentId, fingerprint));
+  return mark && mark.agentId === agentId && mark.fingerprint === fingerprint ? mark : undefined;
+}
+
+function markAnswered(deps: Deps, agentId: string, fingerprint: string, answer: Answer, sessionIds: string[], now: Date): void {
+  const mark = readProposed(deps.store, agentId, fingerprint);
+  if (!mark) return;
+  try {
+    deps.store.write(proposedPath(agentId, fingerprint), { ...mark, answer, answeredAt: now.toISOString(), sessionIds: sessionIds.slice(0, 200) });
+  } catch (error) {
+    // Bookkeeping for the queue and the pause only: the answer itself (a lesson above
+    // all) must still be saved. Without the mark the failure may be offered once more.
+    deps.log(`could not record the model's answer for ${fingerprint}: ${String(error)}`);
+  }
+}
+
+/**
+ * Has the model had its say on this failure? A call that ended in an error, or that a
+ * crash cut short, gave no answer: that failure may still be offered from the queue.
+ */
+function answeredBefore(mark: ProposedMark | undefined): boolean {
+  return !!mark?.answer && mark.answer !== "error";
+}
+
+/** When a failure was first seen, over every session of the agent (ms; +Infinity when the host gave no time). */
+function firstSeen(summaries: SessionSummary[]): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const summary of summaries) {
+    for (const pattern of summary.patterns) {
+      // A loop, not Math.min(...times): `times` is unbounded and a spread can overflow the stack.
+      let first = Number.POSITIVE_INFINITY;
+      for (const time of Array.isArray(pattern.times) ? pattern.times : []) if (time >= 0 && time < first) first = time;
+      out.set(pattern.fingerprint, Math.min(out.get(pattern.fingerprint) ?? Number.POSITIVE_INFINITY, first));
+    }
+  }
+  return out;
+}
+
+/** The failure's own record in the latest session it was seen in: the evidence the model is shown. */
+function latestLocal(summaries: SessionSummary[], fingerprint: string): SessionPattern | undefined {
+  let best: { local: SessionPattern; at: number } | undefined;
+  for (const summary of summaries) {
+    const local = summary.patterns.find((pattern) => pattern.fingerprint === fingerprint);
+    if (!local) continue;
+    let at = -1;
+    for (const time of Array.isArray(local.times) ? local.times : []) if (time > at) at = time;
+    if (!best || at >= best.at) best = { local, at };
+  }
+  return best?.local;
+}
+
+/**
+ * The oldest failure of the agent that passes every rule and was never answered by
+ * the model: what a session with nothing of its own spends its call on. Cheap filters
+ * first (the bar, the mark), the full refusal rules only for the survivors, oldest first.
+ */
+async function fromQueue(
+  deps: Deps,
+  agentId: string,
+  patterns: Map<string, AggregatePattern>,
+  summaries: SessionSummary[],
+  sources: () => Source[],
+): Promise<{ pattern: AggregatePattern; local: SessionPattern } | null> {
+  for (const { pattern, local } of queueCandidates(deps, agentId, patterns, summaries)) {
+    await yieldToHost();
+    if (!refuse(deps, agentId, pattern, local, sources)) return { pattern, local };
+  }
+  return null;
+}
+
+function queueCandidates(
+  deps: Deps,
+  agentId: string,
+  patterns: Map<string, AggregatePattern>,
+  summaries: SessionSummary[],
+): Array<{ pattern: AggregatePattern; local: SessionPattern }> {
+  const { minSessions, minOccurrences } = deps.settings;
+  const seen = firstSeen(summaries);
+  const out: Array<{ pattern: AggregatePattern; local: SessionPattern; at: number }> = [];
+  for (const pattern of patterns.values()) {
+    if (!(pattern.sessionIds.length >= minSessions || pattern.count >= minOccurrences)) continue;
+    if (answeredBefore(readProposed(deps.store, agentId, pattern.fingerprint))) continue;
+    const local = latestLocal(summaries, pattern.fingerprint);
+    if (local) out.push({ pattern, local, at: seen.get(pattern.fingerprint) ?? Number.POSITIVE_INFINITY });
+  }
+  return out.sort((a, b) => a.at - b.at || a.pattern.fingerprint.localeCompare(b.pattern.fingerprint));
+}
+
+/**
+ * How many failures wait in the agent's queue: past the bar, not refused, never
+ * answered by the model. Reads the instruction files, so it is for `status`, not the hot path.
+ */
+export async function queueLength(deps: Deps, agentId: string): Promise<number> {
+  const summaries = await agentSummaries(deps.store, agentId);
+  const patterns = aggregate(summaries);
+  let cached: Source[] | null = null;
+  const sources = () => (cached ??= deps.sources());
+  let n = 0;
+  for (const { pattern, local } of queueCandidates(deps, agentId, patterns, summaries)) {
+    await yieldToHost();
+    if (!refuse(deps, agentId, pattern, local, sources)) n++;
+  }
+  return n;
 }
 
 // -- Effects ----------------------------------------------------------------------
@@ -324,7 +469,9 @@ export async function processSession(deps: Deps, sessionId: string, agentId: str
   await applyDeferred(deps, agentId, now);
   updateRecurrence(store, summary);
 
-  const base = { sessionId, agentId, at: now.toISOString(), called: false, evaluated: [] as Evaluated[] };
+  const base: Pick<Decision, "sessionId" | "agentId" | "at" | "called" | "evaluated" | "queued"> = {
+    sessionId, agentId, at: now.toISOString(), called: false, evaluated: [],
+  };
   const prior = store.read<Decision>(candidatePath(sessionId));
   if (prior?.called) return prior;
   const finish = (decision: Decision): Decision => {
@@ -333,9 +480,9 @@ export async function processSession(deps: Deps, sessionId: string, agentId: str
   };
 
   if (!settings.learnEnabled) return finish({ ...base, outcome: "learning_disabled" });
-  if (summary.patterns.length === 0) return finish({ ...base, outcome: "no_failures" });
 
-  const patterns = aggregate(await agentSummaries(store, agentId));
+  const summaries = await agentSummaries(store, agentId);
+  const patterns = aggregate(summaries);
   let cachedSources: Source[] | null = null;
   const sources = () => (cachedSources ??= deps.sources());
 
@@ -363,14 +510,34 @@ export async function processSession(deps: Deps, sessionId: string, agentId: str
       break;
     }
   }
-  if (!chosen) return finish({ ...base, evaluated, outcome: "all_refused" });
+  // Nothing of its own worth the call: the session spends it on the oldest failure of
+  // this agent that passed every rule but never reached the model, because the one
+  // call of each session it appeared in went to another failure (owner decision 2026-09-28).
+  let queued = false;
+  if (!chosen && deps.llm && callLeft(store, now, settings.maxModelCallsPerDay, sessionId)) {
+    const next = await fromQueue(deps, agentId, patterns, summaries, sources);
+    if (next) {
+      chosen = next;
+      queued = true;
+      evaluated.push({
+        fingerprint: next.pattern.fingerprint,
+        tool: next.pattern.tool,
+        shape: next.pattern.shape.slice(0, 300),
+        count: next.pattern.count,
+        sessions: next.pattern.sessionIds.length,
+        queued: true,
+      });
+    }
+  }
+  if (!chosen) return finish({ ...base, evaluated, outcome: summary.patterns.length === 0 ? "no_failures" : "all_refused" });
   const last = evaluated[evaluated.length - 1];
+  if (queued) base.queued = true;
 
   if (!deps.llm) {
     last.refusal = { rule: "model_unavailable" };
     return finish({ ...base, evaluated, outcome: "model_unavailable" });
   }
-  const budget = reserveCall(store, now, settings.maxModelCallsPerDay, sessionId, chosen.pattern.fingerprint);
+  const budget = reserveCall(store, now, settings.maxModelCallsPerDay, sessionId, agentId, chosen.pattern.fingerprint);
   if (budget) {
     last.refusal = budget;
     return finish({ ...base, evaluated, outcome: "all_refused", called: budget.rule === "already_called" });
@@ -378,6 +545,7 @@ export async function processSession(deps: Deps, sessionId: string, agentId: str
 
   const fp = chosen.pattern.fingerprint;
   finish({ ...base, evaluated, called: true, outcome: "pending", fingerprint: fp });
+  const answered = (answer: Answer) => markAnswered(deps, agentId, fp, answer, chosen.pattern.sessionIds, now);
   let reply: string;
   try {
     reply = await deps.llm.complete(
@@ -391,10 +559,12 @@ export async function processSession(deps: Deps, sessionId: string, agentId: str
       settings.proposalTimeoutMs,
     );
   } catch (error) {
+    answered("error");
     return finish({ ...base, evaluated, called: true, outcome: "model_error", fingerprint: fp, reply: String(error).slice(0, 300) });
   }
   const called = { ...base, evaluated, called: true, fingerprint: fp, reply: reply.slice(0, REPLY_KEPT_CHARS) };
   const proposal = parseProposal(reply);
+  answered(!proposal ? "invalid" : proposal.decision);
   if (!proposal) return finish({ ...called, outcome: "invalid_reply" });
   if (proposal.decision === "nothing") return finish({ ...called, outcome: "nothing" });
 
@@ -524,6 +694,8 @@ export interface Report {
   /** Every refused failure, by rule, counted once per session it was evaluated in. */
   refusals: Record<string, number>;
   modelCalls: number;
+  /** Of those, calls spent on a failure from the queue: one that never reached the model in its own sessions. */
+  queuedCalls: number;
   lessons: { active: number; disabled: number; deleted: number; draft: number };
   restatementsCaught: number;
 }
@@ -565,6 +737,7 @@ export function report(store: FileStore, agentId?: string): Report {
     outcomes,
     refusals,
     modelCalls: decisions.filter((d) => d.called).length,
+    queuedCalls: decisions.filter((d) => d.called && d.queued).length,
     lessons,
     restatementsCaught: restatements,
   };
@@ -624,7 +797,8 @@ export function describeReport(r: Report): string {
   ].filter(Boolean);
   const lines = [
     `Lessons: ${r.lessons.active} active${others.length ? `, ${others.join(", ")}` : ""}.`,
-    `Sessions read: ${r.sessions}, ${r.sessionsWithFailures} with tool failures. Model calls: ${r.modelCalls}.`,
+    `Sessions read: ${r.sessions}, ${r.sessionsWithFailures} with tool failures. Model calls: ${r.modelCalls}` +
+      (r.queuedCalls ? `, ${r.queuedCalls} of them on a failure that had waited in the queue.` : "."),
   ];
   if (decided > 0) lines.push(`Turns the loop looked at: ${decided}`, ...counted(r.outcomes, OUTCOME_WORDS));
   if (Object.keys(r.refusals).length > 0) lines.push("Failures not turned into a lesson, and why:", ...counted(r.refusals, RULE_WORDS));

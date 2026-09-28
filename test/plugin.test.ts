@@ -462,8 +462,14 @@ test("a lesson learned with no chat on the turn and none known is not sent, and 
 test("the last chat is remembered across turns and restarts", async () => {
   const stateDir = tempDir();
   const error = "cron expression '* * *' has 3 fields, expected 5";
-  const failing = () => new Transcript().user("schedule it").call("cron_add", { schedule: "* * *" }, { error });
-  writeAgentDb(stateDir, { chatty: new Transcript().user("hi"), s1: failing(), s2: failing() });
+  // Five failures in one session: over the bar without another session, so the chatty
+  // turn (no backfill) has no queued failure to spend its call on.
+  const failing = () => {
+    const t = new Transcript().user("schedule it");
+    for (let i = 0; i < 5; i++) t.call("cron_add", { schedule: "* * *" }, { error });
+    return t;
+  };
+  writeAgentDb(stateDir, { chatty: new Transcript().user("hi"), s1: failing() });
   const sent: Array<Record<string, unknown>> = [];
   const loadAdapter = async (id: string) => (id === "telegram" ? { sendText: async (ctx: Record<string, unknown>) => void sent.push(ctx) } : undefined);
   const reply = async () => ({
@@ -475,11 +481,11 @@ test("the last chat is remembered across turns and restarts", async () => {
     }),
   });
   // A plain Telegram turn: nothing to learn, but the chat is remembered...
-  fakeApi(stateDir, reply, true, undefined, {}, loadAdapter).hooks.get("agent_end")!.handler({}, telegramTurn("chatty"));
+  fakeApi(stateDir, reply, true, undefined, { backfillSessions: 0 }, loadAdapter).hooks.get("agent_end")!.handler({}, telegramTurn("chatty"));
   await settle();
   assert.equal(sent.length, 0);
   // ...by a gateway started afresh, whose next turn comes from a cron job.
-  fakeApi(stateDir, reply, true, undefined, {}, loadAdapter).hooks.get("agent_end")!.handler({}, { sessionId: "s1", agentId: "main" });
+  fakeApi(stateDir, reply, true, undefined, { backfillSessions: 0 }, loadAdapter).hooks.get("agent_end")!.handler({}, { sessionId: "s1", agentId: "main" });
   await settle();
   assert.equal(sent.length, 1);
   assert.equal(sent[0].to, "4242");
