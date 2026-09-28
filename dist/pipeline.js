@@ -114,10 +114,11 @@ export function pausedUntil(mark, pattern, now) {
 }
 /**
  * Has the model had its say on this failure? A call that ended in an error, or that a
- * crash cut short, gave no answer: that failure may still be offered from the queue.
+ * crash cut short, gave no answer, and a dry run's lesson was not saved: that failure
+ * may still be offered from the queue.
  */
 function answeredBefore(mark) {
-    return !!mark?.answer && mark.answer !== "error";
+    return !!mark?.answer && mark.answer !== "error" && mark.answer !== "preview";
 }
 /** When a failure was first seen, over every session of the agent (ms; +Infinity when the host gave no time). */
 function firstSeen(summaries) {
@@ -454,7 +455,7 @@ function refuse(deps, agentId, pattern, local, sources) {
         return { rule: "already_covered", covering };
     return null;
 }
-export async function processSession(deps, sessionId, agentId) {
+export async function processSession(deps, sessionId, agentId, options = {}) {
     const { store, settings } = deps;
     const now = deps.now();
     const recovered = recover(store, now);
@@ -494,8 +495,9 @@ export async function processSession(deps, sessionId, agentId) {
         sessionId, agentId, at: now.toISOString(), called: false, evaluated: [],
     };
     const prior = store.read(candidatePath(sessionId));
+    // Returned, not stored: the caller learns that this is the session's earlier decision.
     if (prior?.called)
-        return prior;
+        return { ...prior, earlier: true };
     const finish = (decision) => {
         store.write(candidatePath(sessionId), decision);
         return decision;
@@ -568,7 +570,7 @@ export async function processSession(deps, sessionId, agentId) {
     const answered = (answer) => markAnswered(deps, agentId, fp, answer, chosen.pattern.sessionIds, now);
     let reply;
     try {
-        reply = await deps.llm.complete(SYSTEM_PROMPT, buildUserMessage(chosen.pattern, chosen.local.occurrences, settings.maxLessonChars, chosen.local.correctionArgs || chosen.pattern.correctionArgs), settings.proposalTimeoutMs);
+        reply = await deps.llm.complete(SYSTEM_PROMPT, buildUserMessage(chosen.pattern, chosen.local.occurrences, settings.maxLessonChars, chosen.local.correctionArgs || chosen.pattern.correctionArgs, options.reason ?? ""), settings.proposalTimeoutMs);
     }
     catch (error) {
         answered("error");
@@ -576,13 +578,22 @@ export async function processSession(deps, sessionId, agentId) {
     }
     const called = { ...base, evaluated, called: true, fingerprint: fp, reply: reply.slice(0, REPLY_KEPT_CHARS) };
     const proposal = parseProposal(reply);
-    answered(!proposal ? "invalid" : proposal.decision);
+    // A dry run's lesson is not saved, so the failure has not had its answer: the queue may still offer it.
+    answered(!proposal ? "invalid" : proposal.decision === "lesson" && options.dryRun ? "preview" : proposal.decision);
     if (!proposal)
         return finish({ ...called, outcome: "invalid_reply" });
     if (proposal.decision === "nothing")
         return finish({ ...called, outcome: "nothing" });
     const known = allLessons(store).filter((lesson) => lessonAgent(lesson) === agentId && lesson.status !== "draft");
     const validation = validateLesson(proposal, fp, chosen.pattern.tool, known, sources(), settings.maxLessonChars);
+    if (options.dryRun) {
+        return finish({
+            ...called,
+            outcome: "dry_run",
+            lessonText: proposal.lesson,
+            preview: { wouldSave: validation.ok, ...(validation.ok ? {} : { rule: validation.rule }) },
+        });
+    }
     if (!validation.ok) {
         return finish({
             ...called,
@@ -759,6 +770,7 @@ const OUTCOME_WORDS = {
     pending: "a model call that did not finish",
     learning_disabled: "learning is off",
     history_unreadable: "the history could not be read",
+    dry_run: "a dry run: a lesson was proposed and not saved",
 };
 const RULE_WORDS = {
     below_bar: "did not repeat enough",
@@ -921,5 +933,46 @@ export function describeStatus(s, oneAgent) {
         lines.push("blockers: none — learning and injection are active");
     if (s.warnings.length)
         lines.push("warnings:", ...s.warnings.map((w) => `  ⚠ ${w}`));
+    return lines.join("\n");
+}
+// -- A pass started by hand -------------------------------------------------------
+/** One decision in words, for the answer to `/refine run`, `session` and `dry-run`. */
+export function describePass(d, dryRun = false) {
+    const head = dryRun ? "🔍 Dry run — nothing saved." : `${BRAND} — pass over session ${d.sessionId}:`;
+    const lines = [head];
+    if (dryRun)
+        lines.push(`session: ${d.sessionId}`);
+    if (d.earlier) {
+        lines.push(`this session already had its model call (${OUTCOME_WORDS[d.outcome] ?? d.outcome}); a session gets one`);
+        return lines.join("\n");
+    }
+    const chosen = d.fingerprint ? d.evaluated.find((e) => e.fingerprint === d.fingerprint) : undefined;
+    if (chosen) {
+        lines.push(`failure: ${chosen.tool || "(unknown tool)"} (${chosen.fingerprint}), ${chosen.count}× in ${chosen.sessions} session(s)${chosen.queued ? ", from the queue" : ""}`);
+    }
+    if (d.outcome === "dry_run") {
+        lines.push(`lesson: ${d.lessonText ?? ""}`);
+        lines.push(d.preview?.wouldSave ? "would be saved: yes" : `would be saved: no — ${RULE_WORDS[`after_model:${d.preview?.rule}`] ?? d.preview?.rule ?? "refused"}`);
+    }
+    else if (d.outcome === "lesson") {
+        lines.push(`lesson learned: ${d.lessonText ?? ""}`);
+    }
+    else if (d.outcome === "nothing") {
+        lines.push("the model found nothing to learn");
+    }
+    else if (d.outcome === "refused_after_model" && d.refusal) {
+        lines.push(`the model's lesson was refused: ${RULE_WORDS[`after_model:${d.refusal.rule}`] ?? d.refusal.rule}`);
+    }
+    else {
+        lines.push(OUTCOME_WORDS[d.outcome] ?? d.outcome);
+    }
+    // Why nothing reached the model, in the words the report uses.
+    if (!d.called || d.outcome === "all_refused") {
+        for (const entry of d.evaluated.filter((e) => e.refusal).slice(0, 5)) {
+            lines.push(`  ${entry.tool || "?"}: ${RULE_WORDS[entry.refusal.rule] ?? entry.refusal.rule}${entry.refusal.detail ? ` (${entry.refusal.detail})` : ""}`);
+        }
+    }
+    if (d.reply && (d.outcome === "model_error" || d.outcome === "history_unreadable"))
+        lines.push(`  ${d.reply.slice(0, 200)}`);
     return lines.join("\n");
 }

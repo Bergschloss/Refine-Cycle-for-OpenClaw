@@ -76,6 +76,9 @@ export function sqliteHistory(file: string, pause: () => Promise<void> = () => n
         db.close();
       }
     },
+    hasSession(sessionId) {
+      return withDatabase(file, (db) => db.prepare("SELECT 1 FROM transcript_events WHERE session_id = ? LIMIT 1").get(sessionId) !== undefined);
+    },
     recentSessions(limit) {
       if (limit <= 0) return [];
       return withDatabase(file, (db) =>

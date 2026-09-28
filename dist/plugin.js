@@ -19,7 +19,7 @@ import { formatBlock } from "./core/injection.js";
 import { sqliteHistory, agentDatabasePath } from "./host/history.js";
 import { readSources } from "./host/sources.js";
 import { activeLessons, allLessons, DEFAULT_AGENT, lessonAgent, recover, setStatus } from "./lessons.js";
-import { audit, describeAudit, describeReport, describeStatus, knownAgents, processSession, recordExposure, report, status } from "./pipeline.js";
+import { audit, describeAudit, describePass, describeReport, describeStatus, knownAgents, processSession, recordExposure, report, status } from "./pipeline.js";
 import { replay } from "./replay.js";
 import { readSettings } from "./settings.js";
 import { lessonNotice } from "./core/notice.js";
@@ -29,6 +29,8 @@ function commandAgent(ctx) {
     return ctx?.agentId || /^agent:([^:]+):/i.exec(ctx?.sessionKey ?? "")?.[1] || undefined;
 }
 const PLUGIN_DIR = "refine-cycle";
+/** How long a chat command waits for its pass before it answers "started" and sends the result later. Tests shorten it. */
+export const timing = { chatWaitMs: 10_000 };
 const PROMPT_HOOK_TIMEOUT_MS = 2_000;
 const MAX_BLOCKS_PER_SESSION = 20;
 const MAX_SESSIONS_REMEMBERED = 500;
@@ -237,6 +239,27 @@ export default function register(api) {
         }
         return turn;
     };
+    /** Send one message to a chat; false (and a log line) when there is no chat or the channel takes none. */
+    const say = async (chat, text, what) => {
+        if (!chat) {
+            log(`${what}: no chat to tell (the agent has not been talked to from a channel)`);
+            return false;
+        }
+        try {
+            const adapter = await api.runtime?.channel?.outbound?.loadAdapter?.(chat.channel);
+            if (!adapter?.sendText) {
+                log(`${what}: channel ${chat.channel} cannot take a message from a plugin`);
+                return false;
+            }
+            await adapter.sendText({ cfg: api.config, to: chat.to, text, accountId: chat.accountId ?? null });
+            log(`${what}: told the user on ${chat.channel}`);
+            return true;
+        }
+        catch (error) {
+            warn(`${what}: could not tell the user on ${chat.channel}: ${String(error)}`);
+            return false;
+        }
+    };
     /**
      * Tell the user that new lessons were learned: one line, in the chat they are talking
      * from. Once per run that activated lessons (the caller compares the active lessons
@@ -245,25 +268,30 @@ export default function register(api) {
     const announce = async (agentId, lessonIds, chat) => {
         if (!settings.notifyOnLesson || lessonIds.length === 0)
             return;
-        const which = lessonIds.join(", ");
-        if (!chat) {
-            log(`lesson ${which}: no chat to tell (the agent has not been talked to from a channel)`);
-            return;
-        }
-        try {
-            const adapter = await api.runtime?.channel?.outbound?.loadAdapter?.(chat.channel);
-            if (!adapter?.sendText) {
-                log(`lesson ${which}: channel ${chat.channel} cannot take a message from a plugin`);
-                return;
-            }
-            const block = formatBlock(activeLessons(store, agentId));
-            const text = lessonNotice(block?.text.length ?? 0, settings.maxInjectedChars);
-            await adapter.sendText({ cfg: api.config, to: chat.to, text, accountId: chat.accountId ?? null });
-            log(`lesson ${which}: told the user on ${chat.channel}`);
-        }
-        catch (error) {
-            warn(`lesson ${which}: could not tell the user on ${chat.channel}: ${String(error)}`);
-        }
+        const block = formatBlock(activeLessons(store, agentId));
+        await say(chat, lessonNotice(block?.text.length ?? 0, settings.maxInjectedChars), `lesson ${lessonIds.join(", ")}`);
+    };
+    /** Run `job` after everything queued before it: one learning pass at a time in this process. */
+    const schedule = (job) => {
+        const run = queue.then(job);
+        queue = run.then(() => undefined, () => undefined);
+        return run;
+    };
+    /** One learning pass over one session, then the lesson message for whatever it activated. */
+    const learn = async (agentId, sessionId, workspaceDir, turnChat, options = {}) => {
+        const chat = currentChat(agentId, turnChat);
+        const before = new Set(activeLessons(store, agentId).map((lesson) => lesson.id));
+        const shown = injected.get(sessionId) ?? [];
+        injected.delete(sessionId);
+        for (const { block, shownAtMs } of shown)
+            recordExposure(store, sessionId, block, shownAtMs, new Date());
+        const decision = await processSession(depsFor(agentId, workspaceDir), sessionId, agentId, options);
+        if (decision.outcome !== "no_failures")
+            log(`session ${sessionId}: ${decision.outcome}`);
+        // Every lesson that became active during this run, whichever way it got there
+        // (this session, a deferred one, a recovered activation).
+        await announce(agentId, activeLessons(store, agentId).filter((lesson) => !before.has(lesson.id)).map((lesson) => lesson.id), chat);
+        return decision;
     };
     const enqueue = (ctx) => {
         const sessionId = ctx.sessionId;
@@ -275,27 +303,21 @@ export default function register(api) {
         if (workspaceDir)
             workspaces.set(agentId, workspaceDir);
         const turnChat = ctx.channel && ctx.chatId ? { channel: ctx.channel, to: ctx.chatId, ...(ctx.accountId ? { accountId: ctx.accountId } : {}) } : null;
-        queue = queue.then(async () => {
+        void schedule(async () => {
             queued.delete(sessionId);
             try {
-                const chat = currentChat(agentId, turnChat);
-                const before = new Set(activeLessons(store, agentId).map((lesson) => lesson.id));
-                const shown = injected.get(sessionId) ?? [];
-                injected.delete(sessionId);
-                for (const { block, shownAtMs } of shown)
-                    recordExposure(store, sessionId, block, shownAtMs, new Date());
-                const decision = await processSession(depsFor(agentId, workspaceDir), sessionId, agentId);
-                if (decision.outcome !== "no_failures")
-                    log(`session ${sessionId}: ${decision.outcome}`);
-                // Every lesson that became active during this run, whichever way it got there
-                // (this session, a deferred one, a recovered activation).
-                await announce(agentId, activeLessons(store, agentId).filter((lesson) => !before.has(lesson.id)).map((lesson) => lesson.id), chat);
+                await learn(agentId, sessionId, workspaceDir, turnChat);
             }
             catch (error) {
                 warn(`learning skipped for ${sessionId}: ${String(error)}`);
             }
         });
     };
+    /**
+     * A pass started by hand: queued behind the automatic ones, outside the host's work
+     * scope. The same budget and rules apply; only the session and the focus are chosen.
+     */
+    const passByHand = (agentId, sessionId, options) => runOutsideHostWorkScope(() => schedule(() => learn(agentId, sessionId, workspaceFor(agentId), null, options)));
     api.on("agent_end", (_event, ctx) => {
         if (storeError || !ctx)
             return;
@@ -319,7 +341,7 @@ export default function register(api) {
         const name = typeof configured === "string" ? configured : configured?.primary;
         return `${name || "the host's default"} (the default agent's model: OpenClaw chooses it, the plugin sends none)`;
     };
-    const USAGE = "Usage: list | status | audit | report | disable <id> | delete <id>";
+    const USAGE = "Usage: list | status | audit | report | run [reason] | session <id> [reason] | dry-run [session <id>] [reason] | disable <id> | delete <id>";
     /**
      * One place for chat and command line. `ok` is false when the command did not do what
      * was asked (no such lesson, a busy store, bad usage), so the command line can exit 1.
@@ -384,11 +406,82 @@ export default function register(api) {
             }, (agent) => depsFor(agent));
             return { text: scope.json ? JSON.stringify(s, null, 2) : describeStatus(s, agentId !== undefined), ok: true };
         }
+        if (verb === "run" || verb === "session" || verb === "dry-run") {
+            return passCommand(args, scope);
+        }
         return { text: USAGE, ok: false };
+    };
+    /**
+     * `run [reason]`, `session <id> [reason]`, `dry-run [session <id>] [reason]`. In chat the
+     * answer comes within the host's command time: the pass itself runs in the background,
+     * and a result not ready in time is sent to the chat when it is.
+     */
+    const passCommand = async (args, scope) => {
+        const words = args.trim().split(/\s+/).filter(Boolean);
+        const verb = words[0];
+        const dryRun = verb === "dry-run";
+        let rest = words.slice(1);
+        let sessionId;
+        if (verb === "session" || (dryRun && rest[0] === "session")) {
+            if (dryRun)
+                rest = rest.slice(1);
+            sessionId = rest[0];
+            rest = rest.slice(1);
+            if (!sessionId)
+                return { text: `Usage: ${dryRun ? "dry-run session <id> [reason]" : "session <id> [reason]"}`, ok: false };
+        }
+        else {
+            sessionId = scope.sessionId;
+            if (!sessionId) {
+                return {
+                    text: scope.agentId === undefined
+                        ? "The command line has no current session: use `session <id> [reason]` or `dry-run session <id> [reason]`."
+                        : "This chat has no session the host names; use `/refine session <id>`.",
+                    ok: false,
+                };
+            }
+        }
+        const reason = rest.join(" ");
+        // The session must exist in the agent's own history; on the command line, in any agent's.
+        const candidates = scope.agentId === undefined ? knownAgents(store) : [scope.agentId];
+        let agentId;
+        try {
+            agentId = candidates.find((agent) => depsFor(agent).history.hasSession?.(sessionId) ?? true);
+        }
+        catch (error) {
+            return { text: `Refine Cycle cannot read the history to confirm that session: ${String(error)}`, ok: false };
+        }
+        if (!agentId)
+            return { text: `No session ${sessionId}${scope.agentId ? ` for agent ${scope.agentId}` : ""}.`, ok: false };
+        const pass = passByHand(agentId, sessionId, { ...(reason ? { reason } : {}), ...(dryRun ? { dryRun: true } : {}) });
+        const answer = (decision) => describePass(decision, dryRun);
+        if (scope.agentId === undefined) {
+            // The command line may wait for the whole pass.
+            try {
+                const decision = await pass;
+                return { text: answer(decision), ok: true };
+            }
+            catch (error) {
+                return { text: `The pass failed: ${String(error)}`, ok: false };
+            }
+        }
+        const owner = agentId;
+        let timer;
+        const late = new Promise((resolve) => {
+            timer = setTimeout(() => resolve(null), timing.chatWaitMs);
+        });
+        const first = await Promise.race([pass.catch((error) => ({ failed: String(error) })), late]);
+        clearTimeout(timer);
+        if (first && "failed" in first)
+            return { text: `The pass failed: ${first.failed}`, ok: false };
+        if (first)
+            return { text: answer(first), ok: true };
+        void pass.then((decision) => say(currentChat(owner, null), answer(decision), `pass over ${sessionId}`), (error) => say(currentChat(owner, null), `The pass over session ${sessionId} failed: ${String(error)}`, `pass over ${sessionId}`));
+        return { text: `${dryRun ? "Dry run" : "Pass"} over session ${sessionId} started; the result follows in this chat when the model has answered.`, ok: true };
     };
     api.registerCommand?.({
         name: "refine",
-        description: "Refine Cycle: list, status, audit, report, disable <id>, delete <id>",
+        description: "Refine Cycle: list, status, audit, report, run [reason], session <id>, dry-run, disable <id>, delete <id>",
         acceptsArgs: true,
         handler: async (ctx) => {
             const agentId = commandAgent(ctx);
@@ -419,6 +512,19 @@ export default function register(api) {
             .description("Did each lesson help? A verdict per lesson, from how often it was shown and whether its failure came back; --json")
             .option("--json", "the rows as JSON")
             .action(async (options) => print(await control("audit", { json: json(options) })));
+        const words = (...parts) => parts.flat().filter((part) => typeof part === "string").join(" ");
+        root
+            .command("run [reason...]")
+            .description("A learning pass by hand; the command line has no current session, so use session <id>")
+            .action(async (reason) => print(await control(`run ${words(reason)}`)));
+        root
+            .command("session <id> [reason...]")
+            .description("A learning pass over one exact session, with an optional focus for the model")
+            .action(async (id, reason) => print(await control(`session ${String(id)} ${words(reason)}`)));
+        root
+            .command("dry-run [args...]")
+            .description("dry-run session <id> [reason]: propose and check a lesson, save nothing (the call is spent like any other)")
+            .action(async (rest) => print(await control(`dry-run ${words(rest)}`)));
         root.command("disable <id>").description("Stop injecting a lesson").action(async (id) => print(await control(`disable ${String(id)}`)));
         root.command("delete <id>").description("Delete a lesson (kept as a tombstone)").action(async (id) => print(await control(`delete ${String(id)}`)));
         root

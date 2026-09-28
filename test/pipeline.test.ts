@@ -1010,3 +1010,39 @@ test("the audit's verdicts over time: too early, then working; never shown, then
   setStatus(d.store, lesson.id, "deleted", at(4));
   assert.equal(audit(d.store, at(5))[0].verdict, "rolled back");
 });
+
+
+// -- Passes started by hand --
+
+test("a dry run is refused by a spent budget like any pass, and its answer 'nothing' pauses the failure", async () => {
+  {
+    const d = deps(new FakeHistory().add("s1", failing(5)), new ScriptedLlm(lessonReply()), { maxModelCallsPerDay: 0 });
+    const decision = await processSession(d, "s1", "main", { dryRun: true });
+    assert.equal(decision.evaluated[0].refusal?.rule, "budget_spent");
+    assert.equal(decision.called, false);
+  }
+  {
+    const history = new FakeHistory().add("s1", failing()).add("s2", failing());
+    const llm = new ScriptedLlm(nothingReply(FP));
+    const d = deps(history, llm);
+    assert.equal((await processSession(d, "s1", "main", { dryRun: true })).outcome, "nothing");
+    assert.equal((await processSession(d, "s2", "main")).evaluated[0].refusal?.rule, "paused_after_nothing");
+  }
+});
+
+test("a dry run's lesson is not saved and does not close the failure: the queue still offers it", async () => {
+  const history = new FakeHistory().add("s1", mixed(["alpha", 6], ["beta", 5])).add("s2", new Transcript().user("hi"));
+  const llm = new ScriptedLlm(
+    JSON.stringify({ decision: "lesson", fingerprint: fpOf("alpha"), lesson: "When calling alpha, pass a number, not 'x'.", reason: "r" }),
+    nothingReply(fpOf("alpha")),
+  );
+  const d = deps(history, llm, { backfillSessions: 0 });
+  const dry = await processSession(d, "s1", "main", { dryRun: true, reason: "focus" });
+  assert.equal(dry.outcome, "dry_run");
+  assert.deepEqual(dry.preview, { wouldSave: true });
+  assert.equal(activeLessons(d.store).length, 0);
+  // s2 has nothing of its own: the oldest never-answered failure is alpha again, not beta.
+  const s2 = await processSession(d, "s2", "main");
+  assert.equal(s2.fingerprint, fpOf("alpha"));
+  assert.equal(s2.queued, true);
+});

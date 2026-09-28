@@ -40,7 +40,9 @@ function resolutionLine(occurrences) {
     };
     return Object.entries(counts).map(([key, n]) => `${n}× ${words[key] ?? key}`).join("; ");
 }
-export function buildUserMessage(pattern, occurrences, maxLessonChars, correctionArgs = "") {
+export function buildUserMessage(pattern, occurrences, maxLessonChars, correctionArgs = "", 
+/** What the user asked the pass to look at (`/refine run <reason>`): their words, shown as data. */
+focus = "") {
     return [
         `Fingerprint: ${pattern.fingerprint}`,
         `Tool: ${pattern.tool || "(unknown)"}`,
@@ -51,6 +53,9 @@ export function buildUserMessage(pattern, occurrences, maxLessonChars, correctio
         `What the agent did right after, in the latest session: ${resolutionLine(occurrences) || "unknown"}`,
         ...(correctionArgs
             ? [`Arguments of the call to the same tool that then succeeded (the agent's own fix): ${untrusted(correctionArgs)}`]
+            : []),
+        ...(focus.trim()
+            ? [`The user started this pass by hand and asked to focus on: ${untrusted(focus.trim().slice(0, 500))}`]
             : []),
         "",
         `The lesson must be at most ${maxLessonChars} characters.`,

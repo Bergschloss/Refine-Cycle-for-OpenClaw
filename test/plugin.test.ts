@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { AsyncLocalStorage } from "node:async_hooks";
-import register, { type PluginApi } from "../src/plugin.ts";
+import register, { timing, type PluginApi } from "../src/plugin.ts";
 import { FileStore } from "../src/store.ts";
 import { activate } from "../src/lessons.ts";
 import { fingerprint } from "../src/core/fingerprint.ts";
@@ -571,4 +571,122 @@ test("chat /refine audit judges only the calling agent's lessons; the command li
   assert.match(text, /^Refine Cycle lessons \(1\):/);
   assert.match(text, /mainlesson .* no recurrence window/);
   assert.doesNotMatch(text, /opslesson/);
+});
+
+// -- Passes started by hand: run, session, dry-run --
+
+function passSetup(reply: (params: Record<string, unknown>) => Promise<{ text: string }>, send?: (ctx: Record<string, unknown>) => Promise<unknown>) {
+  const stateDir = tempDir();
+  const error = "cron expression '* * *' has 3 fields, expected 5";
+  const failing = () => new Transcript().user("schedule it").call("cron_add", { schedule: "* * *" }, { error });
+  writeAgentDb(stateDir, { s1: failing(), s2: failing() });
+  const sent: Array<Record<string, unknown>> = [];
+  const api = fakeApi(stateDir, reply, true, undefined, { backfillSessions: 10 }, async (id) =>
+    id === "telegram" ? { sendText: send ?? (async (ctx) => void sent.push(ctx)) } : undefined,
+  );
+  const lessonText = "When calling cron_add, write the schedule as five cron fields, e.g. 0 3 * * *.";
+  const fp = fingerprint("cron_add", error);
+  return { stateDir, sent, ...api, lessonText, fp };
+}
+
+const lessonJson = (fp: string, lesson: string) => JSON.stringify({ decision: "lesson", fingerprint: fp, lesson, reason: "twice" });
+
+test("/refine session <id> runs the pass on that session and answers with what it decided", async () => {
+  let prompt = "";
+  const error = "cron expression '* * *' has 3 fields, expected 5";
+  const { commands } = passSetup(async (params) => {
+    prompt = JSON.stringify(params);
+    return { text: lessonJson(fingerprint("cron_add", error), "When calling cron_add, write the schedule as five cron fields, e.g. 0 3 * * *.") };
+  });
+  const refine = commands.get("refine")!;
+  const text = (await refine({ args: "session s1 the <b>cron</b> schedules", agentId: "main" }) as { text: string }).text;
+  assert.match(text, /pass over session s1:\nfailure: cron_add \(\w{12}\), 2× in 2 session\(s\)\nlesson learned: When calling cron_add/);
+  assert.match(prompt, /asked to focus on: <untrusted_tool_result>the ‹b›cron‹\/b› schedules<\/untrusted_tool_result>/, "the reason is the user's words, as data");
+  assert.match((await refine({ args: "list", agentId: "main" }) as { text: string }).text, /\[active\]/);
+  // The same session again: its one call is spent.
+  assert.match((await refine({ args: "session s1", agentId: "main" }) as { text: string }).text, /this session already had its model call \(a lesson learned\); a session gets one/);
+});
+
+test("/refine run needs the chat's session, session <id> an existing one, and each says so", async () => {
+  const { commands } = passSetup(async () => ({ text: "{}" }));
+  const refine = commands.get("refine")!;
+  assert.match((await refine({ args: "run", agentId: "main" }) as { text: string }).text, /no session the host names; use `\/refine session <id>`/);
+  assert.equal((await refine({ args: "session nope", agentId: "main" }) as { text: string }).text, "No session nope for agent main.");
+  assert.equal((await refine({ args: "session", agentId: "main" }) as { text: string }).text, "Usage: session <id> [reason]");
+  assert.match((await refine({ args: "run focus on cron", agentId: "main", sessionId: "s2" } as never) as { text: string }).text, /pass over session s2/);
+});
+
+test("/refine dry-run shows the lesson it would save, saves none, and spends the call like any pass", async () => {
+  const setup = passSetup(async () => ({ text: lessonJson(fingerprint("cron_add", "cron expression '* * *' has 3 fields, expected 5"), "When calling cron_add, write the schedule as five cron fields, e.g. 0 3 * * *.") }));
+  const refine = setup.commands.get("refine")!;
+  const text = (await refine({ args: "dry-run session s1", agentId: "main" }) as { text: string }).text;
+  assert.match(text, /^🔍 Dry run — nothing saved\.\nsession: s1\nfailure: cron_add .*\nlesson: When calling cron_add, write the schedule as five cron fields, e\.g\. 0 3 \* \* \*\.\nwould be saved: yes$/);
+  assert.equal((await refine({ args: "list", agentId: "main" }) as { text: string }).text, "No lessons yet.");
+  const store = new FileStore(path.join(setup.stateDir, "plugin-data", "refine-cycle"));
+  assert.equal(store.read<{ outcome: string }>("candidates/s1.json")!.outcome, "dry_run");
+  assert.equal(store.list("budget").length, 1);
+  // A dry run's lesson was not saved, so the failure is still open for a real pass.
+  assert.match((await refine({ args: "session s2", agentId: "main" }) as { text: string }).text, /lesson learned/);
+});
+
+test("a chat pass the model is slow on answers at once and sends the result to the chat when done", async () => {
+  const saved = timing.chatWaitMs;
+  timing.chatWaitMs = 20;
+  try {
+    let answer: (value: { text: string }) => void = () => {};
+    const setup = passSetup(() => new Promise((resolve) => (answer = resolve)));
+    // The chat the agent is talked to from, as the lesson message uses it.
+    new FileStore(path.join(setup.stateDir, "plugin-data", "refine-cycle")).write("chats/main.json", { channel: "telegram", to: "4242" });
+    const text = (await setup.commands.get("refine")!({ args: "session s1", agentId: "main" }) as { text: string }).text;
+    assert.equal(text, "Pass over session s1 started; the result follows in this chat when the model has answered.");
+    answer({ text: lessonJson(setup.fp, setup.lessonText) });
+    await settle();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await settle();
+    assert.ok(setup.sent.some((m) => /pass over session s1:[\s\S]*lesson learned/.test(String(m.text)) && m.to === "4242"), JSON.stringify(setup.sent));
+  } finally {
+    timing.chatWaitMs = saved;
+  }
+});
+
+test("the command line runs session and dry-run on an exact session, finding its agent, and refuses run without one", async () => {
+  const stateDir = tempDir();
+  const error = "cron expression '* * *' has 3 fields, expected 5";
+  writeAgentDb(stateDir, { s1: new Transcript().user("go").call("cron_add", { schedule: "* * *" }, { error }).call("cron_add", { schedule: "* * *" }, { error }).call("cron_add", { schedule: "* * *" }, { error }).call("cron_add", { schedule: "* * *" }, { error }).call("cron_add", { schedule: "* * *" }, { error }) });
+  new FileStore(path.join(stateDir, "plugin-data", "refine-cycle")).write("sessions/seed.json", { format: 0, sessionId: "seed", agentId: "main", lastSeq: 0, errorCount: 0, selfCorrectingSuppressed: 0, patterns: [] });
+  const actions = new Map<string, (...args: unknown[]) => unknown>();
+  const program = {
+    command(spec: string) {
+      const name = spec.split(" ")[0];
+      const node = { command: (sub: string) => program.command(sub), description: () => node, option: () => node, action: (handler: (...args: unknown[]) => unknown) => (actions.set(name, handler), node) };
+      return node;
+    },
+  };
+  register({
+    id: "refine-cycle",
+    config: { plugins: { entries: { "refine-cycle": { hooks: { allowConversationAccess: true } } } } },
+    runtime: { state: { resolveStateDir: () => stateDir }, llm: { complete: async () => ({ text: JSON.stringify({ decision: "nothing", fingerprint: fingerprint("cron_add", error), lesson: "", reason: "" }) }) } },
+    logger: {},
+    on: () => {},
+    registerCli: (registrar) => registrar({ program: program as never }),
+  });
+  const printed: string[] = [];
+  const log = console.log;
+  const exitCode = process.exitCode;
+  console.log = (line: string) => printed.push(line);
+  try {
+    await actions.get("dry-run")!(["session", "s1", "look", "at", "cron"]);
+    assert.match(printed.at(-1)!, /^🔍 Dry run — nothing saved\.\nsession: s1\nfailure: cron_add .*\nthe model found nothing to learn$/);
+    await actions.get("session")!("s1", []);
+    assert.match(printed.at(-1)!, /already had its model call/);
+    process.exitCode = undefined;
+    await actions.get("run")!([]);
+    assert.match(printed.at(-1)!, /The command line has no current session/);
+    assert.equal(process.exitCode, 1);
+    await actions.get("session")!("nope", []);
+    assert.equal(printed.at(-1), "No session nope.");
+  } finally {
+    console.log = log;
+    process.exitCode = exitCode;
+  }
 });
