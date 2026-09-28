@@ -1,0 +1,86 @@
+name: openclaw-canary
+
+# Every night: does the newest OpenClaw still load this plugin the way the tests
+# assume? Each OpenClaw release so far moved something the plugin relies on
+# (compressed transcript rows, the cli-metadata pass, conversation access). This
+# installs the newest release in a clean runner, installs the plugin from this
+# checkout as a user would, and checks what needs no model: the plugin loads, its
+# hooks, command, CLI command and tool are registered, and `plugins doctor` is
+# clean. scripts/drift-check.ts needs an agent database, which only a model turn
+# creates, so it is not run here. A failure opens one issue, and comments on it
+# while it stays open, instead of a new issue every night.
+
+on:
+  schedule:
+    - cron: "41 3 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: openclaw-canary
+  cancel-in-progress: true
+
+jobs:
+  canary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      OPENCLAW_STATE_DIR: ${{ runner.temp }}/state
+      OPENCLAW_CONFIG_PATH: ${{ runner.temp }}/state/openclaw.json
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm test
+
+      - name: Install the newest OpenClaw
+        id: host
+        run: |
+          npm install --prefix "$RUNNER_TEMP/oc" --no-audit --no-fund openclaw@latest
+          echo "version=$(node -p "require(process.env.RUNNER_TEMP + '/oc/node_modules/openclaw/package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Install this plugin from the checkout, as a user would
+        run: |
+          oc() { node "$RUNNER_TEMP/oc/node_modules/openclaw/openclaw.mjs" "$@"; }
+          mkdir -p "$OPENCLAW_STATE_DIR"
+          oc config set gateway.mode local
+          oc plugins install "$GITHUB_WORKSPACE" --accept-capabilities --force
+          oc config set plugins.entries.refine-cycle.hooks.allowConversationAccess true
+
+      - name: The plugin loads with its hooks, command, CLI command and tool
+        run: |
+          node "$RUNNER_TEMP/oc/node_modules/openclaw/openclaw.mjs" plugins inspect refine-cycle --runtime --json > inspect.out
+          node scripts/canary-check.mjs inspect.out
+
+      - name: plugins doctor is clean
+        run: node "$RUNNER_TEMP/oc/node_modules/openclaw/openclaw.mjs" plugins doctor
+
+      - name: The command line runs the full registration
+        run: |
+          node "$RUNNER_TEMP/oc/node_modules/openclaw/openclaw.mjs" refine-cycle status | tee status.out
+          grep -q "Refine Cycle .* · working" status.out
+
+      - name: Open or update the canary issue
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HOST: ${{ steps.host.outputs.version }}
+          RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          title="OpenClaw canary: the newest OpenClaw breaks the plugin"
+          body="OpenClaw \`${HOST:-unknown}\`: the plugin no longer loads, registers or passes its checks on the newest release. Run: ${RUN}"
+          number=$(gh issue list -R "$GITHUB_REPOSITORY" --state open --search "\"$title\" in:title" --json number --jq '.[0].number')
+          if [ -n "$number" ]; then
+            gh issue comment "$number" -R "$GITHUB_REPOSITORY" --body "$body"
+          else
+            gh issue create -R "$GITHUB_REPOSITORY" --title "$title" --body "$body"
+          fi
