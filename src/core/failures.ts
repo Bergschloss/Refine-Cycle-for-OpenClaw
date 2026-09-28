@@ -85,6 +85,9 @@ export interface SessionSummary {
   sessionId: string;
   agentId: string;
   lastSeq: number;
+  /** The first and last message time (ms; -1 when the host gave none). Absent in summaries written before 0.1.0's pruning. */
+  startedAtMs?: number;
+  endedAtMs?: number;
   errorCount: number;
   /** Errors that state their own remedy ("query is required"): seen, never a candidate. */
   selfCorrectingSuppressed: number;
@@ -726,12 +729,25 @@ function* summarize(sessionId: string, agentId: string, rows: TranscriptRow[]): 
   }
 
   const lastSeq = rows.reduce((max, row) => Math.max(max, row.seq), -1);
+  // When the session began and last moved, from every message the host gave a time.
+  let startedAtMs = -1;
+  let endedAtMs = -1;
+  for (const row of rows) {
+    const event = row.event;
+    if (!isRecord(event) || !isRecord(event.message)) continue;
+    const at = eventTime(event.message, event);
+    if (at < 0) continue;
+    if (startedAtMs < 0 || at < startedAtMs) startedAtMs = at;
+    if (at > endedAtMs) endedAtMs = at;
+  }
   return {
     $v: 1,
     format: SUMMARY_FORMAT,
     sessionId,
     agentId,
     lastSeq,
+    startedAtMs,
+    endedAtMs,
     errorCount,
     selfCorrectingSuppressed: suppressed,
     patterns: [...byFingerprint.values()].sort((a, b) => b.count - a.count),

@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { audit, describeAudit, describeReport, describeStatus, ensureLedger, ledgerCounts, processSession, recordExposure, report, status, type Deps, type Llm } from "../src/pipeline.ts";
+import { audit, queueLength, describeAudit, describeReport, describeStatus, ensureLedger, ledgerCounts, processSession, recordExposure, report, status, type Deps, type Llm } from "../src/pipeline.ts";
 import { DEFAULTS, type Settings } from "../src/settings.ts";
 import { FileStore } from "../src/store.ts";
 import { activate, activeLessons, allLessons, setStatus } from "../src/lessons.ts";
@@ -45,7 +45,8 @@ function deps(history: FakeHistory, llm: Llm | null, overrides: Partial<Settings
     history,
     llm,
     sources: () => sources,
-    settings: { ...DEFAULTS, ...overrides },
+    // Fixture sessions have fixed times and the clock is real: pruning by age is off unless a test turns it on.
+    settings: { ...DEFAULTS, keepSessionDays: 0, ...overrides },
     now: () => new Date("2026-09-24T10:00:00Z"),
     log: (message) => logs.push(message),
     logs,
@@ -1159,4 +1160,96 @@ test("no shortening request once the day's budget is spent, and a lesson within 
   assert.equal(ok.outcome, "lesson");
   assert.equal(ok.shortening, undefined);
   assert.equal(fits.calls.length, 1);
+});
+
+
+// -- K0.4: pruning sessions/ -----------------------------------------------------------
+
+/** A history whose sessions end `daysAgo` days before `now`, counting every read. */
+function agedHistory(now: number, sessions: Array<[string, Transcript, number]>) {
+  const history = new FakeHistory();
+  for (const [id, transcript, daysAgo] of sessions) {
+    const shift = now - daysAgo * 86_400_000 - Transcript.time(transcript.rows.length);
+    for (const row of transcript.rows) {
+      const message = (row.event as { message: { timestamp: number } }).message;
+      message.timestamp += shift;
+    }
+    history.add(id, transcript);
+  }
+  const reads: string[] = [];
+  const readSession = history.readSession.bind(history);
+  history.readSession = (id: string) => (reads.push(id), readSession(id));
+  return { history, reads };
+}
+
+test("old session summaries are folded by age and count; recurrence, the queue and the report see the same numbers", async () => {
+  const now = Date.parse("2026-12-01T12:00:00Z");
+  const { history } = agedHistory(now, [
+    ["old1", failing(1), 90], ["old2", failing(1), 60], ["mid", new Transcript().user("hi").say("ok"), 20], ["new", failing(1), 1],
+  ]);
+  const nothing = new ScriptedLlm(nothingReply(FP));
+  const keep = deps(history, nothing, { keepSessionDays: 0, keepSessions: 0, backfillSessions: 10, maxModelCallsPerDay: 0 });
+  keep.now = () => new Date(now);
+  const pruned = deps(history, nothing, { keepSessionDays: 30, keepSessions: 3, backfillSessions: 10, maxModelCallsPerDay: 0 });
+  pruned.now = () => new Date(now);
+  const before = await processSession(keep, "new", "main");
+  const after = await processSession(pruned, "new", "main");
+  // By age: old1 and old2 (90 and 60 days). By count (3 kept, the current one included): nothing more.
+  assert.deepEqual(pruned.store.list("sessions"), ["mid", "new"]);
+  assert.deepEqual(Object.keys(pruned.store.read<{ sessions: object }>("folded/main.json")!.sessions).sort(), ["old1", "old2"]);
+  // The same failure, the same count over the same sessions: the same decision.
+  assert.deepEqual(after.evaluated, before.evaluated);
+  assert.equal(after.evaluated[0].sessions, 3);
+  assert.equal(after.evaluated[0].count, 3);
+  const [r1, r2] = [report(keep.store), report(pruned.store)];
+  assert.equal(r2.sessions, r1.sessions);
+  assert.equal(r2.sessionsWithFailures, r1.sessionsWithFailures);
+  // The queue counts the folded failure (its budget is 0, so it waits).
+  assert.equal(await queueLength(pruned, "main"), await queueLength(keep, "main"));
+  assert.equal(await queueLength(pruned, "main"), 1);
+  // Count alone: a cap of 2 folds "mid" too, the oldest left.
+  const capped = deps(history, nothing, { keepSessionDays: 0, keepSessions: 2, backfillSessions: 10, maxModelCallsPerDay: 0 });
+  capped.now = () => new Date(now);
+  await processSession(capped, "new", "main");
+  assert.equal(capped.store.list("sessions").length, 2);
+});
+
+test("backfill does not re-read a folded session in a loop, and a folded session that grows is counted once", async () => {
+  const now = Date.parse("2026-12-01T12:00:00Z");
+  const { history, reads } = agedHistory(now, [["old1", failing(1), 90], ["old2", failing(1), 60], ["new", failing(1), 0]]);
+  const d = deps(history, new ScriptedLlm(), { keepSessionDays: 30, backfillSessions: 10, backfillIntervalMinutes: 0, maxModelCallsPerDay: 0 });
+  let clock = now;
+  d.now = () => new Date(clock);
+  await processSession(d, "new", "main");
+  assert.deepEqual(d.store.list("sessions"), ["new"]);
+  // Day after day the host still lists old1 and old2 as recent: never read again, never folded twice.
+  for (let day = 1; day <= 3; day++) {
+    clock = now + day * 86_400_000;
+    reads.length = 0;
+    const decision = await processSession(d, "new", "main");
+    assert.deepEqual(reads, ["new"], `day ${day}`);
+    assert.equal(decision.evaluated[0].sessions, 3);
+    assert.equal(decision.evaluated[0].count, 3);
+  }
+  // old1 comes back and grows: read again, and counted from its summary, not twice.
+  history.add("old1", failing(2));
+  clock += 86_400_000;
+  const decision = await processSession(d, "old1", "main");
+  assert.equal(decision.evaluated[0].sessions, 3);
+  assert.equal(decision.evaluated[0].count, 4, "old1 now 2, old2 1, new 1");
+});
+
+test("a crash between writing the fold and removing the summaries counts nothing twice", async () => {
+  const now = Date.parse("2026-12-01T12:00:00Z");
+  const { history } = agedHistory(now, [["old1", failing(1), 90], ["new", failing(1), 0]]);
+  const d = deps(history, new ScriptedLlm(), { keepSessionDays: 30, backfillSessions: 10, maxModelCallsPerDay: 0 });
+  d.now = () => new Date(now);
+  await processSession(d, "new", "main");
+  // Put old1's summary back, as if the process died after the fold was written.
+  await processSession({ ...d, settings: { ...d.settings, keepSessionDays: 0 } }, "old1", "main");
+  assert.deepEqual(d.store.list("sessions"), ["new", "old1"]);
+  const decision = await processSession(d, "new", "main");
+  assert.equal(decision.evaluated[0].sessions, 2);
+  assert.equal(decision.evaluated[0].count, 2);
+  assert.equal(report(d.store).sessions, 2);
 });

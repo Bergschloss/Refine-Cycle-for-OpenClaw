@@ -667,12 +667,29 @@ function* summarize(sessionId, agentId, rows) {
         pattern.commandTimesOut = !!pattern.commandTimesOut && timesOut;
     }
     const lastSeq = rows.reduce((max, row) => Math.max(max, row.seq), -1);
+    // When the session began and last moved, from every message the host gave a time.
+    let startedAtMs = -1;
+    let endedAtMs = -1;
+    for (const row of rows) {
+        const event = row.event;
+        if (!isRecord(event) || !isRecord(event.message))
+            continue;
+        const at = eventTime(event.message, event);
+        if (at < 0)
+            continue;
+        if (startedAtMs < 0 || at < startedAtMs)
+            startedAtMs = at;
+        if (at > endedAtMs)
+            endedAtMs = at;
+    }
     return {
         $v: 1,
         format: SUMMARY_FORMAT,
         sessionId,
         agentId,
         lastSeq,
+        startedAtMs,
+        endedAtMs,
         errorCount,
         selfCorrectingSuppressed: suppressed,
         patterns: [...byFingerprint.values()].sort((a, b) => b.count - a.count),

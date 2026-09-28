@@ -14,6 +14,8 @@ export const DEFAULTS = {
     minOccurrences: 5,
     backfillSessions: 10,
     backfillIntervalMinutes: 60,
+    keepSessionDays: 30,
+    keepSessions: 500,
     proposalTimeoutMs: 120_000,
     instructionFiles: ["AGENTS.md", "TOOLS.md", "SOUL.md"],
     skillDirs: [],

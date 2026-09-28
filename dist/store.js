@@ -8,6 +8,7 @@
  *
  *   meta.json                 schema version
  *   sessions/<id>.json        a session's failure summary (the `failures` family)
+ *   folded/<agent>.json       the summaries pruned by age or count, folded: each session's failure counts and the sum per failure
  *   candidates/<id>.json      what was decided for a session, and why
  *   lessons/<id>.json         draft / active / disabled / deleted
  *   journal/<id>.json         intent before every lesson change, marked after

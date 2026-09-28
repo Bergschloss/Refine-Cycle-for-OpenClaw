@@ -28,7 +28,8 @@ function fakeApi(
     config: {
       plugins: { entries: { "refine-cycle": { hooks: { allowConversationAccess: grant, allowPromptInjection: injection } } } },
     },
-    pluginConfig,
+    // Fixture sessions have fixed times and the clock is real: no pruning by age here.
+    pluginConfig: { keepSessionDays: 0, ...pluginConfig },
     logger: { info: (m) => logs.push(m), warn: (m) => logs.push(`WARN ${m}`) },
     runtime: {
       state: { resolveStateDir: () => stateDir },
@@ -805,7 +806,8 @@ function updateSetup(host: HostFake, adapter?: Record<string, unknown>, pluginCo
   const api: PluginApi = {
     id: "refine-cycle",
     config: { plugins: { entries: { "refine-cycle": { hooks: { allowConversationAccess: true } } } } },
-    pluginConfig,
+    // Fixture sessions have fixed times and the clock is real: no pruning by age here.
+    pluginConfig: { keepSessionDays: 0, ...pluginConfig },
     logger: { info: (m) => logs.push(m), warn: (m) => logs.push(`WARN ${m}`) },
     runtime: {
       state: { resolveStateDir: () => stateDir },

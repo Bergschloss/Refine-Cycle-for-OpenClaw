@@ -49,8 +49,9 @@ export async function replay(options) {
     }
     const store = new FileStore(options.storeDir);
     store.open();
-    // No backfill: a session may only learn from the sessions already replayed.
-    const settings = { ...options.settings, backfillSessions: 0 };
+    // No backfill: a session may only learn from the sessions already replayed. No pruning:
+    // it ages summaries by the real clock, and the corpus's sessions are all "old".
+    const settings = { ...options.settings, backfillSessions: 0, keepSessionDays: 0, keepSessions: 0 };
     const history = {
         readSession: (sessionId) => byId.get(sessionId) ?? [],
         recentSessions: () => [],

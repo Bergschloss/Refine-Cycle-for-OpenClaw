@@ -20,6 +20,14 @@ export interface Settings {
   backfillSessions: number;
   /** How often, at most, the host's history is scanned for those sessions. */
   backfillIntervalMinutes: number;
+  /**
+   * Session summaries older than this many days (by the session's last message) are folded
+   * into one record per agent and removed; 0 keeps them by age. The fold keeps every count
+   * the recurrence bar, the queue and the report use.
+   */
+  keepSessionDays: number;
+  /** At most this many session summaries per agent; older ones are folded the same way. 0: no cap. */
+  keepSessions: number;
   proposalTimeoutMs: number;
   /** Instruction files in the agent workspace searched by the already-covered check. */
   instructionFiles: string[];
@@ -49,6 +57,8 @@ export const DEFAULTS: Settings = {
   minOccurrences: 5,
   backfillSessions: 10,
   backfillIntervalMinutes: 60,
+  keepSessionDays: 30,
+  keepSessions: 500,
   proposalTimeoutMs: 120_000,
   instructionFiles: ["AGENTS.md", "TOOLS.md", "SOUL.md"],
   skillDirs: [],

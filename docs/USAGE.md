@@ -74,6 +74,7 @@ Under `plugins.entries.refine-cycle.config` in `openclaw.json`. All are optional
 | `model` | `""` | The model lessons are written with, as `provider/model`; empty for the default agent's (needs `llm.allowModelOverride`, above) |
 | `checkForUpdates` | `true` | Once a day, look for a newer release and tell you once, with an Update button |
 | `backfillSessions` / `backfillIntervalMinutes` | `10` / `60` | Recent sessions re-read, at most this often, so failures from before an install or a restart still count |
+| `keepSessionDays` / `keepSessions` | `30` / `500` | Once a day, the summaries of sessions older than this (by their last message), and all past the newest 500 per agent, are folded into one record per agent (`folded/<agent>.json`) and removed. The fold keeps each session's failure counts, so the recurrence bar, the queue and the report count exactly as before; a folded session is not re-read unless it grows. `0` turns either limit off |
 | `proposalTimeoutMs` | `120000` | How long the model may take for one lesson |
 | `skillDirs` | none | Extra directories searched for `SKILL.md`, besides the workspace's `skills/` |
 | `historyDbPath` | `""` | The agent's history database, for a single-agent install that keeps it somewhere else |

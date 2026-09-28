@@ -163,9 +163,9 @@ function seenSince(mark, pattern) {
     return pattern.sessionIds.some((id) => !seen.has(id));
 }
 /** When a failure was first seen, over every session of the agent (ms; +Infinity when the host gave no time). */
-function firstSeen(summaries) {
+function firstSeen(evidence) {
     const out = new Map();
-    for (const summary of summaries) {
+    for (const summary of evidence.summaries) {
         for (const pattern of summary.patterns) {
             // A loop, not Math.min(...times): `times` is unbounded and a spread can overflow the stack.
             let first = Number.POSITIVE_INFINITY;
@@ -175,12 +175,16 @@ function firstSeen(summaries) {
             out.set(pattern.fingerprint, Math.min(out.get(pattern.fingerprint) ?? Number.POSITIVE_INFINITY, first));
         }
     }
+    for (const [fp, folded] of evidence.folded) {
+        const first = folded.firstSeenMs >= 0 ? folded.firstSeenMs : Number.POSITIVE_INFINITY;
+        out.set(fp, Math.min(out.get(fp) ?? Number.POSITIVE_INFINITY, first));
+    }
     return out;
 }
-/** The failure's own record in the latest session it was seen in: the evidence the model is shown. */
-function latestLocal(summaries, fingerprint) {
+/** The failure's own record in the latest session it was seen in, folded or not: the evidence the model is shown. */
+function latestLocal(evidence, fingerprint) {
     let best;
-    for (const summary of summaries) {
+    for (const summary of evidence.summaries) {
         const local = summary.patterns.find((pattern) => pattern.fingerprint === fingerprint);
         if (!local)
             continue;
@@ -191,6 +195,9 @@ function latestLocal(summaries, fingerprint) {
         if (!best || at >= best.at)
             best = { local, at };
     }
+    const folded = evidence.folded.get(fingerprint);
+    if (folded && (!best || folded.latestAtMs > best.at))
+        return folded.pattern;
     return best?.local;
 }
 /**
@@ -198,19 +205,19 @@ function latestLocal(summaries, fingerprint) {
  * answered with the evidence there is now: what a session with nothing of its own spends its call on. Cheap filters
  * first (the bar, the mark), the full refusal rules only for the survivors, oldest first.
  */
-async function fromQueue(deps, agentId, patterns, summaries, sources) {
-    for (const { pattern, local } of queueCandidates(deps, agentId, patterns, summaries)) {
+async function fromQueue(deps, agentId, evidence, sources) {
+    for (const { pattern, local } of queueCandidates(deps, agentId, evidence)) {
         await yieldToHost();
         if (!refuse(deps, agentId, pattern, local, sources))
             return { pattern, local };
     }
     return null;
 }
-function queueCandidates(deps, agentId, patterns, summaries) {
+function queueCandidates(deps, agentId, evidence) {
     const { minSessions, minOccurrences } = deps.settings;
-    const seen = firstSeen(summaries);
+    const seen = firstSeen(evidence);
     const out = [];
-    for (const pattern of patterns.values()) {
+    for (const pattern of evidence.patterns.values()) {
         if (!(pattern.sessionIds.length >= minSessions || pattern.count >= minOccurrences))
             continue;
         const mark = readProposed(deps.store, agentId, pattern.fingerprint);
@@ -218,7 +225,7 @@ function queueCandidates(deps, agentId, patterns, summaries) {
         // the same evidence. A new session is new evidence, as it is for the pause.
         if (answeredBefore(mark) && !seenSince(mark, pattern))
             continue;
-        const local = latestLocal(summaries, pattern.fingerprint);
+        const local = latestLocal(evidence, pattern.fingerprint);
         if (local)
             out.push({ pattern, local, at: seen.get(pattern.fingerprint) ?? Number.POSITIVE_INFINITY });
     }
@@ -229,12 +236,11 @@ function queueCandidates(deps, agentId, patterns, summaries) {
  * answered by the model. Reads the instruction files, so it is for `status`, not the hot path.
  */
 export async function queueLength(deps, agentId) {
-    const summaries = await agentSummaries(deps.store, agentId);
-    const patterns = aggregate(summaries);
+    const evidence = await agentEvidence(deps.store, agentId);
     let cached = null;
     const sources = () => (cached ??= deps.sources());
     let n = 0;
-    for (const { pattern, local } of queueCandidates(deps, agentId, patterns, summaries)) {
+    for (const { pattern, local } of queueCandidates(deps, agentId, evidence)) {
         await yieldToHost();
         if (!refuse(deps, agentId, pattern, local, sources))
             n++;
@@ -482,11 +488,17 @@ async function backfill(deps, agentId, except, now) {
     const mark = deps.store.read(markPath);
     if (mark && now.getTime() - Date.parse(mark.at) < backfillIntervalMinutes * 60_000)
         return;
+    const folded = readFolded(deps.store, agentId);
     for (const { sessionId, lastSeq } of deps.history.recentSessions(backfillSessions)) {
         if (sessionId === except)
             continue;
         const stored = deps.store.read(sessionPath(sessionId));
         if (stored && stored.format === SUMMARY_FORMAT && stored.lastSeq >= lastSeq)
+            continue;
+        // Folded away and not grown since: its counts are in the fold. Reading it again would
+        // bring it back only for the next prune to fold it again, every interval.
+        const gone = folded?.sessions[sessionId];
+        if (!stored && gone && gone.lastSeq >= lastSeq)
             continue;
         await summarizeAndStore(deps, sessionId, agentId);
         await yieldToHost();
@@ -505,6 +517,160 @@ async function agentSummaries(store, agentId) {
             out.push(summary);
     }
     return out;
+}
+const DAY_MS = 86_400_000;
+function foldedPath(agentId) {
+    return `folded/${safeName(agentId)}.json`;
+}
+export function readFolded(store, agentId) {
+    const record = store.read(foldedPath(agentId));
+    return record && record.agentId === agentId && record.sessions && record.patterns ? record : undefined;
+}
+async function agentEvidence(store, agentId) {
+    const summaries = await agentSummaries(store, agentId);
+    const live = new Set(summaries.map((summary) => summary.sessionId));
+    const record = readFolded(store, agentId);
+    const folded = new Map();
+    // A session both folded and summarized (a crash before its file was removed, or a
+    // session that came back and grew) counts from its summary, not twice.
+    const back = record ? Object.entries(record.sessions).filter(([id]) => live.has(id)) : [];
+    for (const [fp, entry] of Object.entries(record?.patterns ?? {})) {
+        let count = entry.count;
+        for (const [, session] of back)
+            count -= session.failures[fp] ?? 0;
+        const sessionIds = entry.sessionIds.filter((id) => !live.has(id));
+        if (count > 0 && sessionIds.length > 0)
+            folded.set(fp, { ...entry, count, sessionIds });
+    }
+    const patterns = aggregate(summaries);
+    for (const [fp, entry] of folded) {
+        const known = patterns.get(fp);
+        if (!known) {
+            patterns.set(fp, {
+                fingerprint: fp, tool: entry.pattern.tool, shape: entry.pattern.shape, sample: entry.pattern.sample,
+                sampleArgs: entry.pattern.sampleArgs, count: entry.count, sessionIds: [...entry.sessionIds],
+                droppedArgument: entry.droppedArgument, correctionArgs: entry.correctionArgs, commandTimesOut: entry.commandTimesOut,
+            });
+            continue;
+        }
+        known.count += entry.count;
+        for (const id of entry.sessionIds)
+            if (!known.sessionIds.includes(id))
+                known.sessionIds.push(id);
+        known.droppedArgument ||= entry.droppedArgument;
+        known.correctionArgs ||= entry.correctionArgs;
+        known.commandTimesOut &&= entry.commandTimesOut;
+    }
+    return { summaries, folded, patterns };
+}
+/** Add one session to the fold, replacing what it added before if it was folded already. */
+function foldSession(record, summary) {
+    const before = record.sessions[summary.sessionId];
+    for (const [fp, n] of Object.entries(before?.failures ?? {})) {
+        const entry = record.patterns[fp];
+        if (!entry)
+            continue;
+        entry.count -= n;
+        entry.sessionIds = entry.sessionIds.filter((id) => id !== summary.sessionId);
+        if (entry.sessionIds.length === 0)
+            delete record.patterns[fp];
+    }
+    const failures = {};
+    for (const pattern of summary.patterns) {
+        failures[pattern.fingerprint] = pattern.count;
+        let first = -1;
+        let last = -1;
+        for (const time of Array.isArray(pattern.times) ? pattern.times : []) {
+            if (time < 0)
+                continue;
+            if (first < 0 || time < first)
+                first = time;
+            if (time > last)
+                last = time;
+        }
+        const entry = record.patterns[pattern.fingerprint];
+        if (!entry) {
+            record.patterns[pattern.fingerprint] = {
+                pattern, latestAtMs: last, firstSeenMs: first, count: pattern.count, sessionIds: [summary.sessionId],
+                droppedArgument: pattern.droppedArgument, correctionArgs: pattern.correctionArgs ?? "", commandTimesOut: pattern.commandTimesOut === true,
+            };
+            continue;
+        }
+        entry.count += pattern.count;
+        if (!entry.sessionIds.includes(summary.sessionId))
+            entry.sessionIds.push(summary.sessionId);
+        if (first >= 0 && (entry.firstSeenMs < 0 || first < entry.firstSeenMs))
+            entry.firstSeenMs = first;
+        if (last >= entry.latestAtMs) {
+            entry.pattern = pattern;
+            entry.latestAtMs = last;
+        }
+        entry.droppedArgument ||= pattern.droppedArgument;
+        entry.correctionArgs ||= pattern.correctionArgs ?? "";
+        entry.commandTimesOut &&= pattern.commandTimesOut === true;
+    }
+    record.sessions[summary.sessionId] = {
+        lastSeq: summary.lastSeq,
+        startedAtMs: summary.startedAtMs ?? -1,
+        endedAtMs: summary.endedAtMs ?? -1,
+        failures,
+    };
+}
+/**
+ * Once a day per agent: fold the summaries of sessions whose last message is older than
+ * `keepSessionDays`, and all past the newest `keepSessions`, into `folded/<agent>.json`,
+ * then remove them. The fold is written before any file is removed; a crash between
+ * leaves a session in both, and it is counted once (from its summary) until the next
+ * prune removes the file. A summary with no time (written before times were kept)
+ * counts as old. Never the session being processed; never waits for the lock.
+ */
+async function pruneSessions(deps, agentId, except, now) {
+    const { keepSessionDays, keepSessions } = deps.settings;
+    if (keepSessionDays <= 0 && keepSessions <= 0)
+        return 0;
+    const current = readFolded(deps.store, agentId);
+    if (current && now.getTime() - Date.parse(current.prunedAt) < DAY_MS)
+        return 0;
+    let release;
+    try {
+        release = deps.store.lock(`prune-${safeName(agentId)}`, 0);
+    }
+    catch (error) {
+        if (error instanceof StoreError)
+            return 0;
+        throw error;
+    }
+    try {
+        const summaries = await agentSummaries(deps.store, agentId);
+        const ended = (summary) => typeof summary.endedAtMs === "number" && summary.endedAtMs >= 0 ? summary.endedAtMs : Number.NEGATIVE_INFINITY;
+        const others = summaries
+            .filter((summary) => summary.sessionId !== except)
+            .sort((a, b) => ended(b) - ended(a) || b.sessionId.localeCompare(a.sessionId));
+        const room = keepSessions > 0 ? Math.max(0, keepSessions - (others.length < summaries.length ? 1 : 0)) : Number.POSITIVE_INFINITY;
+        const cutoff = keepSessionDays > 0 ? now.getTime() - keepSessionDays * DAY_MS : Number.NEGATIVE_INFINITY;
+        const old = others.filter((summary, index) => index >= room || ended(summary) < cutoff);
+        const record = current ?? { agentId, sessions: {}, patterns: {}, prunedAt: "" };
+        for (let i = 0; i < old.length; i++) {
+            if (i > 0 && i % FILES_PER_SLICE === 0)
+                await yieldToHost();
+            foldSession(record, old[i]);
+        }
+        deps.store.write(foldedPath(agentId), { ...record, prunedAt: now.toISOString() });
+        for (const summary of old) {
+            try {
+                deps.store.remove(sessionPath(summary.sessionId));
+            }
+            catch {
+                // counted once from its summary until the next prune removes it
+            }
+        }
+        if (old.length)
+            deps.log(`folded ${old.length} old session summar${old.length === 1 ? "y" : "ies"} of agent ${agentId}`);
+        return old.length;
+    }
+    finally {
+        release();
+    }
 }
 function refuse(deps, agentId, pattern, local, sources) {
     const { minSessions, minOccurrences } = deps.settings;
@@ -586,6 +752,13 @@ export async function processSession(deps, sessionId, agentId, options = {}) {
         // Older sessions are a bonus; this session's own learning goes on without them.
         deps.log(`backfill skipped: ${String(error)}`);
     }
+    try {
+        await pruneSessions(deps, agentId, sessionId, now);
+    }
+    catch (error) {
+        // Housekeeping: a prune that failed leaves the summaries in place, and tries again tomorrow.
+        deps.log(`pruning skipped: ${String(error)}`);
+    }
     await applyDeferred(deps, agentId, now);
     updateRecurrence(store, summary);
     const base = {
@@ -601,8 +774,8 @@ export async function processSession(deps, sessionId, agentId, options = {}) {
     };
     if (!settings.learnEnabled)
         return finish({ ...base, outcome: "learning_disabled" });
-    const summaries = await agentSummaries(store, agentId);
-    const patterns = aggregate(summaries);
+    const evidence = await agentEvidence(store, agentId);
+    const patterns = evidence.patterns;
     let cachedSources = null;
     const sources = () => (cachedSources ??= deps.sources());
     const ordered = summary.patterns
@@ -634,7 +807,7 @@ export async function processSession(deps, sessionId, agentId, options = {}) {
     // call of each session it appeared in went to another failure (owner decision 2026-09-28).
     let queued = false;
     if (!chosen && deps.llm && callLeft(store, now, settings.maxModelCallsPerDay, sessionId)) {
-        const next = await fromQueue(deps, agentId, patterns, summaries, sources);
+        const next = await fromQueue(deps, agentId, evidence, sources);
         if (next) {
             chosen = next;
             queued = true;
@@ -865,9 +1038,23 @@ export function report(store, agentId, budget) {
         if (agentId === undefined || lessonAgent(lesson) === agentId)
             lessons[lesson.status]++;
     const sessions = [...summaries.values()].filter((summary) => agentId === undefined || agentOf(summary.sessionId) === agentId);
-    const withFailures = sessions.filter((summary) => summary.patterns.length > 0).length;
+    let read = sessions.length;
+    let withFailures = sessions.filter((summary) => summary.patterns.length > 0).length;
+    // Sessions folded away still count as read, each once.
+    for (const name of store.list("folded")) {
+        const record = store.read(`folded/${name}.json`);
+        if (!record?.sessions || (agentId !== undefined && record.agentId !== agentId))
+            continue;
+        for (const [id, session] of Object.entries(record.sessions)) {
+            if (summaries.has(id))
+                continue;
+            read++;
+            if (Object.keys(session.failures ?? {}).length > 0)
+                withFailures++;
+        }
+    }
     return {
-        sessions: sessions.length,
+        sessions: read,
         sessionsWithFailures: withFailures,
         outcomes,
         refusals,
@@ -952,6 +1139,11 @@ export function knownAgents(store) {
         const summary = store.read(`sessions/${name}.json`);
         if (summary)
             ids.add(summary.agentId || DEFAULT_AGENT);
+    }
+    for (const name of store.list("folded")) {
+        const record = store.read(`folded/${name}.json`);
+        if (typeof record?.agentId === "string")
+            ids.add(record.agentId);
     }
     return ids.size ? [...ids].sort() : [DEFAULT_AGENT];
 }

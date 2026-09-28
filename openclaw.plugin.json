@@ -76,6 +76,18 @@
         "minimum": 0,
         "default": 60
       },
+      "keepSessionDays": {
+        "type": "integer",
+        "minimum": 0,
+        "default": 30,
+        "description": "Session summaries whose last message is older than this many days are folded into one record per agent and removed; the fold keeps every count learning uses. 0 keeps them by age."
+      },
+      "keepSessions": {
+        "type": "integer",
+        "minimum": 0,
+        "default": 500,
+        "description": "At most this many session summaries per agent; the oldest are folded the same way. 0: no cap."
+      },
       "proposalTimeoutMs": {
         "type": "integer",
         "minimum": 1000,
