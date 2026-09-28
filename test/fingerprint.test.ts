@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fingerprint, normalizeError } from "../src/core/fingerprint.ts";
+import { warmUpNormalizer } from "../src/core/fingerprint.ts";
 
 interface GoldenRow {
   tool: string;
@@ -31,4 +32,11 @@ test("normalizeError matches the Python original on every golden row", () => {
 test("fingerprint matches the Python original on every golden row", () => {
   const mismatches = golden.filter((row) => fingerprint(row.tool, row.input) !== row.fingerprint);
   assert.equal(mismatches.length, 0, `${mismatches.length} of ${golden.length} differ`);
+});
+
+test("the warm-up runs a fixed set of synthetic errors, then stops", () => {
+  let n = 0;
+  while (warmUpNormalizer(n)) n++;
+  assert.equal(n, 11);
+  assert.equal(warmUpNormalizer(n), false);
 });

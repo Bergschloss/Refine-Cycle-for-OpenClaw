@@ -17,6 +17,7 @@ import os from "node:os";
 import path from "node:path";
 import { formatBlock } from "./core/injection.js";
 import { sqliteHistory, agentDatabasePath } from "./host/history.js";
+import { warmUpNormalizer } from "./core/fingerprint.js";
 import { readSources } from "./host/sources.js";
 import { activeLessons, allLessons, DEFAULT_AGENT, lessonAgent, recover, setStatus } from "./lessons.js";
 import { audit, describeAudit, describePass, ensureLedger, describeReport, describeStatus, knownAgents, processSession, recordExposure, report, status } from "./pipeline.js";
@@ -32,6 +33,13 @@ function commandAgent(ctx) {
 const PLUGIN_DIR = "refine-cycle";
 /** How long a chat command waits for its pass before it answers "started" and sends the result later. Tests shorten it. */
 export const timing = { chatWaitMs: 10_000 };
+/**
+ * When a started gateway warms the error normalizer up: the first Unicode-aware match
+ * costs V8 ~200 ms once per process (measured on 2026.9.6, Node 26), and it should not
+ * land in a user's first learning pass. A timer the process does not wait for, so a
+ * command-line run, which ends first, never pays it.
+ */
+const WARM_UP_DELAY_MS = 30_000;
 const PROMPT_HOOK_TIMEOUT_MS = 2_000;
 const MAX_BLOCKS_PER_SESSION = 20;
 const MAX_SESSIONS_REMEMBERED = 500;
@@ -899,5 +907,12 @@ export default function register(api) {
             };
         },
     }), { name: "refine_run", optional: true });
+    if (!storeError && settings.learnEnabled) {
+        const warmUp = async () => {
+            for (let i = 0; warmUpNormalizer(i); i++)
+                await new Promise((resolve) => setImmediate(resolve));
+        };
+        setTimeout(() => void runOutsideHostWorkScope(() => schedule(warmUp)).catch(() => undefined), WARM_UP_DELAY_MS).unref?.();
+    }
     log(`ready, store at ${store.root}`);
 }

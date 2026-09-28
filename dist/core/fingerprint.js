@@ -264,3 +264,31 @@ export function fingerprintOfShape(toolName, shape) {
     const key = `${toolName || ""}|${shape}`.replace(LONE_SURROGATE, "?");
     return createHash("sha1").update(key, "utf8").digest("hex").slice(0, 12);
 }
+/**
+ * One synthetic long error per call (false when there are no more), for warming the
+ * normalizer up before a user's turn needs it: the first long errors a process
+ * normalizes cost a one-time ~250 ms (V8 compiling the expressions on first real use).
+ * Synthetic text only; the result is thrown away. The caller yields between calls.
+ */
+export function warmUpNormalizer(index) {
+    const parts = [
+        "Traceback (most recent call last):\n  File \"/srv/app/module_a/handler.py\", line 42, in run\n    result = client.fetch(url)\nConnectionError: HTTPSConnectionPool(host='api.example.test', port=443): Read timed out. (read timeout=30)",
+        "Error: ENOENT: no such file or directory, open 'C:\\Users\\someone\\Projects\\demo app\\src\\config\\settings.json'",
+        "npm ERR! code E404\nnpm ERR! 404 Not Found - GET https://registry.example.test/@scope%2fpackage-name - Not found\nnpm ERR! A complete log of this run can be found in: /home/user/.npm/_logs/2026-09-28T10_00_00_000Z-debug-0.log",
+        "Exit code 143\nCommand timed out after 2m 0s\n+ docker compose -f deploy/docker-compose.prod.yml up -d --remove-orphans\n time=\"2026-09-28T10:00:00+02:00\" level=warning msg=\"attribute version is obsolete\"",
+        "fatal: unable to access 'https://git.example.test/org/repo.git/': Failed to connect to 10.0.0.12 port 8443 after 21045 ms: Connection refused",
+        "{\"error\":{\"code\":429,\"message\":\"Too Many Requests\",\"details\":[{\"retryAfter\":\"12s\",\"requestId\":\"0a1b2c3d-4e5f-6071-8293-a4b5c6d7e8f9\"}]}}",
+        "src/components/Widget.tsx(118,23): error TS2322: Type 'string | undefined' is not assignable to type 'string'.\n  Type 'undefined' is not assignable to type 'string'.",
+        "psql: error: connection to server at \"localhost\" (::1), port 5432 failed: FATAL:  password authentication failed for user \"app_user\"",
+        "Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/opt/service/dist/lib/worker.js' imported from /opt/service/dist/index.js\n    at finalizeResolution (node:internal/modules/esm/resolve:275:11)\n    at moduleResolve (node:internal/modules/esm/resolve:865:10)",
+        "diff --git a/lib/a.ts b/lib/a.ts\nindex 3f2a9c1..8b7e6d0 100644\n--- a/lib/a.ts\n+++ b/lib/a.ts\n@@ -10,7 +10,7 @@ export function a(x: number) {\n-  return x * 2;\n+  return x * 3;",
+        // Non-ASCII text takes the Unicode-aware paths (letters of any script, case folding): their first use is the slow one.
+        "Помилка: файл «/дані/звіт 2026.csv» не знайдено; перевірте шлях і спробуйте ще раз. Fehler: Zeitüberschreitung beim Öffnen von „C:\\Benutzer\\Müller\\Größe.txt“ — ÉCHEC après 30 s ✓",
+    ];
+    if (index >= parts.length)
+        return false;
+    // Long enough to reach the paths a long real error takes: head and tail, as the bound keeps them.
+    const text = index === parts.length - 1 ? parts[index] : `${parts[index]}\n${parts.join("\n").repeat(4).slice(0, 3000)}\n${parts[(index + 3) % parts.length]}`;
+    normalizeError(text);
+    return true;
+}
