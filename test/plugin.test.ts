@@ -914,3 +914,13 @@ test("a plugin loaded from a path is not updated, and says so", async () => {
   await setup.turn("s1");
   assert.equal(setup.sent.length, 0, "nothing to announce for a path install");
 });
+
+test("/refine status starts a due update check, and the next status shows a newer release", async () => {
+  const setup = updateSetup(gitHost());
+  const refine = setup.commands.get("refine")!;
+  assert.doesNotMatch((await refine({ args: "status", agentId: "main" }) as { text: string }).text, /is available/);
+  for (let i = 0; i < 10; i++) await settle();
+  const text = (await refine({ args: "status", agentId: "main" }) as { text: string }).text;
+  assert.match(text, /warnings:\n  ⚠ Refine Cycle 0\.2\.0 is available \(installed 0\.1\.0\): \/refine update/);
+  assert.equal(setup.sent.length, 0, "status itself sends nothing");
+});

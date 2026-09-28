@@ -572,6 +572,13 @@ export default function register(api) {
             return { text: scope.json ? JSON.stringify(numbers, null, 2) : describeReport(numbers), ok: true };
         }
         if (verb === "status") {
+            // As Hermes' status does, it starts the day's update check when one is due: the
+            // command line waits for it, a chat does not (the next status shows what it found).
+            if (settings.checkForUpdates) {
+                const check = runOutsideHostWorkScope(() => checkForUpdate(now)).catch(() => undefined);
+                if (agentId === undefined)
+                    await check;
+            }
             const agents = agentId === undefined ? knownAgents(store) : [agentId];
             const s = await status(depsFor(agents[0]), {
                 agentIds: agents,
