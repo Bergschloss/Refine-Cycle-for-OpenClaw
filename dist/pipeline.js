@@ -11,7 +11,7 @@ import { aggregate, summarizeSessionInSlices, SUMMARY_FORMAT } from "./core/fail
 import { findCoveringRule } from "./core/covered.js";
 import { lessonShape } from "./core/shape.js";
 import { buildUserMessage, parseProposal, SYSTEM_PROMPT, validateLesson } from "./core/proposal.js";
-import { formatBlock } from "./core/injection.js";
+import {} from "./core/injection.js";
 import { activate, activeLessons, allLessons, DEFAULT_AGENT, lessonAgent, LessonExistsError, lessonId, recover } from "./lessons.js";
 import { safeName, StoreError } from "./store.js";
 const REPLY_KEPT_CHARS = 2000;
@@ -173,13 +173,8 @@ function refuse(deps, agentId, pattern, local, sources) {
         return { rule: `not_lesson_shaped:${shape}` };
     const known = allLessons(deps.store).filter((lesson) => lessonAgent(lesson) === agentId);
     const same = known.find((lesson) => lesson.fingerprint === pattern.fingerprint && lesson.status !== "draft");
-    if (same?.status === "active") {
-        // An active lesson the block has no room for is never shown: say so instead of calling it covered.
-        const shown = formatBlock(activeLessons(deps.store, agentId), deps.settings.maxInjectedChars)?.lessonIds ?? [];
-        if (!shown.includes(same.id))
-            return { rule: "lesson_over_cap", detail: same.id };
+    if (same?.status === "active")
         return { rule: "covered_by_lesson", detail: same.id };
-    }
     // The user took this lesson away; learning it again would undo their decision.
     if (same)
         return { rule: "withdrawn_by_user", detail: `${same.id} (${same.status})` };
@@ -482,7 +477,6 @@ const RULE_WORDS = {
     "not_lesson_shaped:wrong_tool": "the agent called a tool that does not exist",
     "not_lesson_shaped:dropped_argument": "an argument already used was left out",
     covered_by_lesson: "an active lesson covers it",
-    lesson_over_cap: "an active lesson covers it but does not fit in the prompt",
     withdrawn_by_user: "you disabled or deleted its lesson",
     lesson_pending: "its lesson waits to be saved",
     already_covered: "your instructions or skills already say it",

@@ -8,7 +8,7 @@ export interface Settings {
   enabled: boolean;
   injectEnabled: boolean;
   learnEnabled: boolean;
-  /** Size cap of the injected block, in characters. */
+  /** Soft limit of the injected block, in characters: every active lesson is shown; the lesson message warns near and past it. */
   maxInjectedChars: number;
   maxLessonChars: number;
   maxModelCallsPerDay: number;
@@ -35,7 +35,7 @@ export const DEFAULTS: Settings = {
   enabled: true,
   injectEnabled: true,
   learnEnabled: true,
-  maxInjectedChars: 1000,
+  maxInjectedChars: 4400,
   maxLessonChars: 200,
   maxModelCallsPerDay: 3,
   minSessions: 2,

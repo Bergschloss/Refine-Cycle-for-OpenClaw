@@ -475,13 +475,13 @@ test("a deferred lesson the user has since withdrawn stays withdrawn", async () 
   assert.equal(JSON.parse(fs.readFileSync(path.join(d.store.root, "candidates", "s2.json"), "utf8")).refusal.rule, "withdrawn_by_user");
 });
 
-test("an active lesson the block has no room for is refused as over the cap, not as covered", async () => {
+test("an active lesson stays 'covered' however small the soft limit: no lesson is ever over a cap", async () => {
   const history = new FakeHistory().add("s1", failing(5)).add("s2", failing(5));
   const d = deps(history, new ScriptedLlm(lessonReply()), { backfillSessions: 0 });
   await processSession(d, "s1", "main");
   d.settings.maxInjectedChars = 250;
   const decision = await processSession(d, "s2", "main");
-  assert.equal(decision.evaluated[0].refusal?.rule, "lesson_over_cap");
+  assert.equal(decision.evaluated[0].refusal?.rule, "covered_by_lesson");
 });
 
 test("failures the host gave no time for are counted as unplaced, not as 'did not recur'", async () => {

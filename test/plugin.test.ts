@@ -441,7 +441,7 @@ test("a new lesson is told in one line, once, in the chat the user is talking fr
   assert.equal(sent[0].to, "4242");
   assert.equal(sent[0].accountId, "default");
   assert.ok(sent[0].cfg, "the host config goes with the send");
-  assert.match(String(sent[0].text), /^♾️ Refine Cycle — new lesson learned \(lessons \d+\/1000\)$/);
+  assert.match(String(sent[0].text), /^♾️ Refine Cycle — new lesson learned \(lessons \d+\/4400\)$/);
   // Later turns, in the same or another chat, never repeat it.
   agentEnd({}, telegramTurn("s2"));
   agentEnd({}, { ...telegramTurn("s3"), chatId: "9999" });
@@ -483,7 +483,7 @@ test("the last chat is remembered across turns and restarts", async () => {
   await settle();
   assert.equal(sent.length, 1);
   assert.equal(sent[0].to, "4242");
-  assert.match(String(sent[0].text), /^♾️ Refine Cycle — new lesson learned \(lessons \d+\/1000\)$/);
+  assert.match(String(sent[0].text), /^♾️ Refine Cycle — new lesson learned \(lessons \d+\/4400\)$/);
 });
 
 test("no message with the setting off, or on a channel that takes none", async () => {

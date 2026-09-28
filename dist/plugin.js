@@ -116,7 +116,7 @@ export default function register(api) {
      * Bounded, because a run that never reaches agent_end leaves its entry behind.
      */
     const injected = new Map();
-    let lastOmitted = "";
+    let lastOver = false;
     const remember = (sessionId, block) => {
         const entries = injected.get(sessionId) ?? [];
         if (!entries.some((entry) => entry.block.hash === block.hash))
@@ -130,16 +130,17 @@ export default function register(api) {
         if (storeError || !settings.injectEnabled || !injectionAllowed)
             return undefined;
         try {
-            const block = formatBlock(activeLessons(store, ctx?.agentId || DEFAULT_AGENT), settings.maxInjectedChars);
+            const block = formatBlock(activeLessons(store, ctx?.agentId || DEFAULT_AGENT));
             if (!block)
                 return undefined;
             if (ctx?.sessionId)
                 remember(ctx.sessionId, block);
-            const omitted = (block.omittedIds ?? []).join(",");
-            if (omitted && omitted !== lastOmitted) {
-                warn(`${block.omittedIds.length} active lesson(s) do not fit maxInjectedChars and are not shown: ${omitted}`);
+            // The limit is soft: every lesson is shown; the log says once when the block passes it.
+            const over = block.text.length > settings.maxInjectedChars;
+            if (over && !lastOver) {
+                warn(`the lessons block is ${block.text.length} characters, over the soft limit of ${settings.maxInjectedChars}; every lesson is still shown`);
             }
-            lastOmitted = omitted;
+            lastOver = over;
             return { prependContext: block.text };
         }
         catch (error) {
@@ -230,8 +231,8 @@ export default function register(api) {
                 log(`lesson ${which}: channel ${chat.channel} cannot take a message from a plugin`);
                 return;
             }
-            const block = formatBlock(activeLessons(store, agentId), settings.maxInjectedChars);
-            const text = lessonNotice(block?.text.length ?? 0, settings.maxInjectedChars, (block?.omittedIds?.length ?? 0) > 0);
+            const block = formatBlock(activeLessons(store, agentId));
+            const text = lessonNotice(block?.text.length ?? 0, settings.maxInjectedChars);
             await adapter.sendText({ cfg: api.config, to: chat.to, text, accountId: chat.accountId ?? null });
             log(`lesson ${which}: told the user on ${chat.channel}`);
         }

@@ -26,7 +26,7 @@
 - `/refine list` shows your lessons and their status; `/refine disable <id>` and `/refine delete <id>` take one away, and a lesson you took away is never learned again.
 - It never edits your `AGENTS.md`, `SOUL.md`, skills or memory. Lessons live in the plugin's own folder.
 - It does not filter your conversation or its lessons. The evidence for a lesson (the failing call's error and arguments, and the call that fixed it) goes to that model, as your agent would send it; the lessons and the plugin's records, which keep short excerpts of failed calls, stay in its folder on your machine. With several agents, the evidence from every agent goes to the default agent's model: OpenClaw does not let a plugin's background call choose the agent.
-- When it learns a lesson, it sends one line, such as "♾️ Refine Cycle — new lesson learned (lessons 412/1000)", to the chat you are talking from (or the last one you talked from, when the turn came from a cron job or the command line). The numbers are how much of the lessons block your active lessons take; it says when that gets tight or full. Nothing else is sent unasked; `/refine` shows the lessons. `notifyOnLesson: false` turns this off.
+- When it learns a lesson, it sends one line, such as "♾️ Refine Cycle — new lesson learned (lessons 412/4400)", to the chat you are talking from (or the last one you talked from, when the turn came from a cron job or the command line). The numbers are how many characters your active lessons take in the prompt, against a soft limit of 4400; it says `getting tight` from 90% and `over the soft limit` past it. Every active lesson is still shown: the limit is a warning, not a cut. Nothing else is sent unasked; `/refine` shows the lessons. `notifyOnLesson: false` turns this off.
 - If a hook fails or the store is unreadable, your agent's turn goes on as if the plugin were not there, and the log says why.
 
 ## How it works
@@ -98,7 +98,7 @@ Under `plugins.entries.refine-cycle.config` in `openclaw.json`. All are optional
 | `learnEnabled` | `true` | Look for repeated failures and write lessons |
 | `maxModelCallsPerDay` | `3` | Model calls for writing lessons, per day |
 | `minSessions` / `minOccurrences` | `2` / `5` | How often a failure must repeat (either one) |
-| `maxInjectedChars` | `1000` | Size of the lessons block in the prompt |
+| `maxInjectedChars` | `4400` | Soft limit of the lessons block in the prompt, in characters: every active lesson is still shown; the lesson message warns near and past it |
 | `maxLessonChars` | `200` | Longest lesson accepted |
 | `instructionFiles` | `AGENTS.md`, `TOOLS.md`, `SOUL.md` | Files checked so a lesson never repeats a rule you already wrote |
 | `notifyOnLesson` | `true` | One line in your chat when a new lesson is learned |

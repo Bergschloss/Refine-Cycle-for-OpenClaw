@@ -35,7 +35,8 @@
       "maxInjectedChars": {
         "type": "integer",
         "minimum": 400,
-        "default": 1000
+        "default": 4400,
+        "description": "Soft limit of the lessons block in the prompt, in characters. Every active lesson is always shown; the lesson message says when the block is getting tight (90%) or over the limit."
       },
       "maxLessonChars": {
         "type": "integer",

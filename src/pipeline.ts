@@ -12,7 +12,7 @@ import { aggregate, summarizeSessionInSlices, SUMMARY_FORMAT, type AggregatePatt
 import { findCoveringRule, type Covering, type Source } from "./core/covered.ts";
 import { lessonShape } from "./core/shape.ts";
 import { buildUserMessage, parseProposal, SYSTEM_PROMPT, validateLesson } from "./core/proposal.ts";
-import { formatBlock, type Block } from "./core/injection.ts";
+import { type Block } from "./core/injection.ts";
 import { activate, activeLessons, allLessons, DEFAULT_AGENT, lessonAgent, LessonExistsError, lessonId, recover, type Lesson } from "./lessons.ts";
 import { safeName, StoreError, type FileStore } from "./store.ts";
 import type { Settings } from "./settings.ts";
@@ -276,12 +276,7 @@ function refuse(
   if (shape) return { rule: `not_lesson_shaped:${shape}` };
   const known = allLessons(deps.store).filter((lesson) => lessonAgent(lesson) === agentId);
   const same = known.find((lesson) => lesson.fingerprint === pattern.fingerprint && lesson.status !== "draft");
-  if (same?.status === "active") {
-    // An active lesson the block has no room for is never shown: say so instead of calling it covered.
-    const shown = formatBlock(activeLessons(deps.store, agentId), deps.settings.maxInjectedChars)?.lessonIds ?? [];
-    if (!shown.includes(same.id)) return { rule: "lesson_over_cap", detail: same.id };
-    return { rule: "covered_by_lesson", detail: same.id };
-  }
+  if (same?.status === "active") return { rule: "covered_by_lesson", detail: same.id };
   // The user took this lesson away; learning it again would undo their decision.
   if (same) return { rule: "withdrawn_by_user", detail: `${same.id} (${same.status})` };
   // A validated lesson for it is waiting behind a busy lock: a second model call would
@@ -597,7 +592,6 @@ const RULE_WORDS: Record<string, string> = {
   "not_lesson_shaped:wrong_tool": "the agent called a tool that does not exist",
   "not_lesson_shaped:dropped_argument": "an argument already used was left out",
   covered_by_lesson: "an active lesson covers it",
-  lesson_over_cap: "an active lesson covers it but does not fit in the prompt",
   withdrawn_by_user: "you disabled or deleted its lesson",
   lesson_pending: "its lesson waits to be saved",
   already_covered: "your instructions or skills already say it",

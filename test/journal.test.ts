@@ -71,7 +71,7 @@ test("a torn lesson or journal file is skipped, never fatal", () => {
   fs.writeFileSync(path.join(root, "journal", "torn.json"), "{");
   assert.equal(activeLessons(store).length, 1);
   assert.deepEqual(recover(store, NOW), { finished: 0, abandoned: 0, unreadable: 1 });
-  assert.ok(formatBlock(activeLessons(store), 1000));
+  assert.ok(formatBlock(activeLessons(store)));
 });
 
 test("disable and delete go through the journal and survive a crash", () => {
@@ -128,7 +128,7 @@ test("a lesson file missing a field the sort needs is skipped, not fatal", () =>
   activate(store, lesson(), NOW);
   store.write("lessons/zz.json", { id: "zz", text: "When a, b.", fingerprint: "0123456789ab", status: "active" });
   assert.deepEqual(activeLessons(store).map((l) => l.id), ["abc123"]);
-  assert.ok(formatBlock(activeLessons(store), 1000));
+  assert.ok(formatBlock(activeLessons(store)));
 });
 
 test("the store lock is exclusive across instances, and a stale one is taken over", () => {

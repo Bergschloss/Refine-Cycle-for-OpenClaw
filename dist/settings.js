@@ -7,7 +7,7 @@ export const DEFAULTS = {
     enabled: true,
     injectEnabled: true,
     learnEnabled: true,
-    maxInjectedChars: 1000,
+    maxInjectedChars: 4400,
     maxLessonChars: 200,
     maxModelCallsPerDay: 3,
     minSessions: 2,

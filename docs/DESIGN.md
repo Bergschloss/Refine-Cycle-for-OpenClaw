@@ -30,7 +30,7 @@ The Hermes version carries an installer, a patch to eight host files, a self-upd
 
 ## How lessons reach the agent
 
-Through `before_prompt_build`, which prepends a bounded block of the agent's active lessons to the prompt. No exclusive slot is taken: the user's memory plugin and context engine stay theirs. The plugin keeps lessons in its own store and never edits `AGENTS.md`, `SOUL.md` or any other file the user owns.
+Through `before_prompt_build`, which prepends a marked block of the agent's active lessons to the prompt. Every active lesson is in it, whole: `maxInjectedChars` (4400, the Hermes memory limit's number, owner decision 2026-09-28) is a soft limit. Nothing is left out for size; the lesson message says `getting tight` from 90% of it and `over the soft limit` past it, and the log says so once when the block passes it. At the limit the block adds about 4,400 characters, roughly 1,100 tokens, to every prompt: about 20 lessons of the longest allowed length (200 characters) or 40 like the two live ones (384 characters for both). No exclusive slot is taken: the user's memory plugin and context engine stay theirs. The plugin keeps lessons in its own store and never edits `AGENTS.md`, `SOUL.md` or any other file the user owns.
 
 ## Host contract (OpenClaw 2026.9.5–2026.9.6)
 
