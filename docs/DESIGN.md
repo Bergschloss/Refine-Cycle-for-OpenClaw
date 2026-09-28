@@ -53,6 +53,8 @@ Through `before_prompt_build`, which prepends a marked block of the agent's acti
 - OpenClaw 2026.9.6 declares `engines.node` `>=24.16.0 <25 || >=26.1.0`; the plugin runs in its process and declares the same. A fresh `plugins install git:…` asks `[y/N]` on a terminal and cancels without one unless `--force` is given; `allowConversationAccess` is hot-reloaded by a running gateway (checked on a fresh 2026.9.6 install, 2026-09-27).
 - Root CLI commands must be listed in the manifest's `cliCommands`; in the `cli-metadata` registration pass the runtime is unavailable, and the plugin returns at once. The host runs the command from the full registration: `openclaw refine-cycle list` and `report` were checked on 2026.9.6 with this return in place (2026-09-26).
 
+- A plugin tool is registered with `api.registerTool(factory, { name, optional })` and declared in the manifest (`contracts.tools`, `toolMetadata.<tool>.optional`). An optional tool reaches the model only when the user allows it (`tools.allow` / `tools.alsoAllow`, the plugin id or the tool name); the factory gets the run's `agentId`, `sessionId` and `workspaceDir` (2026.9.6 `OpenClawPluginToolContextBase`, `docs/plugins/building-plugins.md` "Registering tools"). `refine_run` is optional because every call can spend a model call from the user's budget.
+
 `scripts/drift-check.ts` compares what the tests assume about the host with a live install.
 
 ## Layout

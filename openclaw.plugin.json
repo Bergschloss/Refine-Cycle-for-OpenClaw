@@ -7,6 +7,14 @@
   "activation": {
     "onStartup": true
   },
+  "contracts": {
+    "tools": ["refine_run"]
+  },
+  "toolMetadata": {
+    "refine_run": {
+      "optional": true
+    }
+  },
   "cliCommands": [
     {
       "name": "refine-cycle",

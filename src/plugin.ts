@@ -66,6 +66,22 @@ function commandAgent(ctx: CommandContext | undefined): string | undefined {
   return ctx?.agentId || /^agent:([^:]+):/i.exec(ctx?.sessionKey ?? "")?.[1] || undefined;
 }
 
+/** What a tool factory is given for one agent run (2026.9.6 OpenClawPluginToolContextBase, the part used here). */
+interface ToolContext {
+  agentId?: string;
+  sessionId?: string;
+  workspaceDir?: string;
+}
+
+/** An agent tool as the host takes it (2026.9.6 AnyAgentTool, the part used here). */
+interface AgentTool {
+  name: string;
+  label: string;
+  description: string;
+  parameters: Record<string, unknown>;
+  execute(toolCallId: string, params: unknown): Promise<{ content: Array<{ type: "text"; text: string }>; details: unknown }>;
+}
+
 interface CliCommand {
   command(spec: string): CliCommand;
   description(text: string): CliCommand;
@@ -94,6 +110,7 @@ export interface PluginApi {
     channel?: { outbound?: { loadAdapter?: (id: string) => Promise<OutboundAdapter | undefined> } };
   };
   on(hook: string, handler: (event: unknown, ctx: HookContext) => unknown, options?: { timeoutMs?: number }): void;
+  registerTool?(tool: (ctx: ToolContext) => AgentTool | null, options?: { name?: string; optional?: boolean }): void;
   registerCommand?(command: {
     name: string;
     description: string;
@@ -645,6 +662,63 @@ export default function register(api: PluginApi): void {
       // Parse-time metadata: without it OpenClaw 2026.9.6 does not know the command.
       descriptors: [{ name: "refine-cycle", description: "Refine Cycle: lessons learned from repeated failures", hasSubcommands: true }],
     },
+  );
+
+  /**
+   * `refine_run`: the agent may ask for a pass over its own failures, as in the Hermes
+   * plugin. Optional: OpenClaw exposes it only when the user allows it (`tools.alsoAllow`),
+   * because every call spends a model call from the user's budget. It answers at once;
+   * the pass runs in the background under the same budget and rules, so the agent's turn
+   * never waits for the model.
+   */
+  api.registerTool?.(
+    (toolContext) => ({
+      name: "refine_run",
+      label: "Refine Cycle",
+      description:
+        "Ask Refine Cycle for one learning pass over this agent's repeated tool failures, now instead of at the end of the turn. " +
+        "It runs in the background under the same limits as the automatic pass (one model call per session, a few a day) and may find nothing; " +
+        "a lesson it writes is shown from the next turn on. Use dry_run to see the proposed lesson without saving it.",
+      parameters: {
+        type: "object",
+        properties: {
+          reason: { type: "string", description: "Optional issue or area to focus on; passed to the model as the request's words." },
+          session_id: { type: "string", description: "Optional exact past session id of this agent to look at; default is the current session." },
+          dry_run: { type: "boolean", description: "Propose and check a lesson, save nothing. The model call is spent like any other." },
+        },
+        additionalProperties: false,
+      },
+      async execute(_toolCallId, raw) {
+        const params = (typeof raw === "object" && raw !== null ? raw : {}) as Record<string, unknown>;
+        if (params.reason !== undefined && typeof params.reason !== "string") throw new Error("reason must be a string.");
+        if (params.dry_run !== undefined && typeof params.dry_run !== "boolean") throw new Error("dry_run must be a boolean.");
+        if (params.session_id !== undefined && typeof params.session_id !== "string") throw new Error("session_id must be a string.");
+        if (storeError) throw new Error(`Refine Cycle cannot use its store: ${storeError}`);
+        const agentId = toolContext?.agentId || DEFAULT_AGENT;
+        if (toolContext?.workspaceDir) workspaces.set(agentId, toolContext.workspaceDir);
+        const explicit = typeof params.session_id === "string" && params.session_id.trim() ? params.session_id.trim() : undefined;
+        const sessionId = explicit ?? toolContext?.sessionId;
+        if (!sessionId) throw new Error("No session to look at: the host gave this run none; pass session_id.");
+        if (explicit && depsFor(agentId).history.hasSession?.(explicit) === false) throw new Error(`No session ${explicit} for agent ${agentId}.`);
+        const dryRun = params.dry_run === true;
+        const reason = typeof params.reason === "string" ? params.reason : "";
+        // Not awaited: the answer is the start, the pass's result is in /refine report.
+        passByHand(agentId, sessionId, { ...(reason ? { reason } : {}), ...(dryRun ? { dryRun } : {}) }).then(
+          (decision) => log(`refine_run over ${sessionId}: ${decision.earlier ? `already had its call (${decision.outcome})` : decision.outcome}`),
+          (error: unknown) => warn(`refine_run over ${sessionId} failed: ${String(error)}`),
+        );
+        const details = { started: true, session: sessionId, dryRun };
+        return {
+          content: [{
+            type: "text",
+            text: `${dryRun ? "Dry run" : "Learning pass"} over session ${sessionId} started in the background. ` +
+              "It follows the usual limits and may find nothing; a new lesson is announced and shown from the next turn on; `/refine report` has the result.",
+          }],
+          details,
+        };
+      },
+    }),
+    { name: "refine_run", optional: true },
   );
 
   log(`ready, store at ${store.root}`);

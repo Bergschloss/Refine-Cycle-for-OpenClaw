@@ -634,11 +634,13 @@ test("a chat pass the model is slow on answers at once and sends the result to t
   timing.chatWaitMs = 20;
   try {
     let answer: (value: { text: string }) => void = () => {};
-    const setup = passSetup(() => new Promise((resolve) => (answer = resolve)));
+    let called = false;
+    const setup = passSetup(() => new Promise((resolve) => ((called = true), (answer = resolve))));
     // The chat the agent is talked to from, as the lesson message uses it.
     new FileStore(path.join(setup.stateDir, "plugin-data", "refine-cycle")).write("chats/main.json", { channel: "telegram", to: "4242" });
     const text = (await setup.commands.get("refine")!({ args: "session s1", agentId: "main" }) as { text: string }).text;
     assert.equal(text, "Pass over session s1 started; the result follows in this chat when the model has answered.");
+    for (let i = 0; i < 50 && !called; i++) await settle();
     answer({ text: lessonJson(setup.fp, setup.lessonText) });
     await settle();
     await new Promise((resolve) => setTimeout(resolve, 20));
@@ -689,4 +691,67 @@ test("the command line runs session and dry-run on an exact session, finding its
     console.log = log;
     process.exitCode = exitCode;
   }
+});
+
+// -- The refine_run tool --
+
+function toolSetup(reply: (params: Record<string, unknown>) => Promise<{ text: string }>) {
+  const stateDir = tempDir();
+  const error = "cron expression '* * *' has 3 fields, expected 5";
+  const failing = () => new Transcript().user("schedule it").call("cron_add", { schedule: "* * *" }, { error });
+  writeAgentDb(stateDir, { s1: failing(), s2: failing() });
+  const tools: Array<{ factory: (ctx: Record<string, unknown>) => unknown; options?: { name?: string; optional?: boolean } }> = [];
+  const logs: string[] = [];
+  const api: PluginApi = {
+    id: "refine-cycle",
+    config: { plugins: { entries: { "refine-cycle": { hooks: { allowConversationAccess: true } } } } },
+    runtime: { state: { resolveStateDir: () => stateDir }, llm: { complete: reply } },
+    logger: { info: (m) => logs.push(m), warn: (m) => logs.push(`WARN ${m}`) },
+    on: () => {},
+    registerTool: (factory, options) => tools.push({ factory: factory as never, ...(options ? { options } : {}) }),
+    registerCommand: () => {},
+  };
+  register(api);
+  const store = new FileStore(path.join(stateDir, "plugin-data", "refine-cycle"));
+  type Tool = { name: string; execute: (id: string, params: unknown) => Promise<{ content: Array<{ text: string }>; details: Record<string, unknown> }> };
+  return { tools, logs, store, error, tool: (ctx: Record<string, unknown>) => tools[0].factory(ctx) as Tool };
+}
+
+test("refine_run is an optional tool that answers at once and runs the pass in the background", async () => {
+  let answer: ((value: { text: string }) => void) | undefined;
+  const setup = toolSetup(() => new Promise((resolve) => (answer = resolve)));
+  assert.equal(setup.tools.length, 1);
+  assert.deepEqual(setup.tools[0].options, { name: "refine_run", optional: true });
+  const tool = setup.tool({ agentId: "main", sessionId: "s1" });
+  assert.equal(tool.name, "refine_run");
+  // The model has not answered, and the tool has already returned: the agent's turn goes on.
+  const result = await tool.execute("call-1", { reason: "cron schedules" });
+  assert.deepEqual(result.details, { started: true, session: "s1", dryRun: false });
+  assert.match(result.content[0].text, /started in the background/);
+  assert.equal(setup.store.list("lessons").length, 0);
+  for (let i = 0; i < 50 && !answer; i++) await settle();
+  assert.ok(answer, "the pass reached the model after the tool had returned");
+  answer!({ text: JSON.stringify({ decision: "lesson", fingerprint: fingerprint("cron_add", setup.error), lesson: "When calling cron_add, write the schedule as five cron fields, e.g. 0 3 * * *.", reason: "r" }) });
+  await settle();
+  assert.equal(setup.store.list("lessons").length, 1);
+  assert.ok(setup.logs.some((line) => line.includes("refine_run over s1: lesson")));
+});
+
+test("refine_run keeps the budget and the rules, and refuses bad arguments and unknown sessions", async () => {
+  const calls: unknown[] = [];
+  const setup = toolSetup(async (params) => {
+    calls.push(params);
+    return { text: JSON.stringify({ decision: "nothing", fingerprint: fingerprint("cron_add", setup.error), lesson: "", reason: "" }) };
+  });
+  const tool = setup.tool({ agentId: "main", sessionId: "s1" });
+  await assert.rejects(tool.execute("c", { dry_run: "yes" }), /dry_run must be a boolean/);
+  await assert.rejects(tool.execute("c", { reason: 3 }), /reason must be a string/);
+  await assert.rejects(tool.execute("c", { session_id: "nope" }), /No session nope for agent main/);
+  await assert.rejects(setup.tool({ agentId: "main" }).execute("c", {}), /pass session_id/);
+  await tool.execute("c", { dry_run: true });
+  await settle();
+  await tool.execute("c", {});
+  await settle();
+  assert.equal(calls.length, 1, "one call for the session, dry run or not");
+  assert.ok(setup.logs.some((line) => line.includes("refine_run over s1: already had its call (nothing)")));
 });

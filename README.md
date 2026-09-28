@@ -91,6 +91,7 @@ openclaw refine-cycle list
 | `/refine dry-run [session <id>] [reason]` | `openclaw refine-cycle dry-run session <id> [reason]` | Propose and check a lesson and show it, save nothing; it spends the session's call and one of the day's, as any pass does |
 | `/refine report` | `openclaw refine-cycle report` | What the loop decided and why, in words (`--json` on the command line for the numbers) |
 
+**The `refine_run` tool.** As in the Hermes plugin, the agent itself can ask for a pass over its own failures, with an optional `reason`, `session_id` and `dry_run`. It answers at once and the pass runs in the background under the same limits, so the agent's turn never waits for the model. It is an optional tool: OpenClaw shows it to the agent only when you add `refine_run` to `tools.alsoAllow` in `openclaw.json` (keep the entries already there), because each pass may spend one of the day's model calls.
 A pass started in chat answers within a few seconds; when the model takes longer, the answer says so and the result follows in the chat you talk from. In chat, the commands see only the lessons of the agent you are talking to. On the command line they see every agent, and `list` says whose each lesson is; a command that did not do what was asked (an unknown id, a busy store) exits with status 1.
 
 ## Settings
