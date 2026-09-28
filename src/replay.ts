@@ -5,7 +5,13 @@
  * which is what a live install would have seen.
  *
  * Input is JSONL, one session per line: `{"sessionId", "startedAt", "rows": [{seq, event}]}`
- * with events in OpenClaw's transcript shape. Output is the store (every decision
+ * with events in OpenClaw's transcript shape. The tool calls go in the assistant message
+ * as the host writes them, `{type: "toolCall", id, name, arguments: {...}}` parts (or
+ * through the host's `tool_call` wrapper), and each result names its call by
+ * `toolCallId`: then the failing call's arguments, the call that fixed it and the
+ * self-correction rule reach the loop exactly as they do live
+ * (`test/fixtures/corpus-with-args.jsonl`). A corpus without them still replays, with
+ * the tool name from `toolName` and no arguments. Output is the store (every decision
  * and lesson, traceable) and a result file with the numbers and the lessons.
  */
 

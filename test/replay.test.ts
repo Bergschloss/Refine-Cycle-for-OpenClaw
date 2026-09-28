@@ -5,6 +5,7 @@ import path from "node:path";
 import { readCorpus, replay } from "../src/replay.ts";
 import { DEFAULTS } from "../src/settings.ts";
 import { fingerprint } from "../src/core/fingerprint.ts";
+import { summarizeSession } from "../src/core/failures.ts";
 import type { Llm } from "../src/pipeline.ts";
 import { tempDir, Transcript } from "./helpers.ts";
 
@@ -62,4 +63,40 @@ test("replay refuses a store directory that already holds a run", async () => {
     replay({ corpusFile: corpus, storeDir: path.join(dir, "store"), llm: null, sources: [], settings: DEFAULTS, log: () => {} }),
     /empty store directory/,
   );
+});
+
+
+// K0.8: a corpus whose assistant messages carry the tool calls as the host writes them
+// (`toolCall` parts with `arguments`, directly or through OpenClaw's `tool_call` wrapper).
+test("replay reads toolCall arguments from the corpus exactly as the live path does: summary, evidence, self-correction", async () => {
+  const dir = tempDir();
+  const corpus = path.join(import.meta.dirname, "fixtures", "corpus-with-args.jsonl");
+  const prompts: string[] = [];
+  const shape = "invalid date '25/09/2026': expected YYYY-MM-DD";
+  const llm: Llm = {
+    complete: async (_system, user) => {
+      prompts.push(user);
+      return JSON.stringify({ decision: "lesson", fingerprint: fingerprint("send_report", shape), lesson: "When calling send_report, write the date as YYYY-MM-DD, e.g. 2026-09-25.", reason: "r" });
+    },
+  };
+  const storeDir = path.join(dir, "store");
+  const result = await replay({ corpusFile: corpus, storeDir, llm, sources: [], settings: { ...DEFAULTS, maxModelCallsPerDay: 1000 }, log: () => {} });
+  for (const session of readCorpus(corpus)) {
+    const stored = JSON.parse(fs.readFileSync(path.join(storeDir, "sessions", `${session.sessionId}.json`), "utf8"));
+    // The same summary the gateway would write for these rows.
+    const { $v: _v, ...live } = { ...summarizeSession(session.sessionId, "replay", session.rows), $v: 1 };
+    const { $v: _w, ...replayed } = stored;
+    assert.deepEqual(replayed, live);
+    const [pattern] = stored.patterns;
+    assert.equal(pattern.tool, "send_report");
+    assert.equal(JSON.parse(pattern.sampleArgs).date, "25/09/2026", "the failing call's arguments");
+    assert.equal(JSON.parse(pattern.correctionArgs).date, "2026-09-25", "the call that fixed it");
+    assert.deepEqual(pattern.occurrences.map((o: { resolution: string }) => o.resolution), ["corrected"]);
+  }
+  // Corrected in each session, but in two sessions: sent to the model with the fix as evidence.
+  assert.equal(prompts.length, 1);
+  assert.match(prompts[0], /25\/09\/2026/);
+  assert.match(prompts[0], /2026-09-25/);
+  assert.equal(result.lessons.length, 1);
+  assert.deepEqual(result.lessons[0].sessionIds, ["args-a", "args-b"]);
 });
