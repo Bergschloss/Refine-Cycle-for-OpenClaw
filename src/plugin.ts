@@ -664,7 +664,7 @@ export default function register(api: PluginApi): void {
     json?: boolean;
   }
 
-  const USAGE = "Usage: list | status | audit | report | run [reason] | session <id> [reason] | dry-run [session <id>] [reason] | model [auto | <provider>/<model>] | update | disable <id> | delete <id>";
+  const USAGE = "Usage: list | status | audit | report | run [reason] | session <id> [reason] | dry-run [session <id>] [reason] | model [auto | <provider>/<model>] | update | disable <id> | delete <id> | rollback <id>";
 
   /** `model`, `model auto`, `model <provider/model>`: show, clear or set the model lessons are written with. */
   const modelCommand = (value: string, scope: Scope): { text: string; ok: boolean } => {
@@ -728,7 +728,8 @@ export default function register(api: PluginApi): void {
       const owner = (lesson: (typeof lessons)[number]) => (agentId === undefined ? ` (agent ${lessonAgent(lesson)})` : "");
       return { text: lessons.map((lesson) => `${lesson.id} [${lesson.status}]${owner(lesson)} ${lesson.text}`).join("\n"), ok: true };
     }
-    if (verb === "disable" || verb === "delete") {
+    // `rollback` is the Hermes plugin's name for taking a lesson back; here it is `delete`: a tombstone.
+    if (verb === "disable" || verb === "delete" || verb === "rollback") {
       if (!id) return { text: `Usage: ${verb} <lesson id>`, ok: false };
       if (!mine.some((lesson) => lesson.id === id)) return { text: `No lesson ${id}.`, ok: false };
       recover(store, now); // non-blocking: skipped while another process holds the lock
@@ -745,7 +746,7 @@ export default function register(api: PluginApi): void {
     if (verb === "audit") {
       await ledgerReady;
       const rows = audit(store, now, agentId);
-      const command = agentId === undefined ? "openclaw refine-cycle delete" : "/refine delete";
+      const command = agentId === undefined ? "openclaw refine-cycle rollback" : "/refine rollback";
       return { text: scope.json ? JSON.stringify(rows, null, 2) : describeAudit(rows, agentId !== undefined, (id) => `${command} ${id}`), ok: true };
     }
     if (verb === "report") {
@@ -863,7 +864,7 @@ export default function register(api: PluginApi): void {
 
   api.registerCommand?.({
     name: "refine",
-    description: "Refine Cycle: list, status, audit, report, run [reason], session <id>, dry-run, model, update, disable <id>, delete <id>",
+    description: "Refine Cycle: list, status, audit, report, run [reason], session <id>, dry-run, model, update, disable <id>, delete <id>, rollback <id>",
     acceptsArgs: true,
     handler: async (ctx) => {
       const agentId = commandAgent(ctx);
@@ -925,6 +926,7 @@ export default function register(api: PluginApi): void {
         .action(async () => print(await control("update")));
       root.command("disable <id>").description("Stop injecting a lesson").action(async (id) => print(await control(`disable ${String(id)}`)));
       root.command("delete <id>").description("Delete a lesson (kept as a tombstone)").action(async (id) => print(await control(`delete ${String(id)}`)));
+      root.command("rollback <id>").description("The Hermes name for delete: take a lesson back for good").action(async (id) => print(await control(`rollback ${String(id)}`)));
       root
         .command("report")
         .description("What the learning loop decided, by rule; --json for the raw numbers")

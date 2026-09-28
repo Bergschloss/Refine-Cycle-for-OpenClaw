@@ -982,3 +982,19 @@ test("a model set with /refine model wins over the model setting, as Hermes' com
   assert.equal(calls[0].model, "openai/from-command");
   assert.match(await refine("model auto"), /Effective model: openai\/from-setting \(source: setting\)/);
 });
+
+test("/refine rollback is delete by its Hermes name: a tombstone, and the audit offers it", async () => {
+  const stateDir = tempDir();
+  seedLesson(stateDir, "oldlesson", "main");
+  const store = new FileStore(path.join(stateDir, "plugin-data", "refine-cycle"));
+  // Old enough, and never shown: the audit calls it unused and offers the rollback.
+  const lesson = store.read<Record<string, unknown>>("lessons/oldlesson.json")!;
+  store.write("lessons/oldlesson.json", { ...lesson, createdAt: "2026-01-01T00:00:00.000Z" });
+  store.write("candidates/later.json", { sessionId: "later", agentId: "main", at: "2026-06-01T00:00:00.000Z", outcome: "no_failures", called: false, evaluated: [] });
+  const { commands } = fakeApi(stateDir);
+  const refine = async (args: string) => ((await commands.get("refine")!({ args, agentId: "main" })) as { text: string }).text;
+  assert.match(await refine("audit"), /Candidates for removal:\n  oldlesson — \/refine rollback oldlesson/);
+  assert.equal(await refine("rollback oldlesson"), "Lesson oldlesson deleted.");
+  assert.equal(store.read<{ status: string }>("lessons/oldlesson.json")!.status, "deleted");
+  assert.equal(await refine("rollback"), "Usage: rollback <lesson id>");
+});

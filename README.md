@@ -85,6 +85,7 @@ openclaw refine-cycle list
 | `/refine status` | `openclaw refine-cycle status` | Whether learning and injection work and what blocks them, the model, calls used today, the block's size against its soft limit, the queue, the journal (`--json` on the command line) |
 | `/refine disable <id>` | `openclaw refine-cycle disable <id>` | Stop showing a lesson |
 | `/refine delete <id>` | `openclaw refine-cycle delete <id>` | Delete a lesson (kept as a tombstone) |
+| `/refine rollback <id>` | `openclaw refine-cycle rollback <id>` | The same as `delete`, under the Hermes plugin's name; `/refine audit` offers it for lessons that did not help or were never used |
 | `/refine audit` | `openclaw refine-cycle audit` | Did each lesson help: a verdict per lesson (`working`, `did not help`, `unused`, `too early`, `no recurrence window`, `unreliable`), from the sessions it was shown in and whether its failure came back after; it lists the ones worth removing and deletes nothing |
 | `/refine run [reason]` | — | A learning pass over this chat's session now, with an optional focus for the model; the same budget and rules as the automatic pass (the command line has no current session) |
 | `/refine session <id> [reason]` | `openclaw refine-cycle session <id> [reason]` | The same, over one exact past session |
