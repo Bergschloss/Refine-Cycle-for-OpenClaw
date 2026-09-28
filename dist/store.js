@@ -18,6 +18,7 @@
  *   ledger/<lesson>.json      per lesson, per session it was shown in: did its failure come back after (the audit)
  *   ledger-pending/<id>.json  a session whose effect waits for the ledger lock
  *   verdicts/<lesson>.json    the audit's last verdict for a lesson, and when
+ *   ledger-built.json         the ledger was built once from the effect records an older version left
  *   backfill/<agent>.json     when that agent's recent sessions were last re-read
  *   replay-result.json        the output of `openclaw refine-cycle replay`, in a replay's own store
  *   <name>.lock               a cross-process lock; <name>.lock.takeover while a stale one is removed

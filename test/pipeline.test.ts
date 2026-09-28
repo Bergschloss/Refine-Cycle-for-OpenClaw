@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { audit, describeAudit, describeReport, describeStatus, ledgerCounts, processSession, recordExposure, report, status, type Deps, type Llm } from "../src/pipeline.ts";
+import { audit, describeAudit, describeReport, describeStatus, ensureLedger, ledgerCounts, processSession, recordExposure, report, status, type Deps, type Llm } from "../src/pipeline.ts";
 import { DEFAULTS, type Settings } from "../src/settings.ts";
 import { FileStore } from "../src/store.ts";
 import { activate, activeLessons, allLessons, setStatus } from "../src/lessons.ts";
@@ -1045,4 +1045,21 @@ test("a dry run's lesson is not saved and does not close the failure: the queue 
   const s2 = await processSession(d, "s2", "main");
   assert.equal(s2.fingerprint, fpOf("alpha"));
   assert.equal(s2.queued, true);
+});
+
+test("a store from before the ledger keeps each lesson's history: the ledger is built once from its effect records", async () => {
+  const d = deps(new FakeHistory(), null);
+  d.store.write("effects/a.json", { sessionId: "a", exposures: [{ lessonId: "L", blockHash: "h", at: "x", shownAtMs: 1 }], recurrence: { L: 0 } });
+  d.store.write("effects/b.json", { sessionId: "b", exposures: [{ lessonId: "L", blockHash: "h", at: "x", shownAtMs: 1 }], recurrence: { L: 2 }, unplaced: { L: 1 } });
+  assert.equal(await ensureLedger(d.store, new Date()), true);
+  assert.deepEqual(ledgerCounts(d.store, "L"), { shown: 2, cameBack: 1, recurrences: 2, unplaced: 1 });
+  // Once: a second build changes nothing, and a busy lock only postpones it.
+  d.store.write("effects/c.json", { sessionId: "c", exposures: [], recurrence: { L: 5 } });
+  assert.equal(await ensureLedger(d.store, new Date()), true);
+  assert.equal(ledgerCounts(d.store, "L").shown, 2);
+  const fresh = deps(new FakeHistory(), null);
+  const release = fresh.store.lock("ledger", 0);
+  assert.equal(await ensureLedger(fresh.store, new Date()), false);
+  release();
+  assert.equal(fresh.store.exists("ledger-built.json"), false);
 });

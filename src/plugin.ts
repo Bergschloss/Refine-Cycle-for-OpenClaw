@@ -20,7 +20,7 @@ import { formatBlock, type Block } from "./core/injection.ts";
 import { sqliteHistory, agentDatabasePath } from "./host/history.ts";
 import { readSources } from "./host/sources.ts";
 import { activeLessons, allLessons, DEFAULT_AGENT, lessonAgent, recover, setStatus } from "./lessons.ts";
-import { audit, describeAudit, describePass, describeReport, describeStatus, knownAgents, processSession, recordExposure, report, status, type Decision, type Deps, type Llm, type PassOptions } from "./pipeline.ts";
+import { audit, describeAudit, describePass, ensureLedger, describeReport, describeStatus, knownAgents, processSession, recordExposure, report, status, type Decision, type Deps, type Llm, type PassOptions } from "./pipeline.ts";
 import { replay } from "./replay.ts";
 import { readSettings } from "./settings.ts";
 import { lessonNotice } from "./core/notice.ts";
@@ -378,6 +378,14 @@ export default function register(api: PluginApi): void {
     return run;
   };
 
+  /** The per-lesson ledger, built once from the effect records an older version left; the audit waits for it. */
+  const ledgerReady: Promise<boolean> = storeError
+    ? Promise.resolve(false)
+    : runOutsideHostWorkScope(() => schedule(() => ensureLedger(store, new Date()))).catch((error: unknown) => {
+      warn(`ledger build skipped: ${String(error)}`);
+      return false;
+    });
+
   /** One learning pass over one session, then the lesson message for whatever it activated. */
   const learn = async (agentId: string, sessionId: string, workspaceDir: string | undefined, turnChat: Chat | null, options: PassOptions = {}) => {
     const chat = currentChat(agentId, turnChat);
@@ -488,6 +496,7 @@ export default function register(api: PluginApi): void {
       return changed ? { text: `Lesson ${id} ${changed.status}.`, ok: true } : { text: `No lesson ${id}.`, ok: false };
     }
     if (verb === "audit") {
+      await ledgerReady;
       const rows = audit(store, now, agentId);
       const command = agentId === undefined ? "openclaw refine-cycle delete" : "/refine delete";
       return { text: scope.json ? JSON.stringify(rows, null, 2) : describeAudit(rows, agentId !== undefined, (id) => `${command} ${id}`), ok: true };

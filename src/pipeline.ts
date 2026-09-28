@@ -397,6 +397,33 @@ function pendingLedgerPath(sessionId: string): string {
  * without waiting. If another process holds it, the session is marked and its effect
  * (kept in `effects/`) is added by the next update that gets the lock: never lost.
  */
+/** Add one session's effect to each shown lesson's record. The caller holds the ledger lock. */
+function applyToLedger(store: FileStore, sessionId: string, recurrence: Record<string, number>, unplaced: Record<string, number>, now: Date): void {
+  for (const [id, n] of Object.entries(recurrence)) {
+    const record = store.read<LedgerRecord>(ledgerPath(id)) ?? { lessonId: id, sessions: {}, folded: { shown: 0, cameBack: 0, recurrences: 0, unplaced: 0 }, updatedAt: "" };
+    const sessions = { ...record.sessions, [sessionId]: { recurrence: n, unplaced: unplaced[id] ?? 0, at: now.toISOString() } };
+    const folded = { ...record.folded };
+    const ids = Object.keys(sessions);
+    if (ids.length > LEDGER_SESSIONS_KEPT) {
+      const oldest = ids.sort((a, b) => sessions[a].at.localeCompare(sessions[b].at)).slice(0, ids.length - LEDGER_SESSIONS_KEPT);
+      for (const old of oldest) {
+        const entry = sessions[old];
+        folded.shown++;
+        if (entry.recurrence > 0) folded.cameBack++;
+        folded.recurrences += entry.recurrence;
+        folded.unplaced += entry.unplaced;
+        delete sessions[old];
+      }
+    }
+    store.write(ledgerPath(id), { lessonId: id, sessions, folded, updatedAt: now.toISOString() });
+  }
+}
+
+/**
+ * Add one session's effect to each shown lesson's record, under the ledger lock and
+ * without waiting. If another process holds it, the session is marked and its effect
+ * (kept in `effects/`) is added by the next update that gets the lock: never lost.
+ */
 function recordLedger(store: FileStore, sessionId: string, recurrence: Record<string, number>, unplaced: Record<string, number>, now: Date): void {
   let release: () => void;
   try {
@@ -407,38 +434,45 @@ function recordLedger(store: FileStore, sessionId: string, recurrence: Record<st
     return;
   }
   try {
-    const apply = (sid: string, rec: Record<string, number>, un: Record<string, number>) => {
-      for (const [id, n] of Object.entries(rec)) {
-        const record = store.read<LedgerRecord>(ledgerPath(id)) ?? { lessonId: id, sessions: {}, folded: { shown: 0, cameBack: 0, recurrences: 0, unplaced: 0 }, updatedAt: "" };
-        const sessions = { ...record.sessions, [sid]: { recurrence: n, unplaced: un[id] ?? 0, at: now.toISOString() } };
-        const folded = { ...record.folded };
-        const ids = Object.keys(sessions);
-        if (ids.length > LEDGER_SESSIONS_KEPT) {
-          const oldest = ids.sort((a, b) => sessions[a].at.localeCompare(sessions[b].at)).slice(0, ids.length - LEDGER_SESSIONS_KEPT);
-          for (const old of oldest) {
-            const entry = sessions[old];
-            folded.shown++;
-            if (entry.recurrence > 0) folded.cameBack++;
-            folded.recurrences += entry.recurrence;
-            folded.unplaced += entry.unplaced;
-            delete sessions[old];
-          }
-        }
-        store.write(ledgerPath(id), { lessonId: id, sessions, folded, updatedAt: now.toISOString() });
-      }
-    };
     for (const name of store.list("ledger-pending")) {
       const marker = store.read<{ sessionId: string }>(`ledger-pending/${name}.json`);
       const effect = marker && store.read<EffectRecord>(effectsPath(marker.sessionId));
-      if (effect && marker.sessionId !== sessionId) apply(marker.sessionId, effect.recurrence ?? {}, effect.unplaced ?? {});
+      if (effect && marker.sessionId !== sessionId) applyToLedger(store, marker.sessionId, effect.recurrence ?? {}, effect.unplaced ?? {}, now);
       store.remove(`ledger-pending/${name}.json`);
     }
-    apply(sessionId, recurrence, unplaced);
+    applyToLedger(store, sessionId, recurrence, unplaced, now);
   } finally {
     release();
   }
 }
 
+/**
+ * Once per store: build the ledger from the `effects/` records written before it existed,
+ * so an update keeps every lesson's history. In slices; false while another process holds the lock.
+ */
+export async function ensureLedger(store: FileStore, now: Date, pause: () => Promise<void> = yieldToHost): Promise<boolean> {
+  if (store.exists("ledger-built.json")) return true;
+  let release: () => void;
+  try {
+    release = store.lock("ledger", 0);
+  } catch (error) {
+    if (error instanceof StoreError) return false;
+    throw error;
+  }
+  try {
+    if (store.exists("ledger-built.json")) return true;
+    const names = store.list("effects");
+    for (let i = 0; i < names.length; i++) {
+      if (i > 0 && i % FILES_PER_SLICE === 0) await pause();
+      const effect = store.read<EffectRecord>(`effects/${names[i]}.json`);
+      if (effect?.sessionId && effect.recurrence) applyToLedger(store, effect.sessionId, effect.recurrence, effect.unplaced ?? {}, now);
+    }
+    store.write("ledger-built.json", { at: now.toISOString(), sessions: names.length });
+    return true;
+  } finally {
+    release();
+  }
+}
 /** A lesson's counts, from its ledger record. */
 export function ledgerCounts(store: FileStore, lessonIdValue: string): LedgerCounts {
   const record = store.read<LedgerRecord>(ledgerPath(lessonIdValue));

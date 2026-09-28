@@ -19,7 +19,7 @@ import { formatBlock } from "./core/injection.js";
 import { sqliteHistory, agentDatabasePath } from "./host/history.js";
 import { readSources } from "./host/sources.js";
 import { activeLessons, allLessons, DEFAULT_AGENT, lessonAgent, recover, setStatus } from "./lessons.js";
-import { audit, describeAudit, describePass, describeReport, describeStatus, knownAgents, processSession, recordExposure, report, status } from "./pipeline.js";
+import { audit, describeAudit, describePass, ensureLedger, describeReport, describeStatus, knownAgents, processSession, recordExposure, report, status } from "./pipeline.js";
 import { replay } from "./replay.js";
 import { readSettings } from "./settings.js";
 import { lessonNotice } from "./core/notice.js";
@@ -277,6 +277,13 @@ export default function register(api) {
         queue = run.then(() => undefined, () => undefined);
         return run;
     };
+    /** The per-lesson ledger, built once from the effect records an older version left; the audit waits for it. */
+    const ledgerReady = storeError
+        ? Promise.resolve(false)
+        : runOutsideHostWorkScope(() => schedule(() => ensureLedger(store, new Date()))).catch((error) => {
+            warn(`ledger build skipped: ${String(error)}`);
+            return false;
+        });
     /** One learning pass over one session, then the lesson message for whatever it activated. */
     const learn = async (agentId, sessionId, workspaceDir, turnChat, options = {}) => {
         const chat = currentChat(agentId, turnChat);
@@ -383,6 +390,7 @@ export default function register(api) {
             return changed ? { text: `Lesson ${id} ${changed.status}.`, ok: true } : { text: `No lesson ${id}.`, ok: false };
         }
         if (verb === "audit") {
+            await ledgerReady;
             const rows = audit(store, now, agentId);
             const command = agentId === undefined ? "openclaw refine-cycle delete" : "/refine delete";
             return { text: scope.json ? JSON.stringify(rows, null, 2) : describeAudit(rows, agentId !== undefined, (id) => `${command} ${id}`), ok: true };
