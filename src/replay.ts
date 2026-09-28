@@ -93,7 +93,9 @@ export async function replay(options: {
     fs.mkdirSync(path.dirname(path.resolve(rawFile)), { recursive: true });
     const run: RawRunLine = {
       kind: "run", format: RAW_FORMAT, at: new Date().toISOString(), source: "replay", version: options.version ?? "",
-      corpus: path.basename(options.corpusFile), sessions: sessions.length, settings, sources: options.sources.length,
+      corpus: path.basename(options.corpusFile), sessions: sessions.length, sources: options.sources.length,
+      // No paths: the raw file is meant to be handed to someone else.
+      settings: { ...settings, historyDbPath: settings.historyDbPath ? "set" : "", skillDirs: settings.skillDirs.length },
     };
     fs.writeFileSync(rawFile, `${JSON.stringify(run)}\n`);
   }

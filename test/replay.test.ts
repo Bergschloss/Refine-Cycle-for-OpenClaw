@@ -131,13 +131,17 @@ test("replay --raw writes a run line and one line per session, from which the re
   };
   const rawFile = path.join(dir, "raw", "replay.jsonl");
   const result = await replay({
-    corpusFile: corpus, storeDir: path.join(dir, "store"), llm, sources: [], settings: { ...DEFAULTS, maxModelCallsPerDay: 1000 },
+    corpusFile: corpus, storeDir: path.join(dir, "store"), llm, sources: [],
+    settings: { ...DEFAULTS, maxModelCallsPerDay: 1000, historyDbPath: "/home/secret-home/db.sqlite", skillDirs: ["/home/secret-home/skills"] },
     log: () => {}, rawFile, version: "9.9.9",
   });
   const raw = fs.readFileSync(rawFile, "utf8").trim().split("\n").map((line) => JSON.parse(line));
   assert.equal(raw[0].kind, "run");
   assert.equal(raw[0].sessions, 4);
   assert.equal(raw[0].version, "9.9.9");
+  assert.equal(raw[0].settings.historyDbPath, "set", "no path in the run line");
+  assert.equal(raw[0].settings.skillDirs, 1);
+  assert.ok(!JSON.stringify(raw[0]).includes("secret-home"));
   const sessions = raw.filter((line) => line.kind === "session");
   assert.deepEqual(sessions.map((line) => line.sessionId), ["a", "b", "c", "d"]);
   assert.deepEqual(sessions.map((line) => line.corpusStartedAt), [1, 2, 3, 4]);

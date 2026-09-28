@@ -68,7 +68,7 @@ output beyond those shapes.
 | `version` | string | plugin version |
 | `corpus` | string | the corpus file's name (no directory) |
 | `sessions` | number | sessions in the corpus |
-| `settings` | object | every setting the replay ran with (`docs/USAGE.md`), after the replay's own overrides: `backfillSessions`, `keepSessionDays` and `keepSessions` are `0`, and `maxModelCallsPerDay` is the command's `100000` |
+| `settings` | object | every setting the replay ran with (`docs/USAGE.md`), after the replay's own overrides: `backfillSessions`, `keepSessionDays` and `keepSessions` are `0`, and `maxModelCallsPerDay` is the command's `100000`. No paths: `historyDbPath` is `"set"` or `""`, `skillDirs` is how many there are |
 | `sources` | number | instruction and skill files the already-covered check read |
 
 ## `session`

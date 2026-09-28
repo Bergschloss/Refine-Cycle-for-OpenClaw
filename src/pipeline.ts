@@ -1007,7 +1007,8 @@ export interface RawRunLine {
   version: string;
   corpus: string;
   sessions: number;
-  settings: Settings;
+  /** Every setting, except the two that hold paths: `historyDbPath` says only whether it is set, `skillDirs` only how many. */
+  settings: Omit<Settings, "historyDbPath" | "skillDirs"> & { historyDbPath: "set" | ""; skillDirs: number };
   sources: number;
 }
 
