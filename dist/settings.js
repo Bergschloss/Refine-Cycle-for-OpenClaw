@@ -18,6 +18,7 @@ export const DEFAULTS = {
     instructionFiles: ["AGENTS.md", "TOOLS.md", "SOUL.md"],
     skillDirs: [],
     historyDbPath: "",
+    notifyOnLesson: true,
 };
 export function readSettings(raw) {
     const input = typeof raw === "object" && raw !== null ? raw : {};

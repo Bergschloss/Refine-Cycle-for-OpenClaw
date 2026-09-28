@@ -18,6 +18,7 @@ function fakeApi(
   grant = true,
   injection?: boolean,
   pluginConfig: Record<string, unknown> = {},
+  loadAdapter?: (id: string) => Promise<{ sendText?: (ctx: Record<string, unknown>) => Promise<unknown> } | undefined>,
 ) {
   const hooks = new Map<string, { handler: Handler; timeoutMs?: number }>();
   const commands = new Map<string, (ctx: { args?: string; agentId?: string; sessionKey?: string }) => unknown>();
@@ -29,7 +30,11 @@ function fakeApi(
     },
     pluginConfig,
     logger: { info: (m) => logs.push(m), warn: (m) => logs.push(`WARN ${m}`) },
-    runtime: { state: { resolveStateDir: () => stateDir }, llm: complete ? { complete } : {} },
+    runtime: {
+      state: { resolveStateDir: () => stateDir },
+      llm: complete ? { complete } : {},
+      ...(loadAdapter ? { channel: { outbound: { loadAdapter } } } : {}),
+    },
     on: (hook, handler, options) => hooks.set(hook, { handler: handler as Handler, timeoutMs: options?.timeoutMs }),
     registerCommand: (command) => commands.set(command.name, command.handler),
   };
@@ -387,4 +392,102 @@ test("the command line lists every agent's lessons with their agent, reports JSO
     console.log = log;
     process.exitCode = exitCode;
   }
+});
+
+function learningSetup(pluginConfig: Record<string, unknown> = {}, send?: (ctx: Record<string, unknown>) => Promise<unknown>) {
+  const stateDir = tempDir();
+  const error = "cron expression '* * *' has 3 fields, expected 5";
+  const failing = () => new Transcript().user("schedule it").call("cron_add", { schedule: "* * *" }, { error });
+  writeAgentDb(stateDir, { s1: failing(), s2: failing(), s3: failing() });
+  const sent: Array<Record<string, unknown>> = [];
+  const channels: string[] = [];
+  const api = fakeApi(
+    stateDir,
+    async () => ({
+      text: JSON.stringify({
+        decision: "lesson",
+        fingerprint: fingerprint("cron_add", error),
+        lesson: "When calling cron_add, write the schedule as five cron fields, e.g. 0 3 * * *.",
+        reason: "three-field schedules failed twice",
+      }),
+    }),
+    true,
+    undefined,
+    pluginConfig,
+    async (id) => {
+      channels.push(id);
+      return id === "telegram"
+        ? {
+            sendText: async (ctx) => {
+              sent.push(ctx);
+              return send ? send(ctx) : { ok: true };
+            },
+          }
+        : undefined;
+    },
+  );
+  return { ...api, stateDir, sent, channels };
+}
+
+const telegramTurn = (sessionId: string) => ({ sessionId, agentId: "main", channel: "telegram", accountId: "default", chatId: "4242" });
+
+test("a new lesson is told once, in the chat the turn came from", async () => {
+  const { hooks, sent, channels, stateDir } = learningSetup();
+  const agentEnd = hooks.get("agent_end")!.handler;
+  agentEnd({}, telegramTurn("s1"));
+  await settle();
+  assert.equal(sent.length, 1);
+  assert.deepEqual(channels, ["telegram"]);
+  assert.equal(sent[0].to, "4242");
+  assert.equal(sent[0].accountId, "default");
+  assert.ok(sent[0].cfg, "the host config goes with the send");
+  const store = new FileStore(path.join(stateDir, "plugin-data", "refine-cycle"));
+  const [lesson] = store.list("lessons").map((name) => store.read<{ id: string; text: string }>(`lessons/${name}.json`)!);
+  assert.match(String(sent[0].text), /new lesson learned/);
+  assert.ok(String(sent[0].text).includes(lesson.text));
+  assert.ok(String(sent[0].text).includes(`/refine disable ${lesson.id}`));
+  // Later turns, in the same or another chat, never repeat it.
+  agentEnd({}, telegramTurn("s2"));
+  agentEnd({}, { ...telegramTurn("s3"), chatId: "9999" });
+  await settle();
+  assert.equal(sent.length, 1);
+});
+
+test("no message without a chat, with the setting off, or on a channel that takes none", async () => {
+  {
+    const { hooks, sent, logs } = learningSetup();
+    hooks.get("agent_end")!.handler({}, { sessionId: "s1", agentId: "main" });
+    await settle();
+    assert.equal(sent.length, 0);
+    assert.ok(logs.some((line) => line.includes("no chat to tell")));
+  }
+  {
+    const { hooks, sent } = learningSetup({ notifyOnLesson: false });
+    hooks.get("agent_end")!.handler({}, telegramTurn("s1"));
+    await settle();
+    assert.equal(sent.length, 0);
+  }
+  {
+    const { hooks, sent, logs } = learningSetup();
+    hooks.get("agent_end")!.handler({}, { ...telegramTurn("s1"), channel: "webchat" });
+    await settle();
+    assert.equal(sent.length, 0);
+    assert.ok(logs.some((line) => line.includes("cannot take a message")));
+  }
+});
+
+test("a message that cannot be delivered is logged, the lesson stays, and it is not retried", async () => {
+  const { hooks, sent, logs, stateDir } = learningSetup({}, async () => {
+    throw new Error("chat not found");
+  });
+  const agentEnd = hooks.get("agent_end")!.handler;
+  agentEnd({}, telegramTurn("s1"));
+  await settle();
+  assert.equal(sent.length, 1);
+  assert.ok(logs.some((line) => line.startsWith("WARN") && line.includes("chat not found")));
+  const store = new FileStore(path.join(stateDir, "plugin-data", "refine-cycle"));
+  assert.equal(store.list("lessons").length, 1);
+  agentEnd({}, telegramTurn("s2"));
+  await settle();
+  assert.equal(sent.length, 1);
 });

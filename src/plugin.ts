@@ -23,6 +23,7 @@ import { activeLessons, allLessons, DEFAULT_AGENT, lessonAgent, recover, setStat
 import { describeReport, processSession, recordExposure, report, type Llm } from "./pipeline.ts";
 import { replay } from "./replay.ts";
 import { readSettings } from "./settings.ts";
+import { lessonNotice } from "./core/notice.ts";
 import { FileStore, StoreError } from "./store.ts";
 
 // The slice of OpenClaw's plugin API this plugin uses (openclaw 2026.9.5,
@@ -33,6 +34,15 @@ interface HookContext {
   sessionId?: string;
   sessionKey?: string;
   workspaceDir?: string;
+  /** The chat the turn came from, when it came from a channel (telegram, …). */
+  channel?: string;
+  accountId?: string;
+  chatId?: string;
+}
+
+/** A channel's outbound adapter, as far as the plugin uses it (plugin-sdk ChannelOutboundAdapter). */
+interface OutboundAdapter {
+  sendText?: (ctx: { cfg: unknown; to: string; text: string; accountId?: string | null }) => Promise<unknown>;
 }
 
 interface CommandContext {
@@ -70,6 +80,7 @@ export interface PluginApi {
     llm?: {
       complete?: (params: Record<string, unknown>) => Promise<{ text: string }>;
     };
+    channel?: { outbound?: { loadAdapter?: (id: string) => Promise<OutboundAdapter | undefined> } };
   };
   on(hook: string, handler: (event: unknown, ctx: HookContext) => unknown, options?: { timeoutMs?: number }): void;
   registerCommand?(command: {
@@ -258,15 +269,42 @@ export default function register(api: PluginApi): void {
 
   let queue: Promise<void> = Promise.resolve();
   const queued = new Set<string>();
+  /**
+   * Tell the user about a new lesson in the chat the turn came from. It runs once per
+   * activation (the caller compares the active lessons before and after the run), and a
+   * send that fails is logged, not retried. A turn with no chat (the CLI, a cron run)
+   * sends nothing.
+   */
+  const announce = async (lesson: { id: string; text: string }, chat: { channel: string; to: string; accountId?: string } | null) => {
+    if (!settings.notifyOnLesson) return;
+    if (!chat) {
+      log(`lesson ${lesson.id}: no chat to tell (the turn did not come from a channel)`);
+      return;
+    }
+    try {
+      const adapter = await api.runtime?.channel?.outbound?.loadAdapter?.(chat.channel);
+      if (!adapter?.sendText) {
+        log(`lesson ${lesson.id}: channel ${chat.channel} cannot take a message from a plugin`);
+        return;
+      }
+      await adapter.sendText({ cfg: api.config, to: chat.to, text: lessonNotice(lesson), accountId: chat.accountId ?? null });
+      log(`lesson ${lesson.id}: told the user on ${chat.channel}`);
+    } catch (error) {
+      warn(`lesson ${lesson.id}: could not tell the user on ${chat.channel}: ${String(error)}`);
+    }
+  };
+
   const enqueue = (ctx: HookContext) => {
     const sessionId = ctx.sessionId;
     if (!sessionId || queued.has(sessionId)) return;
     queued.add(sessionId);
     const agentId = ctx.agentId || DEFAULT_AGENT;
     const workspaceDir = ctx.workspaceDir;
+    const chat = ctx.channel && ctx.chatId ? { channel: ctx.channel, to: ctx.chatId, accountId: ctx.accountId } : null;
     queue = queue.then(async () => {
       queued.delete(sessionId);
       try {
+        const before = new Set(activeLessons(store, agentId).map((lesson) => lesson.id));
         const shown = injected.get(sessionId) ?? [];
         injected.delete(sessionId);
         for (const { block, shownAtMs } of shown) recordExposure(store, sessionId, block, shownAtMs, new Date());
@@ -285,6 +323,11 @@ export default function register(api: PluginApi): void {
           agentId,
         );
         if (decision.outcome !== "no_failures") log(`session ${sessionId}: ${decision.outcome}`);
+        // Every lesson that became active during this run, whichever way it got there
+        // (this session, a deferred one, a recovered activation).
+        for (const lesson of activeLessons(store, agentId)) {
+          if (!before.has(lesson.id)) await announce(lesson, chat);
+        }
       } catch (error) {
         warn(`learning skipped for ${sessionId}: ${String(error)}`);
       }

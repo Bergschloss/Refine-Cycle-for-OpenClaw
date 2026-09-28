@@ -27,6 +27,8 @@ export interface Settings {
   skillDirs: string[];
   /** Override for the agent's transcript database; default is the host's standard location. */
   historyDbPath: string;
+  /** Tell the user, in the chat the lesson came from, when a new lesson is learned. */
+  notifyOnLesson: boolean;
 }
 
 export const DEFAULTS: Settings = {
@@ -44,6 +46,7 @@ export const DEFAULTS: Settings = {
   instructionFiles: ["AGENTS.md", "TOOLS.md", "SOUL.md"],
   skillDirs: [],
   historyDbPath: "",
+  notifyOnLesson: true,
 };
 
 export function readSettings(raw: unknown): Settings {

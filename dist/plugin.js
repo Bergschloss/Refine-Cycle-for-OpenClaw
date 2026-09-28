@@ -22,6 +22,7 @@ import { activeLessons, allLessons, DEFAULT_AGENT, lessonAgent, recover, setStat
 import { describeReport, processSession, recordExposure, report } from "./pipeline.js";
 import { replay } from "./replay.js";
 import { readSettings } from "./settings.js";
+import { lessonNotice } from "./core/notice.js";
 import { FileStore, StoreError } from "./store.js";
 /** The agent a chat command belongs to: the host's, else the one its session key names (`agent:<id>:…`). */
 function commandAgent(ctx) {
@@ -195,6 +196,32 @@ export default function register(api) {
         : null;
     let queue = Promise.resolve();
     const queued = new Set();
+    /**
+     * Tell the user about a new lesson in the chat the turn came from. It runs once per
+     * activation (the caller compares the active lessons before and after the run), and a
+     * send that fails is logged, not retried. A turn with no chat (the CLI, a cron run)
+     * sends nothing.
+     */
+    const announce = async (lesson, chat) => {
+        if (!settings.notifyOnLesson)
+            return;
+        if (!chat) {
+            log(`lesson ${lesson.id}: no chat to tell (the turn did not come from a channel)`);
+            return;
+        }
+        try {
+            const adapter = await api.runtime?.channel?.outbound?.loadAdapter?.(chat.channel);
+            if (!adapter?.sendText) {
+                log(`lesson ${lesson.id}: channel ${chat.channel} cannot take a message from a plugin`);
+                return;
+            }
+            await adapter.sendText({ cfg: api.config, to: chat.to, text: lessonNotice(lesson), accountId: chat.accountId ?? null });
+            log(`lesson ${lesson.id}: told the user on ${chat.channel}`);
+        }
+        catch (error) {
+            warn(`lesson ${lesson.id}: could not tell the user on ${chat.channel}: ${String(error)}`);
+        }
+    };
     const enqueue = (ctx) => {
         const sessionId = ctx.sessionId;
         if (!sessionId || queued.has(sessionId))
@@ -202,9 +229,11 @@ export default function register(api) {
         queued.add(sessionId);
         const agentId = ctx.agentId || DEFAULT_AGENT;
         const workspaceDir = ctx.workspaceDir;
+        const chat = ctx.channel && ctx.chatId ? { channel: ctx.channel, to: ctx.chatId, accountId: ctx.accountId } : null;
         queue = queue.then(async () => {
             queued.delete(sessionId);
             try {
+                const before = new Set(activeLessons(store, agentId).map((lesson) => lesson.id));
                 const shown = injected.get(sessionId) ?? [];
                 injected.delete(sessionId);
                 for (const { block, shownAtMs } of shown)
@@ -221,6 +250,12 @@ export default function register(api) {
                 }, sessionId, agentId);
                 if (decision.outcome !== "no_failures")
                     log(`session ${sessionId}: ${decision.outcome}`);
+                // Every lesson that became active during this run, whichever way it got there
+                // (this session, a deferred one, a recovered activation).
+                for (const lesson of activeLessons(store, agentId)) {
+                    if (!before.has(lesson.id))
+                        await announce(lesson, chat);
+                }
             }
             catch (error) {
                 warn(`learning skipped for ${sessionId}: ${String(error)}`);
