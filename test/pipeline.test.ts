@@ -1063,3 +1063,13 @@ test("a store from before the ledger keeps each lesson's history: the ledger is 
   release();
   assert.equal(fresh.store.exists("ledger-built.json"), false);
 });
+
+test("with injection off, a failure an active lesson is about is 'not shown', not 'covered'", async () => {
+  const history = new FakeHistory().add("s1", failing(5)).add("s2", failing(5));
+  const d = deps(history, new ScriptedLlm(lessonReply()), { backfillSessions: 0 });
+  await processSession(d, "s1", "main");
+  d.settings.injectEnabled = false;
+  const decision = await processSession(d, "s2", "main");
+  assert.equal(decision.evaluated[0].refusal?.rule, "lesson_not_shown");
+  assert.match(describeReport(report(d.store)), /lessons are not shown \(injectEnabled is off\) \(lesson_not_shown\)/);
+});

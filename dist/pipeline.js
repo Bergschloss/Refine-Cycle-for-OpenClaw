@@ -473,8 +473,10 @@ function refuse(deps, agentId, pattern, local, sources) {
         return { rule: `not_lesson_shaped:${shape}` };
     const known = allLessons(deps.store).filter((lesson) => lessonAgent(lesson) === agentId);
     const same = known.find((lesson) => lesson.fingerprint === pattern.fingerprint && lesson.status !== "draft");
-    if (same?.status === "active")
-        return { rule: "covered_by_lesson", detail: same.id };
+    if (same?.status === "active") {
+        // With injection off the lesson exists but the agent never sees it: say that, not "covered".
+        return { rule: deps.settings.injectEnabled ? "covered_by_lesson" : "lesson_not_shown", detail: same.id };
+    }
     // The user took this lesson away; learning it again would undo their decision.
     if (same)
         return { rule: "withdrawn_by_user", detail: `${same.id} (${same.status})` };
@@ -819,6 +821,7 @@ const RULE_WORDS = {
     "not_lesson_shaped:wrong_tool": "the agent called a tool that does not exist",
     "not_lesson_shaped:dropped_argument": "an argument already used was left out",
     covered_by_lesson: "an active lesson covers it",
+    lesson_not_shown: "an active lesson is about it, but lessons are not shown (injectEnabled is off)",
     withdrawn_by_user: "you disabled or deleted its lesson",
     lesson_pending: "its lesson waits to be saved",
     paused_after_nothing: "the model found nothing to learn in the last 7 days and it has not come back since",
