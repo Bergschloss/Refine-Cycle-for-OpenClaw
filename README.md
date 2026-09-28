@@ -1,5 +1,7 @@
 # Refine Cycle for OpenClaw
 
+![Refine Cycle for OpenClaw: a red robot crab with a single eye and open claws](docs/media/banner.gif)
+
 [![tests](https://github.com/Bergschloss/Refine-Cycle-for-OpenClaw/actions/workflows/tests.yml/badge.svg)](https://github.com/Bergschloss/Refine-Cycle-for-OpenClaw/actions/workflows/tests.yml) ![OpenClaw 2026.9.6](https://img.shields.io/badge/OpenClaw-2026.9.6-blue) ![License: MIT](https://img.shields.io/badge/license-MIT-green)
 
 **Your agent keeps repeating the same mistake. This makes it stop.**
