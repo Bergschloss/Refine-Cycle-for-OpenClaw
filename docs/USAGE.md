@@ -78,6 +78,7 @@ Under `plugins.entries.refine-cycle.config` in `openclaw.json`. All are optional
 | `proposalTimeoutMs` | `120000` | How long the model may take for one lesson |
 | `skillDirs` | none | Extra directories searched for `SKILL.md`, besides the workspace's `skills/` |
 | `historyDbPath` | `""` | The agent's history database, for a single-agent install that keeps it somewhere else |
+| `rawLog` | `false` | For measurement: one raw JSON line per learning pass and per lesson you take away, in `raw/<date>.jsonl` in the plugin's data folder ([format](proof/RAW-FORMAT.md)). `openclaw refine-cycle replay … --raw <file.jsonl>` writes the same lines for a replay |
 | `enabled` | `true` | `false` turns the whole plugin off |
 
 ## What it promises, and the messages it sends

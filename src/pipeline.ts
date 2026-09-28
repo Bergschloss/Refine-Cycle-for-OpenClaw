@@ -41,6 +41,11 @@ export interface Deps {
   settings: Settings;
   now: () => Date;
   log: (message: string) => void;
+  /**
+   * Where each pass writes its raw record (`docs/proof/RAW-FORMAT.md`): the replay's
+   * `--raw` file, or `<store>/raw/<date>.jsonl` with `rawLog` on. Absent: no record.
+   */
+  raw?: (line: RawSessionLine) => void;
 }
 
 export interface Refusal {
@@ -899,6 +904,188 @@ export interface PassOptions {
 }
 
 export async function processSession(deps: Deps, sessionId: string, agentId: string, options: PassOptions = {}): Promise<Decision> {
+  if (!deps.raw) return processSessionCore(deps, sessionId, agentId, options);
+  const calls: RawModelCall[] = [];
+  const inner = deps.llm;
+  // Every model call of the pass, as it was made: its size, its answer, how it ended.
+  const llm: Llm | null = inner && {
+    complete: async (system, user, timeoutMs) => {
+      const started = Date.now();
+      const call: RawModelCall = {
+        purpose: system === SHORTEN_SYSTEM_PROMPT ? "shorten" : "propose",
+        at: new Date(started).toISOString(),
+        systemChars: system.length,
+        promptChars: user.length,
+        outcome: "reply",
+        ms: 0,
+      };
+      calls.push(call);
+      try {
+        const reply = await inner.complete(system, user, timeoutMs);
+        Object.assign(call, { replyChars: reply.length, reply: reply.slice(0, REPLY_KEPT_CHARS), ms: Date.now() - started });
+        return reply;
+      } catch (error) {
+        Object.assign(call, { outcome: "error", error: String(error).slice(0, 300), ms: Date.now() - started });
+        throw error;
+      }
+    },
+  };
+  const activeBefore = new Set(allLessons(deps.store).filter((l) => l.status === "active").map((l) => l.id));
+  let decision: Decision | undefined;
+  let failure: unknown;
+  try {
+    decision = await processSessionCore({ ...deps, llm }, sessionId, agentId, options);
+  } catch (error) {
+    failure = error;
+  }
+  try {
+    const recorded = decision ?? deps.store.read<Decision>(candidatePath(sessionId));
+    deps.raw(rawSessionLine(deps, sessionId, agentId, recorded, calls, failure, activeBefore));
+  } catch (error) {
+    // The record is for measurement; the pass itself stands.
+    deps.log(`raw record for ${sessionId} not written: ${String(error)}`);
+  }
+  if (failure !== undefined) throw failure;
+  return decision!;
+}
+
+// -- The raw record (docs/proof/RAW-FORMAT.md) -----------------------------------------
+
+export const RAW_FORMAT = 1;
+
+export interface RawModelCall {
+  purpose: "propose" | "shorten";
+  at: string;
+  systemChars: number;
+  promptChars: number;
+  outcome: "reply" | "error";
+  replyChars?: number;
+  reply?: string;
+  error?: string;
+  ms: number;
+}
+
+export interface RawSessionLine {
+  kind: "session";
+  format: number;
+  at: string;
+  agentId: string;
+  sessionId: string;
+  startedAt: string | null;
+  endedAt: string | null;
+  settings: { minSessions: number; minOccurrences: number; maxModelCallsPerDay: number; maxLessonChars: number; injectEnabled: boolean; learnEnabled: boolean };
+  errorCount: number;
+  selfCorrectingSuppressed: number;
+  failures: Array<{ fingerprint: string; tool: string; count: number; shape: string; resolutions: Record<string, number>; correctionSeen: boolean }>;
+  evaluated: Array<{ fingerprint: string; tool: string; count: number; sessions: number; rule: string | null; detail?: string; queued?: true }>;
+  notEvaluated: string[];
+  outcome: Outcome | "pass_failed";
+  called: boolean;
+  earlier: boolean;
+  modelCalls: RawModelCall[];
+  shortening: Decision["shortening"] | null;
+  lesson: { id: string; text: string; length: number; fingerprint: string; tool: string } | null;
+  proposedLesson: string | null;
+  refusedAfterModel: string | null;
+  preview: Decision["preview"] | null;
+  queue: { used: boolean; fingerprint: string | null };
+  effects: { shown: string[]; recurrence: Record<string, number>; unplaced: Record<string, number> };
+  budget: { day: string; callsToday: number; limit: number };
+  /** Every lesson that became active during the pass: this session's, or one a busy lock had deferred, or a recovered activation. */
+  activated: Array<{ id: string; agentId: string; text: string; length: number; fingerprint: string; tool: string; sourceSessionId: string }>;
+  error: string | null;
+}
+
+/** The first line of a replay's raw file: what was run, on what, with which settings. */
+export interface RawRunLine {
+  kind: "run";
+  format: number;
+  at: string;
+  source: "replay";
+  version: string;
+  corpus: string;
+  sessions: number;
+  settings: Settings;
+  sources: number;
+}
+
+/** A user took a lesson away (`disable`, `delete`, `rollback`): the audit's `disabled` and `rolled back`. */
+export interface RawLessonStatusLine {
+  kind: "lesson_status";
+  format: number;
+  at: string;
+  lessonId: string;
+  agentId: string;
+  status: "disabled" | "deleted";
+}
+
+function iso(ms: number | undefined): string | null {
+  return typeof ms === "number" && ms >= 0 ? new Date(ms).toISOString() : null;
+}
+
+function rawSessionLine(
+  deps: Deps, sessionId: string, agentId: string, decision: Decision | undefined, calls: RawModelCall[], failure: unknown, activeBefore: Set<string>,
+): RawSessionLine {
+  const { store, settings } = deps;
+  const now = deps.now();
+  const summary = store.read<SessionSummary>(sessionPath(sessionId));
+  const effect = store.read<EffectRecord>(effectsPath(sessionId));
+  const evaluated = decision?.evaluated ?? [];
+  const seen = new Set(evaluated.map((entry) => entry.fingerprint));
+  const lessonText = decision?.outcome === "lesson" ? decision.lessonText ?? null : null;
+  const chosen = decision?.fingerprint ? evaluated.find((entry) => entry.fingerprint === decision.fingerprint) : undefined;
+  return {
+    kind: "session",
+    format: RAW_FORMAT,
+    at: now.toISOString(),
+    agentId,
+    sessionId,
+    startedAt: iso(summary?.startedAtMs),
+    endedAt: iso(summary?.endedAtMs),
+    settings: {
+      minSessions: settings.minSessions, minOccurrences: settings.minOccurrences, maxModelCallsPerDay: settings.maxModelCallsPerDay,
+      maxLessonChars: settings.maxLessonChars, injectEnabled: settings.injectEnabled, learnEnabled: settings.learnEnabled,
+    },
+    errorCount: summary?.errorCount ?? 0,
+    selfCorrectingSuppressed: summary?.selfCorrectingSuppressed ?? 0,
+    failures: (summary?.patterns ?? []).map((pattern) => {
+      const resolutions: Record<string, number> = {};
+      for (const o of pattern.occurrences ?? []) resolutions[o.resolution] = (resolutions[o.resolution] ?? 0) + 1;
+      return { fingerprint: pattern.fingerprint, tool: pattern.tool, count: pattern.count, shape: pattern.shape.slice(0, 300), resolutions, correctionSeen: !!pattern.correctionArgs };
+    }),
+    evaluated: evaluated.map((entry) => ({
+      fingerprint: entry.fingerprint, tool: entry.tool, count: entry.count, sessions: entry.sessions,
+      rule: entry.refusal?.rule ?? null,
+      ...(entry.refusal?.detail ? { detail: entry.refusal.detail } : {}),
+      ...(entry.queued ? { queued: true as const } : {}),
+    })),
+    notEvaluated: decision?.earlier ? [] : (summary?.patterns ?? []).map((p) => p.fingerprint).filter((fp) => !seen.has(fp)),
+    outcome: decision?.outcome ?? "pass_failed",
+    called: decision?.called ?? false,
+    earlier: decision?.earlier === true,
+    modelCalls: calls,
+    shortening: decision?.earlier ? null : decision?.shortening ?? null,
+    lesson: lessonText !== null && decision?.lessonId
+      ? { id: decision.lessonId, text: lessonText, length: lessonText.length, fingerprint: decision.fingerprint ?? "", tool: chosen?.tool ?? "" }
+      : null,
+    proposedLesson: decision?.outcome === "dry_run" ? decision.lessonText ?? null : null,
+    refusedAfterModel: decision?.refusal?.rule ?? null,
+    preview: decision?.preview ?? null,
+    queue: { used: decision?.queued === true, fingerprint: decision?.queued ? decision.fingerprint ?? null : null },
+    effects: {
+      shown: [...new Set((effect?.exposures ?? []).map((exposure) => exposure.lessonId))],
+      recurrence: effect?.recurrence ?? {},
+      unplaced: effect?.unplaced ?? {},
+    },
+    budget: { day: now.toISOString().slice(0, 10), callsToday: callsToday(store, now), limit: settings.maxModelCallsPerDay },
+    activated: allLessons(store)
+      .filter((l) => l.status === "active" && !activeBefore.has(l.id))
+      .map((l) => ({ id: l.id, agentId: lessonAgent(l), text: l.text, length: l.text.length, fingerprint: l.fingerprint, tool: l.tool, sourceSessionId: l.sourceSessionId })),
+    error: failure === undefined ? null : String(failure).slice(0, 300),
+  };
+}
+
+async function processSessionCore(deps: Deps, sessionId: string, agentId: string, options: PassOptions = {}): Promise<Decision> {
   const { store, settings } = deps;
   const now = deps.now();
   const recovered = recover(store, now);

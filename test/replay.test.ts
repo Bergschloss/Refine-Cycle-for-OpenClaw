@@ -100,3 +100,89 @@ test("replay reads toolCall arguments from the corpus exactly as the live path d
   assert.equal(result.lessons.length, 1);
   assert.deepEqual(result.lessons[0].sessionIds, ["args-a", "args-b"]);
 });
+
+
+// K0.7: the raw record alone gives back every number of the report, without the plugin's code.
+test("replay --raw writes a run line and one line per session, from which the report is recomputed exactly", async () => {
+  const dir = tempDir();
+  const corpus = path.join(dir, "corpus.jsonl");
+  const cron = "cron expression '* * *' has 3 fields, expected 5";
+  const date = "invalid date '25/09/2026': expected YYYY-MM-DD";
+  const other = "unknown region 'mars'";
+  const both = () => new Transcript().user("go").call("cron_add", {}, { error: cron }).call("send_report", {}, { error: date }).rows;
+  const lines = [
+    { sessionId: "a", startedAt: 1, rows: both() },
+    { sessionId: "b", startedAt: 2, rows: new Transcript().user("hi").say("hello").rows },
+    { sessionId: "c", startedAt: 3, rows: both() },
+    // Only a failure below the bar of its own: its call goes to the queue (send_report, crowded out in "c").
+    { sessionId: "d", startedAt: 4, rows: new Transcript().user("go").call("deploy", {}, { error: other }).rows },
+  ].map((s) => JSON.stringify(s));
+  fs.writeFileSync(corpus, lines.join("\n") + "\n");
+  const long = (tool: string) => `When calling ${tool}, ${"check the argument format against the tool's schema first ".repeat(5)}.`;
+  const llm: Llm = {
+    complete: async (system, user) => {
+      if (!user.includes("Fingerprint:")) return "When calling send_report, write the date as YYYY-MM-DD.";
+      const fp = /Fingerprint: ([0-9a-f]+)/.exec(user)![1];
+      const tool = fp === fingerprint("cron_add", cron) ? "cron_add" : "send_report";
+      // send_report's lesson is too long: one shortening call.
+      const lesson = tool === "cron_add" ? "When calling cron_add, give five cron fields such as 0 3 * * *." : long(tool);
+      return JSON.stringify({ decision: "lesson", fingerprint: fp, lesson, reason: "r" });
+    },
+  };
+  const rawFile = path.join(dir, "raw", "replay.jsonl");
+  const result = await replay({
+    corpusFile: corpus, storeDir: path.join(dir, "store"), llm, sources: [], settings: { ...DEFAULTS, maxModelCallsPerDay: 1000 },
+    log: () => {}, rawFile, version: "9.9.9",
+  });
+  const raw = fs.readFileSync(rawFile, "utf8").trim().split("\n").map((line) => JSON.parse(line));
+  assert.equal(raw[0].kind, "run");
+  assert.equal(raw[0].sessions, 4);
+  assert.equal(raw[0].version, "9.9.9");
+  const sessions = raw.filter((line) => line.kind === "session");
+  assert.deepEqual(sessions.map((line) => line.sessionId), ["a", "b", "c", "d"]);
+  assert.deepEqual(sessions.map((line) => line.corpusStartedAt), [1, 2, 3, 4]);
+
+  // What Apodex does: the last line per session, and nothing else.
+  const last = new Map<string, Record<string, any>>();
+  for (const line of sessions) last.set(`${line.agentId}/${line.sessionId}`, line);
+  const outcomes: Record<string, number> = {};
+  const refusals: Record<string, number> = {};
+  let modelCalls = 0;
+  let queuedCalls = 0;
+  let callsMade = 0;
+  const active = new Set<string>();
+  for (const line of last.values()) {
+    outcomes[line.outcome] = (outcomes[line.outcome] ?? 0) + 1;
+    for (const entry of line.evaluated) if (entry.rule) refusals[entry.rule] = (refusals[entry.rule] ?? 0) + 1;
+    if (line.refusedAfterModel) refusals[`after_model:${line.refusedAfterModel}`] = (refusals[`after_model:${line.refusedAfterModel}`] ?? 0) + 1;
+    if (line.called) modelCalls++;
+    if (line.called && line.queue.used) queuedCalls++;
+    callsMade += line.modelCalls.length;
+    for (const lesson of line.activated) active.add(lesson.id);
+  }
+  const r = result.report;
+  assert.equal(last.size, r.sessions);
+  assert.equal([...last.values()].filter((line) => line.failures.length > 0).length, r.sessionsWithFailures);
+  assert.deepEqual(outcomes, r.outcomes);
+  assert.deepEqual(refusals, r.refusals);
+  assert.equal(modelCalls, r.modelCalls);
+  assert.equal(queuedCalls, r.queuedCalls);
+  assert.equal(queuedCalls, 1, "d spent its call on the queue");
+  assert.equal(active.size, r.lessons.active);
+  assert.equal(active.size, 2);
+  // Every model call is there, the shortening one included, with its size and its answer.
+  assert.equal(callsMade, 3, "c: a proposal; d: a proposal and its shortening");
+  const shortening = sessions.flatMap((line) => line.modelCalls).filter((call) => call.purpose === "shorten");
+  assert.equal(shortening.length, 1);
+  assert.ok(shortening[0].promptChars > 0 && shortening[0].replyChars > 0);
+  const d = last.get("replay/d")!;
+  assert.equal(d.queue.fingerprint, fingerprint("send_report", date));
+  assert.equal(d.lesson.text, "When calling send_report, write the date as YYYY-MM-DD.");
+  assert.equal(d.lesson.length, d.lesson.text.length);
+  assert.deepEqual(d.shortening, { from: long("send_report").length, to: d.lesson.length });
+  // A raw file that already holds a run is refused, like a used store.
+  await assert.rejects(
+    replay({ corpusFile: corpus, storeDir: path.join(dir, "store2"), llm, sources: [], settings: DEFAULTS, log: () => {}, rawFile }),
+    /new or empty raw file/,
+  );
+});

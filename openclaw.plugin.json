@@ -130,6 +130,11 @@
         "type": "string",
         "default": "",
         "description": "Path to the agent's history database, for a single-agent install whose database is not in the default place. Leave empty with several agents: every agent would read this one database."
+      },
+      "rawLog": {
+        "type": "boolean",
+        "default": false,
+        "description": "For measurement: write one raw JSON line per learning pass and per lesson you take away to raw/<date>.jsonl in the plugin's data folder (docs/proof/RAW-FORMAT.md)."
       }
     }
   }

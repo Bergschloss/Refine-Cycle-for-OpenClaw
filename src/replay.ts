@@ -20,7 +20,7 @@ import path from "node:path";
 import type { TranscriptRow } from "./core/failures.ts";
 import type { Source } from "./core/covered.ts";
 import { allLessons } from "./lessons.ts";
-import { processSession, report, type Llm } from "./pipeline.ts";
+import { processSession, RAW_FORMAT, report, type Llm, type RawRunLine, type RawSessionLine } from "./pipeline.ts";
 import type { Settings } from "./settings.ts";
 import { FileStore } from "./store.ts";
 
@@ -63,12 +63,20 @@ export async function replay(options: {
   sources: Source[];
   settings: Settings;
   log: (message: string) => void;
+  /** Write the raw record here, one JSON line per session after a `run` line (docs/proof/RAW-FORMAT.md). */
+  rawFile?: string;
+  /** The plugin version, for the raw record's `run` line. */
+  version?: string;
 }): Promise<ReplayResult> {
   const sessions = readCorpus(options.corpusFile);
   const byId = new Map(sessions.map((session) => [session.sessionId, session.rows]));
   // A store that already holds a run would mix its decisions into this one's numbers.
   if (fs.existsSync(options.storeDir) && fs.readdirSync(options.storeDir).length > 0) {
     throw new Error(`replay needs an empty store directory: ${options.storeDir}`);
+  }
+  // So would a raw file that already holds lines.
+  if (options.rawFile && fs.existsSync(options.rawFile) && fs.statSync(options.rawFile).size > 0) {
+    throw new Error(`replay needs a new or empty raw file: ${options.rawFile}`);
   }
   const store = new FileStore(options.storeDir);
   store.open();
@@ -79,11 +87,24 @@ export async function replay(options: {
     readSession: (sessionId: string) => byId.get(sessionId) ?? [],
     recentSessions: () => [],
   };
+  const rawFile = options.rawFile;
+  const writeRaw = (line: object) => fs.appendFileSync(rawFile!, `${JSON.stringify(line)}\n`);
+  if (rawFile) {
+    fs.mkdirSync(path.dirname(path.resolve(rawFile)), { recursive: true });
+    const run: RawRunLine = {
+      kind: "run", format: RAW_FORMAT, at: new Date().toISOString(), source: "replay", version: options.version ?? "",
+      corpus: path.basename(options.corpusFile), sessions: sessions.length, settings, sources: options.sources.length,
+    };
+    fs.writeFileSync(rawFile, `${JSON.stringify(run)}\n`);
+  }
   let index = 0;
   for (const session of sessions) {
     index++;
+    const raw = rawFile
+      ? (line: RawSessionLine) => writeRaw({ ...line, corpusStartedAt: session.startedAt ?? null })
+      : undefined;
     const decision = await processSession(
-      { store, history, llm: options.llm, sources: () => options.sources, settings, now: () => new Date(), log: options.log },
+      { store, history, llm: options.llm, sources: () => options.sources, settings, now: () => new Date(), log: options.log, ...(raw ? { raw } : {}) },
       session.sessionId,
       "replay",
     );

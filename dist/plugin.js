@@ -23,7 +23,7 @@ import { sqliteHistory, agentDatabasePath } from "./host/history.js";
 import { warmUpNormalizer } from "./core/fingerprint.js";
 import { readSources } from "./host/sources.js";
 import { activeLessons, allLessons, DEFAULT_AGENT, lessonAgent, recover, setStatus } from "./lessons.js";
-import { audit, callsToday, describeAudit, describePass, ensureLedger, describeReport, describeStatus, knownAgents, processSession, recordExposure, report, status } from "./pipeline.js";
+import { audit, callsToday, describeAudit, describePass, ensureLedger, describeReport, describeStatus, knownAgents, processSession, RAW_FORMAT, recordExposure, report, status } from "./pipeline.js";
 import { replay } from "./replay.js";
 import { readSettings } from "./settings.js";
 import { lessonNotice, storeErrorText } from "./core/notice.js";
@@ -161,6 +161,8 @@ export default function register(api) {
             return undefined;
         }
     };
+    /** With `rawLog` on, one raw line to today's file in the store (docs/proof/RAW-FORMAT.md). */
+    const writeRaw = (line) => store.appendLine(`raw/${new Date().toISOString().slice(0, 10)}.jsonl`, JSON.stringify(line));
     /** What the loop needs for one agent: its history, its instructions and skills, the model call. */
     const depsFor = (agentId, workspaceDir = workspaceFor(agentId)) => ({
         store,
@@ -170,6 +172,7 @@ export default function register(api) {
         settings,
         now: () => new Date(),
         log,
+        ...(settings.rawLog ? { raw: writeRaw } : {}),
     });
     /**
      * What the prompt hook injected per session, recorded to the effect ledger after
@@ -643,6 +646,18 @@ export default function register(api) {
                     return { text: "The lesson store is busy; try again in a moment.", ok: false };
                 throw error;
             }
+            if (changed && settings.rawLog && changed.status !== mine.find((lesson) => lesson.id === id)?.status) {
+                try {
+                    const line = {
+                        kind: "lesson_status", format: RAW_FORMAT, at: now.toISOString(), lessonId: id, agentId: lessonAgent(changed),
+                        status: changed.status,
+                    };
+                    writeRaw(line);
+                }
+                catch (error) {
+                    warn(`raw record for ${id} not written: ${String(error)}`);
+                }
+            }
             return changed ? { text: `Lesson ${id} ${changed.status}.`, ok: true } : { text: `No lesson ${id}.`, ok: false };
         }
         if (verb === "audit") {
@@ -843,13 +858,16 @@ export default function register(api) {
             .action(async (options) => print(await control("report", { json: json(options) })));
         root
             .command("replay <corpus> <storeDir> [sourcesDir]")
-            .description("Measurement: run the loop over a recorded corpus (JSONL) into a separate store")
-            .action(async (corpus, storeDir, sourcesDir) => {
+            .description("Measurement: run the loop over a recorded corpus (JSONL) into a separate store; --raw <file.jsonl> for the raw record")
+            .option("--raw <file>", "write one raw JSON line per session to this new file (docs/proof/RAW-FORMAT.md)")
+            .action(async (corpus, storeDir, sourcesDir, options) => {
             const dir = typeof sourcesDir === "string" ? sourcesDir : undefined;
+            const rawFile = options?.raw;
             const result = await runOutsideHostWorkScope(() => replay({
                 corpusFile: String(corpus),
                 storeDir: String(storeDir),
                 llm,
+                ...(typeof rawFile === "string" && rawFile ? { rawFile, version } : {}),
                 // Every top-level .md in the directory is an instruction file, plus skills/**/SKILL.md.
                 sources: dir
                     ? readSources(dir, fs.readdirSync(dir).filter((name) => name.endsWith(".md")), [path.join(dir, "skills")])

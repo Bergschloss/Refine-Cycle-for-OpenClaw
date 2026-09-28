@@ -1053,3 +1053,35 @@ test("list and report show today's model calls as the budget file counts them, t
   assert.match((await refine({ args: "list", agentId: "main" }) as { text: string }).text, /\nmodel calls today: 2\/3$/);
   assert.match((await refine({ args: "report", agentId: "main" }) as { text: string }).text, /\nmodel calls today: 2\/3\n/);
 });
+
+test("with rawLog on, the live plugin writes the same raw lines to raw/<date>.jsonl; off by default", async () => {
+  const error = "cron expression '* * *' has 3 fields, expected 5";
+  const failing = () => new Transcript().user("schedule it").call("cron_add", { schedule: "* * *" }, { error });
+  const reply = async () => ({ text: lessonJson(fingerprint("cron_add", error), "When calling cron_add, write the schedule as five cron fields, e.g. 0 3 * * *.") });
+  const off = tempDir();
+  writeAgentDb(off, { s1: failing(), s2: failing() });
+  fakeApi(off, reply).hooks.get("agent_end")!.handler({}, { sessionId: "s1", agentId: "main" });
+  await settle();
+  assert.equal(fs.existsSync(path.join(off, "plugin-data", "refine-cycle", "raw")), false);
+
+  const stateDir = tempDir();
+  writeAgentDb(stateDir, { s1: failing(), s2: failing() });
+  const { hooks, commands } = fakeApi(stateDir, reply, true, undefined, { rawLog: true });
+  hooks.get("agent_end")!.handler({}, { sessionId: "s1", agentId: "main" });
+  await settle();
+  const id = ((await commands.get("refine")!({ args: "list", agentId: "main" }) as { text: string }).text).split(" ")[0];
+  await commands.get("refine")!({ args: `delete ${id}`, agentId: "main" });
+  const dir = path.join(stateDir, "plugin-data", "refine-cycle", "raw");
+  const [file] = fs.readdirSync(dir);
+  assert.match(file, /^\d{4}-\d{2}-\d{2}\.jsonl$/);
+  const lines = fs.readFileSync(path.join(dir, file), "utf8").trim().split("\n").map((line) => JSON.parse(line));
+  assert.deepEqual(lines.map((line) => line.kind), ["session", "lesson_status"]);
+  const [session, status] = lines;
+  assert.equal(session.sessionId, "s1");
+  assert.equal(session.outcome, "lesson");
+  assert.equal(session.modelCalls.length, 1);
+  assert.equal(session.modelCalls[0].purpose, "propose");
+  assert.equal(session.lesson.id, id);
+  assert.equal(session.budget.callsToday, 1);
+  assert.deepEqual(status, { kind: "lesson_status", format: 1, at: status.at, lessonId: id, agentId: "main", status: "deleted" });
+});

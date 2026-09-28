@@ -17,7 +17,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { allLessons } from "./lessons.js";
-import { processSession, report } from "./pipeline.js";
+import { processSession, RAW_FORMAT, report } from "./pipeline.js";
 import { FileStore } from "./store.js";
 /** Sessions in the order they happened (`startedAt`); lines without it keep their place after the dated ones. */
 export function readCorpus(file) {
@@ -47,6 +47,10 @@ export async function replay(options) {
     if (fs.existsSync(options.storeDir) && fs.readdirSync(options.storeDir).length > 0) {
         throw new Error(`replay needs an empty store directory: ${options.storeDir}`);
     }
+    // So would a raw file that already holds lines.
+    if (options.rawFile && fs.existsSync(options.rawFile) && fs.statSync(options.rawFile).size > 0) {
+        throw new Error(`replay needs a new or empty raw file: ${options.rawFile}`);
+    }
     const store = new FileStore(options.storeDir);
     store.open();
     // No backfill: a session may only learn from the sessions already replayed. No pruning:
@@ -56,10 +60,23 @@ export async function replay(options) {
         readSession: (sessionId) => byId.get(sessionId) ?? [],
         recentSessions: () => [],
     };
+    const rawFile = options.rawFile;
+    const writeRaw = (line) => fs.appendFileSync(rawFile, `${JSON.stringify(line)}\n`);
+    if (rawFile) {
+        fs.mkdirSync(path.dirname(path.resolve(rawFile)), { recursive: true });
+        const run = {
+            kind: "run", format: RAW_FORMAT, at: new Date().toISOString(), source: "replay", version: options.version ?? "",
+            corpus: path.basename(options.corpusFile), sessions: sessions.length, settings, sources: options.sources.length,
+        };
+        fs.writeFileSync(rawFile, `${JSON.stringify(run)}\n`);
+    }
     let index = 0;
     for (const session of sessions) {
         index++;
-        const decision = await processSession({ store, history, llm: options.llm, sources: () => options.sources, settings, now: () => new Date(), log: options.log }, session.sessionId, "replay");
+        const raw = rawFile
+            ? (line) => writeRaw({ ...line, corpusStartedAt: session.startedAt ?? null })
+            : undefined;
+        const decision = await processSession({ store, history, llm: options.llm, sources: () => options.sources, settings, now: () => new Date(), log: options.log, ...(raw ? { raw } : {}) }, session.sessionId, "replay");
         if (decision.outcome !== "no_failures")
             options.log(`${index}/${sessions.length} ${session.sessionId}: ${decision.outcome}`);
     }

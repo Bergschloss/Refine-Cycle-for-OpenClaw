@@ -23,6 +23,7 @@ export const DEFAULTS = {
     notifyOnLesson: true,
     checkForUpdates: true,
     model: "",
+    rawLog: false,
 };
 export function readSettings(raw) {
     const input = typeof raw === "object" && raw !== null ? raw : {};

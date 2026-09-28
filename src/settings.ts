@@ -44,6 +44,8 @@ export interface Settings {
    * OpenClaw sends it only with `plugins.entries.refine-cycle.llm.allowModelOverride: true`.
    */
   model: string;
+  /** Write one raw JSON line per learning pass and per lesson withdrawal to `raw/<date>.jsonl` in the store, for measurement. */
+  rawLog: boolean;
 }
 
 export const DEFAULTS: Settings = {
@@ -66,6 +68,7 @@ export const DEFAULTS: Settings = {
   notifyOnLesson: true,
   checkForUpdates: true,
   model: "",
+  rawLog: false,
 };
 
 export function readSettings(raw: unknown): Settings {

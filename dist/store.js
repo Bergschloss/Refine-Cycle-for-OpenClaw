@@ -9,6 +9,7 @@
  *   meta.json                 schema version
  *   sessions/<id>.json        a session's failure summary (the `failures` family)
  *   folded/<agent>.json       the summaries pruned by age or count, folded: each session's failure counts and the sum per failure
+ *   raw/<YYYY-MM-DD>.jsonl    with `rawLog` on: one line per pass and per lesson withdrawal (docs/proof/RAW-FORMAT.md)
  *   candidates/<id>.json      what was decided for a session, and why
  *   lessons/<id>.json         draft / active / disabled / deleted
  *   journal/<id>.json         intent before every lesson change, marked after
@@ -235,6 +236,16 @@ export class FileStore {
                 // cannot happen short of a permissions change; the guard goes stale and is cleared
             }
         }
+    }
+    /**
+     * Append one line to a log file (the raw record). One `write` in append mode, so lines
+     * from two processes do not interleave on a local file system; not a JSON record.
+     */
+    appendLine(relative, line) {
+        this.beforeWrite?.(relative);
+        const target = path.join(this.root, relative);
+        fs.mkdirSync(path.dirname(target), { recursive: true });
+        fs.appendFileSync(target, `${line}\n`);
     }
     remove(relative) {
         this.beforeWrite?.(relative);
