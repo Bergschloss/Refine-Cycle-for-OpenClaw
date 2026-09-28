@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { processSession, recordExposure, report, type Deps, type Llm } from "../src/pipeline.ts";
+import { describeReport, processSession, recordExposure, report, type Deps, type Llm } from "../src/pipeline.ts";
 import { DEFAULTS, type Settings } from "../src/settings.ts";
 import { FileStore } from "../src/store.ts";
 import { activeLessons, allLessons, setStatus } from "../src/lessons.ts";
@@ -422,8 +422,9 @@ test("a busy lesson lock never blocks: the lesson is deferred and applied on the
 });
 
 test("a session is never reserved a second model call, even if its own record was lost", async () => {
-  const d = deps(new FakeHistory().add("s1", failing(5)), new ScriptedLlm(JSON.stringify({ decision: "nothing", fingerprint: FP, lesson: "", reason: "" })));
-  assert.equal((await processSession(d, "s1", "main")).outcome, "nothing");
+  // An unreadable reply: the failure is not paused (that follows only "nothing"), so the budget decides.
+  const d = deps(new FakeHistory().add("s1", failing(5)), new ScriptedLlm("no json here"));
+  assert.equal((await processSession(d, "s1", "main")).outcome, "invalid_reply");
   fs.rmSync(path.join(d.store.root, "candidates", "s1.json"));
   const again = await processSession(d, "s1", "main");
   assert.equal(again.evaluated[0].refusal?.rule, "already_called");
@@ -878,3 +879,47 @@ test("a command timeout is still transient when the same command succeeded, in a
 });
 
 
+// -- The 7-day pause after "nothing" (owner decision 2026-09-28) --
+
+test("after the model answered nothing, the failure is not sent again for 7 days while it stays in the same sessions", async () => {
+  const history = new FakeHistory().add("s1", failing()).add("s2", failing());
+  const llm = new ScriptedLlm(nothingReply(FP));
+  const d = deps(history, llm);
+  assert.equal((await processSession(d, "s1", "main")).outcome, "nothing");
+  const s2 = await processSession(d, "s2", "main");
+  assert.equal(s2.evaluated[0].refusal?.rule, "paused_after_nothing");
+  assert.equal(s2.evaluated[0].refusal?.detail, "until 2026-10-01T10:00:00.000Z");
+  assert.equal(llm.calls.length, 1);
+  assert.match(describeReport(report(d.store)), /nothing to learn in the last 7 days/);
+});
+
+test("the pause ends with a new session of the failure, or after 7 days; errors never pause", async () => {
+  {
+    const history = new FakeHistory().add("s1", failing()).add("s2", failing());
+    const llm = new ScriptedLlm(nothingReply(FP), nothingReply(FP));
+    const d = deps(history, llm, { backfillIntervalMinutes: 0 });
+    await processSession(d, "s1", "main");
+    history.add("s3", failing());
+    const s3 = await processSession(d, "s3", "main");
+    assert.equal(s3.evaluated[0].refusal, undefined, "a session it had not been seen in is new evidence");
+    assert.equal(llm.calls.length, 2);
+  }
+  {
+    const history = new FakeHistory().add("s1", failing()).add("s2", failing());
+    const llm = new ScriptedLlm(nothingReply(FP), nothingReply(FP));
+    const d = deps(history, llm);
+    await processSession(d, "s1", "main");
+    d.now = () => new Date("2026-10-01T10:00:00Z");
+    const s2 = await processSession(d, "s2", "main");
+    assert.equal(s2.outcome, "nothing", "a week later it may be asked again");
+    assert.equal(llm.calls.length, 2);
+  }
+  {
+    const history = new FakeHistory().add("s1", failing()).add("s2", failing());
+    let n = 0;
+    const llm: Llm = { complete: async () => (n++ === 0 ? Promise.reject(new Error("provider down")) : nothingReply(FP)) };
+    const d = deps(history, llm);
+    await processSession(d, "s1", "main");
+    assert.equal((await processSession(d, "s2", "main")).outcome, "nothing", "a call that failed gave no answer to pause on");
+  }
+});

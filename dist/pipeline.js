@@ -92,6 +92,24 @@ function markAnswered(deps, agentId, fingerprint, answer, sessionIds, now) {
         deps.log(`could not record the model's answer for ${fingerprint}: ${String(error)}`);
     }
 }
+/** How long a failure the model answered "nothing" for is not sent again (owner decision 2026-09-28). */
+export const PAUSE_AFTER_NOTHING_MS = 7 * 24 * 60 * 60 * 1000;
+/**
+ * The end of the pause (ISO) when the model's last answer for this failure was
+ * "nothing", less than a week ago, and every session the failure is seen in now was
+ * already seen then; otherwise null. A new session is new evidence and ends the pause.
+ */
+export function pausedUntil(mark, pattern, now) {
+    if (mark?.answer !== "nothing" || !mark.answeredAt)
+        return null;
+    const until = Date.parse(mark.answeredAt) + PAUSE_AFTER_NOTHING_MS;
+    if (!(now.getTime() < until))
+        return null;
+    const seen = new Set(mark.sessionIds ?? []);
+    if (pattern.sessionIds.some((id) => !seen.has(id)))
+        return null;
+    return new Date(until).toISOString();
+}
 /**
  * Has the model had its say on this failure? A call that ended in an error, or that a
  * crash cut short, gave no answer: that failure may still be offered from the queue.
@@ -299,6 +317,11 @@ function refuse(deps, agentId, pattern, local, sources) {
     const pending = pendingLesson(deps.store, agentId, pattern.fingerprint);
     if (pending)
         return { rule: "lesson_pending", detail: pending };
+    // The model looked at this failure and found nothing to learn: not asked again for a
+    // week, unless the failure has since come back in a session it had not seen then.
+    const paused = pausedUntil(readProposed(deps.store, agentId, pattern.fingerprint), pattern, deps.now());
+    if (paused)
+        return { rule: "paused_after_nothing", detail: `until ${paused}` };
     const active = known.filter((lesson) => lesson.status === "active");
     const lessonSources = active.map((lesson) => ({ name: `lesson:${lesson.id}`, text: lesson.text }));
     const covering = findCoveringRule(pattern.tool, pattern.shape, [...sources(), ...lessonSources]);
@@ -621,6 +644,7 @@ const RULE_WORDS = {
     covered_by_lesson: "an active lesson covers it",
     withdrawn_by_user: "you disabled or deleted its lesson",
     lesson_pending: "its lesson waits to be saved",
+    paused_after_nothing: "the model found nothing to learn in the last 7 days and it has not come back since",
     already_covered: "your instructions or skills already say it",
     budget_spent: "the day's model calls were used up",
     budget_busy: "another process held the budget",
