@@ -529,7 +529,12 @@ export default function register(api: PluginApi): void {
       } else if (info.source === "clawhub" || info.source === "npm") {
         const dry = await hostCli(["plugins", "update", api.id, "--dry-run"], 120_000);
         if (dry.code !== 0) throw new Error(`plugins update --dry-run: ${failureReason(dry.stdout, dry.stderr)}`);
-        latest = hostUpdateLine(`${dry.stdout}\n${dry.stderr}`, api.id, "would")?.to ?? info.version;
+        const output = `${dry.stdout}\n${dry.stderr}`;
+        const would = hostUpdateLine(output, api.id, "would");
+        // Neither "would update" nor "already at": the host changed its wording, and reading
+        // it as "no newer version" would switch the announcement off without a word.
+        if (!would && !/already at|up to date/i.test(output)) throw new Error("plugins update --dry-run: could not read the host's answer");
+        latest = would?.to ?? info.version;
       }
       const next: UpdateState = { ...state, checkedAt: now.toISOString(), ok: true, source: info.source, installed: info.version, latest };
       delete next.error;
@@ -984,7 +989,7 @@ export default function register(api: PluginApi): void {
       label: "Refine Cycle",
       description:
         "Ask Refine Cycle for one learning pass over this agent's repeated tool failures, now instead of at the end of the turn. " +
-        "It runs in the background under the same limits as the automatic pass (one model call per session, a few a day) and may find nothing; " +
+        "It runs in the background under the same limits as the automatic pass (one model call per session, maxModelCallsPerDay a day, 3 by default) and may find nothing; " +
         "a lesson it writes is shown from the next turn on. Use dry_run to see the proposed lesson without saving it.",
       parameters: {
         type: "object",

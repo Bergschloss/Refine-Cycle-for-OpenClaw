@@ -760,8 +760,10 @@ test("refine_run keeps the budget and the rules, and refuses bad arguments and u
 // -- Update available and /refine update --
 
 interface HostFake {
-  source: "git" | "path";
+  source: "git" | "path" | "clawhub";
   installed: string;
+  /** What `plugins update <id> --dry-run` prints, for a ClawHub install. */
+  dryRun?: string;
   tags: string;
   /** What `plugins update <id>` does: the version it lands on, or a failure. */
   update: { to: string } | { code: number; stderr: string };
@@ -784,9 +786,10 @@ function updateSetup(host: HostFake, adapter?: Record<string, unknown>, pluginCo
     }
     const args = argv.slice(2);
     if (args[1] === "inspect") {
-      const install = host.source === "git" ? { source: "git", version: host.installed, gitUrl: "file:///repo", gitCommit: `c-${host.installed}` } : undefined;
+      const install = host.source === "git" ? { source: "git", version: host.installed, gitUrl: "file:///repo", gitCommit: `c-${host.installed}` } : host.source === "clawhub" ? { source: "clawhub", version: host.installed } : undefined;
       return { stdout: `[plugins] noise\n${JSON.stringify({ plugin: { version: host.installed, source: "/x/dist/plugin.js" }, ...(install ? { install } : {}) })}`, stderr: "", code: 0 };
     }
+    if (args[1] === "update" && args.includes("--dry-run")) return { stdout: host.dryRun ?? "", stderr: "", code: 0 };
     if (args[1] === "update") {
       if ("code" in host.update) return { stdout: "", stderr: host.update.stderr, code: host.update.code };
       const from = host.installed;
@@ -837,6 +840,21 @@ test("a newer release is announced once, with an Update button that runs /refine
   await setup.turn("s2");
   assert.equal(setup.sent.length, 1);
   assert.equal(setup.host.runs.length, runs);
+});
+
+test("a ClawHub install reads the host's dry run, and an answer it cannot read is a failed check, not 'up to date'", async () => {
+  const found = updateSetup(gitHost({ source: "clawhub", dryRun: "Would update refine-cycle: 0.1.0 -> 0.3.0.\n" }));
+  await found.turn("s1");
+  assert.equal(found.sent[0]?.text, "♾️ Refine Cycle — update available: 0.3.0");
+  const current = updateSetup(gitHost({ source: "clawhub", dryRun: "refine-cycle already at 0.1.0.\n" }));
+  await current.turn("s1");
+  assert.equal(current.sent.length, 0);
+  assert.equal(current.store.read<{ ok: boolean }>("update/state.json")!.ok, true);
+  const changed = updateSetup(gitHost({ source: "clawhub", dryRun: "Checked 1 plugin.\n" }));
+  await changed.turn("s1");
+  assert.equal(changed.sent.length, 0);
+  assert.equal(changed.store.read<{ ok: boolean }>("update/state.json")!.ok, false);
+  assert.ok(changed.logs.some((line) => /could not read the host's answer/.test(line)));
 });
 
 test("a version already announced is not announced again after the day's next check", async () => {

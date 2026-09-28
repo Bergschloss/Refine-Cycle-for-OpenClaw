@@ -79,7 +79,7 @@ export class FileStore {
         if (raw !== undefined) {
             // Torn or emptied by a crash or a full disk: it records nothing but the schema, so it
             // is set aside (kept for inspection) and written again instead of disabling the plugin.
-            const aside = `meta.json.unreadable-${new Date().toISOString().replace(/[:.]/g, "-")}`;
+            const aside = `meta.json.unreadable-${new Date().toISOString().replace(/[:.]/g, "-")}-${randomBytes(3).toString("hex")}`;
             try {
                 fs.renameSync(file, path.join(this.root, aside));
             }
