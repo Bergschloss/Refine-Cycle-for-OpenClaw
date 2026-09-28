@@ -296,7 +296,7 @@ export default function register(api: PluginApi): void {
    * from. Once per run that activated lessons (the caller compares the active lessons
    * before and after); a send that fails is logged, not retried.
    */
-  const announce = async (lessonIds: string[], chat: Chat | null) => {
+  const announce = async (agentId: string, lessonIds: string[], chat: Chat | null) => {
     if (!settings.notifyOnLesson || lessonIds.length === 0) return;
     const which = lessonIds.join(", ");
     if (!chat) {
@@ -309,7 +309,9 @@ export default function register(api: PluginApi): void {
         log(`lesson ${which}: channel ${chat.channel} cannot take a message from a plugin`);
         return;
       }
-      await adapter.sendText({ cfg: api.config, to: chat.to, text: lessonNotice(lessonIds.length), accountId: chat.accountId ?? null });
+      const block = formatBlock(activeLessons(store, agentId), settings.maxInjectedChars);
+      const text = lessonNotice(block?.text.length ?? 0, settings.maxInjectedChars, (block?.omittedIds?.length ?? 0) > 0);
+      await adapter.sendText({ cfg: api.config, to: chat.to, text, accountId: chat.accountId ?? null });
       log(`lesson ${which}: told the user on ${chat.channel}`);
     } catch (error) {
       warn(`lesson ${which}: could not tell the user on ${chat.channel}: ${String(error)}`);
@@ -349,6 +351,7 @@ export default function register(api: PluginApi): void {
         // Every lesson that became active during this run, whichever way it got there
         // (this session, a deferred one, a recovered activation).
         await announce(
+          agentId,
           activeLessons(store, agentId).filter((lesson) => !before.has(lesson.id)).map((lesson) => lesson.id),
           chat,
         );
