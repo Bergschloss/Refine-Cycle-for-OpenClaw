@@ -177,6 +177,18 @@ function setStatusLocked(store: FileStore, id: string, status: "disabled" | "del
   return changed;
 }
 
+/** Read-only: journal records a crash left open (recovery finishes them), and records that cannot be read. */
+export function journalState(store: FileStore): { open: number; unreadable: number } {
+  let open = 0;
+  let unreadable = 0;
+  for (const name of store.list("journal")) {
+    const record = store.read<JournalRecord>(`journal/${name}.json`);
+    if (!record || typeof record.lessonId !== "string") unreadable++;
+    else if (record.state === "intent") open++;
+  }
+  return { open, unreadable };
+}
+
 /**
  * Finish or abandon every journal record a crash left at `intent`. An activation
  * is rolled forward (the lesson passed validation before its intent was written);

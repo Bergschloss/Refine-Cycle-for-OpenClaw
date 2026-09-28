@@ -2,10 +2,10 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { describeReport, processSession, recordExposure, report, type Deps, type Llm } from "../src/pipeline.ts";
+import { describeReport, describeStatus, processSession, recordExposure, report, status, type Deps, type Llm } from "../src/pipeline.ts";
 import { DEFAULTS, type Settings } from "../src/settings.ts";
 import { FileStore } from "../src/store.ts";
-import { activeLessons, allLessons, setStatus } from "../src/lessons.ts";
+import { activate, activeLessons, allLessons, setStatus } from "../src/lessons.ts";
 import { fingerprint } from "../src/core/fingerprint.ts";
 import type { Source } from "../src/core/covered.ts";
 import { SYSTEM_PROMPT } from "../src/core/proposal.ts";
@@ -922,4 +922,27 @@ test("the pause ends with a new session of the failure, or after 7 days; errors 
     await processSession(d, "s1", "main");
     assert.equal((await processSession(d, "s2", "main")).outcome, "nothing", "a call that failed gave no answer to pause on");
   }
+});
+
+
+test("status names a spent budget, an unreadable history, the queue and an over-full block", async () => {
+  const d = deps(new FakeHistory().add("s1", mixed(["alpha", 6], ["beta", 5])), new ScriptedLlm(nothingReply(fpOf("alpha"))), { backfillSessions: 0, maxModelCallsPerDay: 1, maxInjectedChars: 400 });
+  await processSession(d, "s1", "main");
+  for (let i = 0; i < 3; i++) {
+    activate(d.store, {
+      id: `big${i}`, text: `When calling tool_${i}, ${"y".repeat(150)}.`, fingerprint: `fp${i}`, tool: `tool_${i}`,
+      createdAt: new Date().toISOString(), sourceSessionId: "s0", evidence: { sessionIds: [], eventIds: [] }, reason: "", agentId: "main",
+    }, new Date());
+  }
+  d.store.write("candidates/zz.json", { sessionId: "zz", agentId: "main", at: "2026-09-24T11:00:00Z", outcome: "history_unreadable", called: false, evaluated: [], reply: "Error: unable to open database file" });
+  const input = { agentIds: ["main"], sessionId: "s1", version: "9.9.9", model: "m", llmAvailable: true, conversationAccess: true, promptInjection: true, hostWarnings: [] };
+  const s = await status(d, input);
+  assert.equal(s.callsToday, 1);
+  assert.equal(s.sessionCalled, true);
+  assert.equal(s.agents[0].queue, 1, "beta waits");
+  const text = describeStatus(s, true);
+  assert.match(text, /Today's model calls are used up \(1\/1\)/);
+  assert.match(text, /history of agent main's last session could not be read: Error: unable to open database file/);
+  assert.match(text, /over the soft limit/);
+  assert.match(text, /this session has had its call/);
 });

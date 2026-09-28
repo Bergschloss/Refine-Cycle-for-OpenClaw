@@ -82,6 +82,7 @@ openclaw refine-cycle list
 | In chat | On the command line | |
 |---|---|---|
 | `/refine list` | `openclaw refine-cycle list` | Lessons and their status |
+| `/refine status` | `openclaw refine-cycle status` | Whether learning and injection work and what blocks them, the model, calls used today, the block's size against its soft limit, the queue, the journal (`--json` on the command line) |
 | `/refine disable <id>` | `openclaw refine-cycle disable <id>` | Stop showing a lesson |
 | `/refine delete <id>` | `openclaw refine-cycle delete <id>` | Delete a lesson (kept as a tombstone) |
 | `/refine report` | `openclaw refine-cycle report` | What the loop decided and why, in words (`--json` on the command line for the numbers) |

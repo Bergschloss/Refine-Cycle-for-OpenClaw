@@ -85,7 +85,7 @@ test("without the conversation-access grant the log says why nothing happens", (
   assert.ok(without.logs.some((line) => line.startsWith("WARN") && line.includes("allowConversationAccess")));
 });
 
-test("an unusable store means no injection, no learning, and no thrown error", () => {
+test("an unusable store means no injection, no learning, and no thrown error", async () => {
   const stateDir = tempDir();
   const root = path.join(stateDir, "plugin-data", "refine-cycle");
   fs.mkdirSync(root, { recursive: true });
@@ -93,7 +93,7 @@ test("an unusable store means no injection, no learning, and no thrown error", (
   const { hooks, commands, logs } = fakeApi(stateDir);
   assert.equal(hooks.get("before_prompt_build")!.handler({}, { sessionId: "s1" }), undefined);
   assert.equal(hooks.get("agent_end")!.handler({}, { sessionId: "s1" }), undefined);
-  assert.match(String((commands.get("refine")!({ args: "list" }) as { text: string }).text), /cannot use its store/);
+  assert.match(String((await commands.get("refine")!({ args: "list" }) as { text: string }).text), /cannot use its store/);
   assert.ok(logs.some((line) => line.includes("store unusable")));
 });
 
@@ -124,9 +124,9 @@ test("end to end on a real SQLite file: failures in two sessions become a lesson
 
   const injected = hooks.get("before_prompt_build")!.handler({}, { sessionId: "s3" }) as { prependContext: string };
   assert.match(injected.prependContext, /five cron fields/);
-  const listed = (commands.get("refine")!({ args: "list", agentId: "main" }) as { text: string }).text;
+  const listed = (await commands.get("refine")!({ args: "list", agentId: "main" }) as { text: string }).text;
   const id = listed.split(" ")[0];
-  assert.match((commands.get("refine")!({ args: `disable ${id}`, agentId: "main" }) as { text: string }).text, /disabled/);
+  assert.match((await commands.get("refine")!({ args: `disable ${id}`, agentId: "main" }) as { text: string }).text, /disabled/);
   assert.equal(hooks.get("before_prompt_build")!.handler({}, { sessionId: "s4" }), undefined);
 });
 
@@ -161,10 +161,10 @@ test("with prompt injection denied, nothing is injected or counted as shown, and
   assert.ok(logs.some((line) => line.startsWith("WARN") && line.includes("allowPromptInjection")));
 });
 
-test("/refine with no arguments lists the lessons", () => {
+test("/refine with no arguments lists the lessons", async () => {
   const { commands } = fakeApi(tempDir());
-  assert.equal((commands.get("refine")!({ args: "", agentId: "main" }) as { text: string }).text, "No lessons yet.");
-  assert.equal((commands.get("refine")!({ agentId: "main" }) as { text: string }).text, "No lessons yet.");
+  assert.equal((await commands.get("refine")!({ args: "", agentId: "main" }) as { text: string }).text, "No lessons yet.");
+  assert.equal((await commands.get("refine")!({ agentId: "main" }) as { text: string }).text, "No lessons yet.");
 });
 
 test("lessons of one agent are not injected into another agent's prompt", () => {
@@ -181,7 +181,7 @@ test("lessons of one agent are not injected into another agent's prompt", () => 
   assert.equal(prompt({}, { sessionId: "b", agentId: "main" }), undefined);
 });
 
-test("/refine in chat sees and changes only the calling agent's lessons", () => {
+test("/refine in chat sees and changes only the calling agent's lessons", async () => {
   const stateDir = tempDir();
   const { commands } = fakeApi(stateDir);
   const store = new FileStore(path.join(stateDir, "plugin-data", "refine-cycle"));
@@ -191,13 +191,13 @@ test("/refine in chat sees and changes only the calling agent's lessons", () => 
     agentId: "ops",
   }, new Date());
   const refine = commands.get("refine")!;
-  assert.equal((refine({ args: "list", agentId: "main" }) as { text: string }).text, "No lessons yet.");
-  assert.equal((refine({ args: "delete l3", agentId: "main" }) as { text: string }).text, "No lesson l3.");
-  assert.match((refine({ args: "list", agentId: "ops" }) as { text: string }).text, /l3 \[active\]/);
+  assert.equal((await refine({ args: "list", agentId: "main" }) as { text: string }).text, "No lessons yet.");
+  assert.equal((await refine({ args: "delete l3", agentId: "main" }) as { text: string }).text, "No lesson l3.");
+  assert.match((await refine({ args: "list", agentId: "ops" }) as { text: string }).text, /l3 \[active\]/);
   // Without the host's agentId, the session key names the agent; with neither, nothing is guessed.
-  assert.match((refine({ args: "list", sessionKey: "agent:ops:telegram:direct:42" }) as { text: string }).text, /l3 \[active\]/);
-  assert.match((refine({ args: "delete l3" }) as { text: string }).text, /cannot tell which agent/);
-  assert.match((refine({ args: "list", sessionKey: "main" }) as { text: string }).text, /cannot tell which agent/);
+  assert.match((await refine({ args: "list", sessionKey: "agent:ops:telegram:direct:42" }) as { text: string }).text, /l3 \[active\]/);
+  assert.match((await refine({ args: "delete l3" }) as { text: string }).text, /cannot tell which agent/);
+  assert.match((await refine({ args: "list", sessionKey: "main" }) as { text: string }).text, /cannot tell which agent/);
   assert.equal(store.read<{ status: string }>("lessons/l3.json")!.status, "active");
 });
 
@@ -309,24 +309,24 @@ function seedLesson(stateDir: string, id: string, agentId: string): void {
   }, new Date());
 }
 
-test("chat /refine takes the host's agentId over the one a session key names", () => {
+test("chat /refine takes the host's agentId over the one a session key names", async () => {
   const stateDir = tempDir();
   seedLesson(stateDir, "opslesson", "ops");
   seedLesson(stateDir, "mainlesson", "main");
   const { commands } = fakeApi(stateDir);
-  const text = (commands.get("refine")!({ args: "list", agentId: "ops", sessionKey: "agent:main:telegram:1" }) as { text: string }).text;
+  const text = (await commands.get("refine")!({ args: "list", agentId: "ops", sessionKey: "agent:main:telegram:1" }) as { text: string }).text;
   assert.match(text, /opslesson/);
   assert.doesNotMatch(text, /mainlesson/);
 });
 
-test("chat /refine disable on a busy store answers at once instead of waiting", () => {
+test("chat /refine disable on a busy store answers at once instead of waiting", async () => {
   const stateDir = tempDir();
   seedLesson(stateDir, "busylesson", "main");
   const { commands } = fakeApi(stateDir);
   const store = new FileStore(path.join(stateDir, "plugin-data", "refine-cycle"));
   const release = store.lock("lessons", 0);
   const started = Date.now();
-  const text = (commands.get("refine")!({ args: "disable busylesson", agentId: "main" }) as { text: string }).text;
+  const text = (await commands.get("refine")!({ args: "disable busylesson", agentId: "main" }) as { text: string }).text;
   release();
   assert.ok(Date.now() - started < 1_000, `waited ${Date.now() - started} ms`);
   assert.match(text, /busy/);
@@ -335,11 +335,11 @@ test("chat /refine disable on a busy store answers at once instead of waiting", 
 
 // -- K6 (2026-09-27): the texts a person reads --------------------------------------
 
-test("chat /refine report is written for a person, with the rule names kept", () => {
+test("chat /refine report is written for a person, with the rule names kept", async () => {
   const stateDir = tempDir();
   seedLesson(stateDir, "reportlesson", "main");
   const { commands } = fakeApi(stateDir);
-  const text = (commands.get("refine")!({ args: "report", agentId: "main" }) as { text: string }).text;
+  const text = (await commands.get("refine")!({ args: "report", agentId: "main" }) as { text: string }).text;
   assert.match(text, /^Lessons: 1 active\./);
   assert.match(text, /Sessions read: 0, 0 with tool failures\. Model calls: 0\./);
   assert.throws(() => JSON.parse(text));
@@ -387,6 +387,10 @@ test("the command line lists every agent's lessons with their agent, reports JSO
     process.exitCode = undefined;
     await actions.get("report")!({ json: true });
     assert.equal(JSON.parse(printed.at(-1)!).lessons.active, 1);
+    await actions.get("status")!({});
+    assert.match(printed.at(-1)!, /agent ops: lessons: 1 active/, "the command line shows every agent, by name");
+    await actions.get("status")!({ json: true });
+    assert.deepEqual(JSON.parse(printed.at(-1)!).agents.map((a: { agentId: string }) => a.agentId), ["ops"]);
     assert.equal(process.exitCode, undefined);
   } finally {
     console.log = log;
@@ -522,4 +526,36 @@ test("a message that cannot be delivered is logged, the lesson stays, and it is 
   agentEnd({}, telegramTurn("s2"));
   await settle();
   assert.equal(sent.length, 1);
+});
+
+test("chat /refine status shows the calling agent's state, and every blocker in words", async () => {
+  const stateDir = tempDir();
+  seedLesson(stateDir, "mainlesson", "main");
+  seedLesson(stateDir, "opslesson", "ops");
+  const complete = async () => ({ text: "{}" });
+  {
+    const { commands } = fakeApi(stateDir, complete);
+    const text = (await commands.get("refine")!({ args: "status", agentId: "main", sessionId: "s9" } as never) as { text: string }).text;
+    assert.match(text, /^♾️ Refine Cycle \d+\.\d+\.\d+ · working\n/);
+    assert.match(text, /learning: on · injection: on/);
+    assert.match(text, /model: .*the default agent's model/);
+    assert.match(text, /model calls today: 0\/3 · this session has not had its call yet/);
+    assert.match(text, /lessons: 1 active, 0 disabled, 0 deleted/);
+    assert.match(text, /lessons block: \d+\/4400 characters/);
+    assert.match(text, /queue: 0 failure\(s\) waiting/);
+    assert.match(text, /journal: no unfinished changes/);
+    assert.match(text, /blockers: none/);
+    assert.equal(text.match(/lessons: \d+ active/g)!.length, 1, "chat sees only its own agent");
+  }
+  {
+    // No grant, no model call, learning off: each one named.
+    const { commands } = fakeApi(stateDir, undefined, false, false, { learnEnabled: false });
+    const text = (await commands.get("refine")!({ args: "status", agentId: "main" }) as { text: string }).text;
+    assert.match(text, /· not working/);
+    assert.match(text, /learning: off · injection: off/);
+    assert.match(text, /allowConversationAccess to true/);
+    assert.match(text, /allowPromptInjection is false/);
+    assert.match(text, /Learning is off in the settings/);
+    assert.match(text, /no model call/);
+  }
 });

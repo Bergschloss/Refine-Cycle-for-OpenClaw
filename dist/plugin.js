@@ -19,7 +19,7 @@ import { formatBlock } from "./core/injection.js";
 import { sqliteHistory, agentDatabasePath } from "./host/history.js";
 import { readSources } from "./host/sources.js";
 import { activeLessons, allLessons, DEFAULT_AGENT, lessonAgent, recover, setStatus } from "./lessons.js";
-import { describeReport, processSession, recordExposure, report } from "./pipeline.js";
+import { describeReport, describeStatus, knownAgents, processSession, recordExposure, report, status } from "./pipeline.js";
 import { replay } from "./replay.js";
 import { readSettings } from "./settings.js";
 import { lessonNotice } from "./core/notice.js";
@@ -100,15 +100,40 @@ export default function register(api) {
         storeError = String(error);
         warn(`store unusable, nothing will be injected or learned: ${storeError}`);
     }
+    /** The last journal recovery this process ran, for `status`. */
+    let lastRecovery = null;
     if (!storeError) {
         // Finish what a crash left half-done before anything reads the lessons.
         try {
-            recover(store, new Date());
+            lastRecovery = { at: new Date().toISOString(), ...recover(store, new Date()) };
         }
         catch (error) {
             warn(`journal recovery skipped: ${String(error)}`);
         }
     }
+    /** The workspace each agent was last seen working in; else the host's own answer. */
+    const workspaces = new Map();
+    const workspaceFor = (agentId) => {
+        const known = workspaces.get(agentId);
+        if (known)
+            return known;
+        try {
+            return api.runtime?.agent?.resolveAgentWorkspaceDir?.(api.config, agentId) || undefined;
+        }
+        catch {
+            return undefined;
+        }
+    };
+    /** What the loop needs for one agent: its history, its instructions and skills, the model call. */
+    const depsFor = (agentId, workspaceDir = workspaceFor(agentId)) => ({
+        store,
+        history: sqliteHistory(settings.historyDbPath || agentDatabasePath(stateDir, agentId)),
+        llm,
+        sources: () => readSources(workspaceDir, settings.instructionFiles, settings.skillDirs),
+        settings,
+        now: () => new Date(),
+        log,
+    });
     /**
      * What the prompt hook injected per session, recorded to the effect ledger after
      * the turn. `shownAtMs` is when the block was built: failures after it happened
@@ -247,6 +272,8 @@ export default function register(api) {
         queued.add(sessionId);
         const agentId = ctx.agentId || DEFAULT_AGENT;
         const workspaceDir = ctx.workspaceDir;
+        if (workspaceDir)
+            workspaces.set(agentId, workspaceDir);
         const turnChat = ctx.channel && ctx.chatId ? { channel: ctx.channel, to: ctx.chatId, ...(ctx.accountId ? { accountId: ctx.accountId } : {}) } : null;
         queue = queue.then(async () => {
             queued.delete(sessionId);
@@ -257,16 +284,7 @@ export default function register(api) {
                 injected.delete(sessionId);
                 for (const { block, shownAtMs } of shown)
                     recordExposure(store, sessionId, block, shownAtMs, new Date());
-                const history = sqliteHistory(settings.historyDbPath || agentDatabasePath(stateDir, agentId));
-                const decision = await processSession({
-                    store,
-                    history,
-                    llm,
-                    sources: () => readSources(workspaceDir, settings.instructionFiles, settings.skillDirs),
-                    settings,
-                    now: () => new Date(),
-                    log,
-                }, sessionId, agentId);
+                const decision = await processSession(depsFor(agentId, workspaceDir), sessionId, agentId);
                 if (decision.outcome !== "no_failures")
                     log(`session ${sessionId}: ${decision.outcome}`);
                 // Every lesson that became active during this run, whichever way it got there
@@ -285,14 +303,35 @@ export default function register(api) {
         // its model call) does not run inside a scope the host closes when this returns.
         runOutsideHostWorkScope(() => enqueue(ctx));
     });
+    /** The plugin's own version, from its package.json. */
+    const version = (() => {
+        try {
+            const pkg = JSON.parse(fs.readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+            return typeof pkg.version === "string" ? pkg.version : "unknown";
+        }
+        catch {
+            return "unknown";
+        }
+    })();
+    /** The model lessons are written with, in words: the plugin sends none, so it is the default agent's. */
+    const modelRoute = () => {
+        const configured = api.config?.agents?.defaults?.model;
+        const name = typeof configured === "string" ? configured : configured?.primary;
+        return `${name || "the host's default"} (the default agent's model: OpenClaw chooses it, the plugin sends none)`;
+    };
+    const USAGE = "Usage: list | status | report | disable <id> | delete <id>";
     /**
-     * `agentId` limits a chat command to that agent's lessons and report; the command line sees all agents.
-     * `ok` is false when the command did not do what was asked (no such lesson, a busy store, bad usage).
+     * One place for chat and command line. `ok` is false when the command did not do what
+     * was asked (no such lesson, a busy store, bad usage), so the command line can exit 1.
      */
-    const control = (args, agentId, json = false) => {
-        if (storeError)
-            return { text: `Refine Cycle cannot use its store: ${storeError}`, ok: false };
+    const control = async (args, scope = {}) => {
         const [verb = "list", id = ""] = args.trim().split(/\s+/).filter(Boolean);
+        const { agentId } = scope;
+        if (storeError) {
+            const hint = "Check that the directory exists and is writable by the gateway's user; a meta.json that cannot be read " +
+                "can be moved aside (the plugin writes a new one). See `openclaw logs` for the first error.";
+            return { text: `Refine Cycle cannot use its store at ${store.root}: ${storeError}\n${hint}`, ok: false };
+        }
         const now = new Date();
         const mine = allLessons(store).filter((lesson) => agentId === undefined || lessonAgent(lesson) === agentId);
         if (verb === "list") {
@@ -321,23 +360,38 @@ export default function register(api) {
             }
             return changed ? { text: `Lesson ${id} ${changed.status}.`, ok: true } : { text: `No lesson ${id}.`, ok: false };
         }
-        if (verb === "report" || verb === "status") {
+        if (verb === "report") {
             const numbers = report(store, agentId);
-            return { text: json ? JSON.stringify(numbers, null, 2) : describeReport(numbers), ok: true };
+            return { text: scope.json ? JSON.stringify(numbers, null, 2) : describeReport(numbers), ok: true };
         }
-        return { text: "Usage: list | disable <id> | delete <id> | report", ok: false };
+        if (verb === "status") {
+            const agents = agentId === undefined ? knownAgents(store) : [agentId];
+            const s = await status(depsFor(agents[0]), {
+                agentIds: agents,
+                ...(scope.sessionId ? { sessionId: scope.sessionId } : {}),
+                version,
+                model: modelRoute(),
+                llmAvailable: llm !== null,
+                conversationAccess: hookPolicy?.allowConversationAccess === true,
+                promptInjection: injectionAllowed,
+                hostWarnings: [],
+                recovery: lastRecovery,
+            }, (agent) => depsFor(agent));
+            return { text: scope.json ? JSON.stringify(s, null, 2) : describeStatus(s, agentId !== undefined), ok: true };
+        }
+        return { text: USAGE, ok: false };
     };
     api.registerCommand?.({
         name: "refine",
-        description: "Refine Cycle lessons: list, disable <id>, delete <id>, report",
+        description: "Refine Cycle: list, status, report, disable <id>, delete <id>",
         acceptsArgs: true,
-        handler: (ctx) => {
+        handler: async (ctx) => {
             const agentId = commandAgent(ctx);
             // Guessing an agent could show or change another agent's lessons.
             if (!agentId && !storeError) {
                 return { text: "Refine Cycle cannot tell which agent this chat belongs to. Use `openclaw refine-cycle` on the command line." };
             }
-            return { text: control(ctx?.args ?? "", agentId ?? DEFAULT_AGENT).text };
+            return { text: (await control(ctx?.args ?? "", { agentId: agentId ?? DEFAULT_AGENT, ...(ctx?.sessionId ? { sessionId: ctx.sessionId } : {}) })).text };
         },
     });
     /** Print a command-line result; a command that did not do what was asked exits 1, for scripts. */
@@ -348,14 +402,20 @@ export default function register(api) {
     };
     api.registerCli?.(({ program }) => {
         const root = program.command("refine-cycle").description("Refine Cycle: lessons learned from repeated failures");
-        root.command("list").description("List lessons, with the agent each belongs to").action(() => print(control("list")));
-        root.command("disable <id>").description("Stop injecting a lesson").action((id) => print(control(`disable ${String(id)}`)));
-        root.command("delete <id>").description("Delete a lesson (kept as a tombstone)").action((id) => print(control(`delete ${String(id)}`)));
+        const json = (options) => options?.json === true;
+        root.command("list").description("List lessons, with the agent each belongs to").action(async () => print(await control("list")));
+        root
+            .command("status")
+            .description("Whether learning and injection work, what blocks them, the budget, the queue; --json for the raw record")
+            .option("--json", "the raw record as JSON")
+            .action(async (options) => print(await control("status", { json: json(options) })));
+        root.command("disable <id>").description("Stop injecting a lesson").action(async (id) => print(await control(`disable ${String(id)}`)));
+        root.command("delete <id>").description("Delete a lesson (kept as a tombstone)").action(async (id) => print(await control(`delete ${String(id)}`)));
         root
             .command("report")
             .description("What the learning loop decided, by rule; --json for the raw numbers")
             .option("--json", "the raw numbers as JSON")
-            .action((options) => print(control("report", undefined, options?.json === true)));
+            .action(async (options) => print(await control("report", { json: json(options) })));
         root
             .command("replay <corpus> <storeDir> [sourcesDir]")
             .description("Measurement: run the loop over a recorded corpus (JSONL) into a separate store")

@@ -11,8 +11,9 @@ import { aggregate, summarizeSessionInSlices, SUMMARY_FORMAT } from "./core/fail
 import { findCoveringRule } from "./core/covered.js";
 import { lessonShape } from "./core/shape.js";
 import { buildUserMessage, parseProposal, SYSTEM_PROMPT, validateLesson } from "./core/proposal.js";
-import {} from "./core/injection.js";
-import { activate, activeLessons, allLessons, DEFAULT_AGENT, lessonAgent, LessonExistsError, lessonId, recover } from "./lessons.js";
+import { formatBlock } from "./core/injection.js";
+import { BRAND, usageNote } from "./core/notice.js";
+import { activate, activeLessons, allLessons, DEFAULT_AGENT, journalState, lessonAgent, LessonExistsError, lessonId, recover } from "./lessons.js";
 import { safeName, StoreError } from "./store.js";
 const REPLY_KEPT_CHARS = 2000;
 /** Files read between two yields to the event loop: the host's other sessions keep running. */
@@ -680,5 +681,121 @@ export function describeReport(r) {
         lines.push(`Turns the loop looked at: ${decided}`, ...counted(r.outcomes, OUTCOME_WORDS));
     if (Object.keys(r.refusals).length > 0)
         lines.push("Failures not turned into a lesson, and why:", ...counted(r.refusals, RULE_WORDS));
+    return lines.join("\n");
+}
+/** The agents the store knows: from lessons and session summaries; "main" when it knows none. */
+export function knownAgents(store) {
+    const ids = new Set();
+    for (const lesson of allLessons(store))
+        ids.add(lessonAgent(lesson));
+    for (const name of store.list("sessions")) {
+        const summary = store.read(`sessions/${name}.json`);
+        if (summary)
+            ids.add(summary.agentId || DEFAULT_AGENT);
+    }
+    return ids.size ? [...ids].sort() : [DEFAULT_AGENT];
+}
+/** Read-only: no lock, no write, no model call. The queue count reads the instruction files. */
+export async function status(deps, input, depsOf = () => deps) {
+    const { store, settings } = deps;
+    const now = deps.now();
+    const calls = store.read(budgetPath(now))?.calls ?? [];
+    const decisions = store
+        .list("candidates")
+        .map((name) => store.read(`candidates/${name}.json`))
+        .filter((d) => !!d);
+    const agents = [];
+    for (const agentId of input.agentIds) {
+        const lessons = { active: 0, disabled: 0, deleted: 0 };
+        for (const lesson of allLessons(store)) {
+            if (lessonAgent(lesson) === agentId && lesson.status !== "draft")
+                lessons[lesson.status]++;
+        }
+        const newest = decisions
+            .filter((d) => (d.agentId || DEFAULT_AGENT) === agentId)
+            .sort((a, b) => b.at.localeCompare(a.at))[0];
+        agents.push({
+            agentId,
+            lessons,
+            blockChars: formatBlock(activeLessons(store, agentId))?.text.length ?? 0,
+            queue: settings.learnEnabled ? await queueLength(depsOf(agentId), agentId) : 0,
+            ...(newest?.outcome === "history_unreadable" ? { historyUnreadable: String(newest.reply ?? "").slice(0, 160) } : {}),
+        });
+    }
+    const blockers = [];
+    if (!input.conversationAccess) {
+        blockers.push("OpenClaw does not call the plugin: set plugins.entries.refine-cycle.hooks.allowConversationAccess to true in openclaw.json.");
+    }
+    if (!input.promptInjection) {
+        blockers.push("OpenClaw drops the lessons block: plugins.entries.refine-cycle.hooks.allowPromptInjection is false.");
+    }
+    if (!settings.learnEnabled)
+        blockers.push("Learning is off in the settings (learnEnabled).");
+    if (!settings.injectEnabled)
+        blockers.push("Injection is off in the settings (injectEnabled).");
+    if (!input.llmAvailable)
+        blockers.push("OpenClaw offers the plugin no model call, so no lesson can be written.");
+    if (calls.length >= settings.maxModelCallsPerDay) {
+        blockers.push(`Today's model calls are used up (${calls.length}/${settings.maxModelCallsPerDay}); the next ones are tomorrow (UTC).`);
+    }
+    for (const agent of agents) {
+        if (agent.historyUnreadable)
+            blockers.push(`The history of agent ${agent.agentId}'s last session could not be read: ${agent.historyUnreadable}`);
+    }
+    const warnings = [...input.hostWarnings];
+    for (const agent of agents) {
+        if (agent.blockChars > settings.maxInjectedChars) {
+            warnings.push(`Agent ${agent.agentId}'s lessons take ${agent.blockChars} characters, over the soft limit of ${settings.maxInjectedChars}; every lesson is still shown. Disable or delete the ones you no longer need.`);
+        }
+    }
+    const journal = journalState(store);
+    if (journal.unreadable)
+        warnings.push(`${journal.unreadable} journal record(s) cannot be read and are skipped.`);
+    return {
+        version: input.version,
+        learning: settings.learnEnabled && input.llmAvailable && input.conversationAccess,
+        injection: settings.injectEnabled && input.promptInjection && input.conversationAccess,
+        model: input.model,
+        callsToday: calls.length,
+        callsLimit: settings.maxModelCallsPerDay,
+        ...(input.sessionId ? { sessionCalled: calls.some((call) => call.sessionId === input.sessionId) || decisions.some((d) => d.sessionId === input.sessionId && d.called) } : {}),
+        softLimit: settings.maxInjectedChars,
+        agents,
+        journal,
+        recovery: input.recovery ?? null,
+        blockers,
+        warnings,
+    };
+}
+/** Status for people, in the order of the Hermes plugin's `/refine status`. */
+export function describeStatus(s, oneAgent) {
+    const lines = [`${BRAND} ${s.version} · ${s.blockers.length ? "not working" : "working"}`];
+    lines.push(`learning: ${s.learning ? "on" : "off"} · injection: ${s.injection ? "on" : "off"}`);
+    lines.push(`model: ${s.model}`);
+    let calls = `model calls today: ${s.callsToday}/${s.callsLimit}`;
+    if (s.sessionCalled !== undefined)
+        calls += s.sessionCalled ? " · this session has had its call" : " · this session has not had its call yet";
+    lines.push(calls);
+    for (const agent of s.agents) {
+        const who = oneAgent ? "" : `agent ${agent.agentId}: `;
+        const words = usageNote(agent.blockChars, s.softLimit);
+        lines.push(`${who}lessons: ${agent.lessons.active} active, ${agent.lessons.disabled} disabled, ${agent.lessons.deleted} deleted`);
+        lines.push(`${who}lessons block: ${agent.blockChars}/${s.softLimit} characters${words ? `, ${words}` : ""}`);
+        lines.push(`${who}queue: ${agent.queue} failure(s) waiting for a model call`);
+    }
+    lines.push(s.journal.open
+        ? `journal: ${s.journal.open} unfinished change(s), finished by recovery on the next turn`
+        : "journal: no unfinished changes");
+    if (s.recovery) {
+        lines.push(s.recovery.skipped
+            ? `recovery (${s.recovery.at}): skipped, another process held the store`
+            : `recovery (${s.recovery.at}): ${s.recovery.finished} finished, ${s.recovery.abandoned} abandoned, ${s.recovery.unreadable} unreadable`);
+    }
+    if (s.blockers.length)
+        lines.push("blockers:", ...s.blockers.map((b) => `  • ${b}`));
+    else
+        lines.push("blockers: none — learning and injection are active");
+    if (s.warnings.length)
+        lines.push("warnings:", ...s.warnings.map((w) => `  ⚠ ${w}`));
     return lines.join("\n");
 }
