@@ -78,6 +78,11 @@ function resolveStateDir(api) {
     return process.env.OPENCLAW_STATE_DIR || path.join(os.homedir(), ".openclaw");
 }
 export default function register(api) {
+    // `openclaw plugins validate` calls a package's default export with no argument, to
+    // read defineToolPlugin() metadata. This plugin registers through the API instead, so
+    // there is nothing to register without one; returning lets the host say so.
+    if (!api || typeof api.on !== "function")
+        return;
     const settings = readSettings(api.pluginConfig);
     const log = (message) => api.logger?.info?.(`[refine-cycle] ${message}`);
     const warn = (message) => (api.logger?.warn ?? api.logger?.info)?.(`[refine-cycle] ${message}`);

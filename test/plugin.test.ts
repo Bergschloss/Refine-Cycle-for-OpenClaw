@@ -1017,3 +1017,15 @@ test("/refine rollback is delete by its Hermes name: a tombstone, and the audit 
   assert.equal(store.read<{ status: string }>("lessons/oldlesson.json")!.status, "deleted");
   assert.equal(await refine("rollback"), "Usage: rollback <lesson id>");
 });
+
+test("the package icon is where OpenClaw looks for it, and register() without an api does nothing", () => {
+  const root = path.join(import.meta.dirname, "..");
+  // OpenClaw 2026.9.6 takes the icon from the fixed path assets/icon.png; no manifest field names it.
+  const png = fs.readFileSync(path.join(root, "assets", "icon.png"));
+  assert.deepEqual([...png.subarray(1, 4)].map((b) => String.fromCharCode(b)).join(""), "PNG");
+  assert.equal(png.readUInt32BE(16), png.readUInt32BE(20), "the icon is square");
+  const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
+  assert.ok(pkg.files.includes("assets"), "assets/ is packaged");
+  // `openclaw plugins validate` calls the default export with no argument.
+  assert.doesNotThrow(() => (register as (api?: unknown) => void)());
+});
