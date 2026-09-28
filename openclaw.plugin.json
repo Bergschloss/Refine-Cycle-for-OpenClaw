@@ -93,7 +93,7 @@
       "notifyOnLesson": {
         "type": "boolean",
         "default": true,
-        "description": "Send one message, in the chat a lesson came from, when a new lesson is learned."
+        "description": "Send one line to the chat you are talking from when a new lesson is learned."
       },
       "historyDbPath": {
         "type": "string",

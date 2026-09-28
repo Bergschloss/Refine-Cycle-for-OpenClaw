@@ -26,7 +26,7 @@
 - `/refine list` shows your lessons and their status; `/refine disable <id>` and `/refine delete <id>` take one away, and a lesson you took away is never learned again.
 - It never edits your `AGENTS.md`, `SOUL.md`, skills or memory. Lessons live in the plugin's own folder.
 - It does not filter your conversation or its lessons. The evidence for a lesson (the failing call's error and arguments, and the call that fixed it) goes to that model, as your agent would send it; the lessons and the plugin's records, which keep short excerpts of failed calls, stay in its folder on your machine. With several agents, the evidence from every agent goes to the default agent's model: OpenClaw does not let a plugin's background call choose the agent.
-- When it learns a lesson, it tells you once, in the chat the lesson came from: the lesson itself, and the command that turns it off. Nothing else is sent unasked. `notifyOnLesson: false` turns this off.
+- When it learns a lesson, it sends one line, "♾️ Refine Cycle — new lesson learned", to the chat you are talking from (or the last one you talked from, when the turn came from a cron job or the command line). Nothing else is sent unasked; `/refine` shows the lessons. `notifyOnLesson: false` turns this off.
 - If a hook fails or the store is unreadable, your agent's turn goes on as if the plugin were not there, and the log says why.
 
 ## How it works
@@ -99,7 +99,7 @@ Under `plugins.entries.refine-cycle.config` in `openclaw.json`. All are optional
 | `maxInjectedChars` | `1000` | Size of the lessons block in the prompt |
 | `maxLessonChars` | `200` | Longest lesson accepted |
 | `instructionFiles` | `AGENTS.md`, `TOOLS.md`, `SOUL.md` | Files checked so a lesson never repeats a rule you already wrote |
-| `notifyOnLesson` | `true` | Tell you in the chat when a new lesson is learned |
+| `notifyOnLesson` | `true` | One line in your chat when a new lesson is learned |
 
 ## Documentation
 

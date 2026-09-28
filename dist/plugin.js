@@ -197,29 +197,44 @@ export default function register(api) {
     let queue = Promise.resolve();
     const queued = new Set();
     /**
-     * Tell the user about a new lesson in the chat the turn came from. It runs once per
-     * activation (the caller compares the active lessons before and after the run), and a
-     * send that fails is logged, not retried. A turn with no chat (the CLI, a cron run)
-     * sends nothing.
+     * The chat the user is talking from: the current turn's, else the last one this agent
+     * was talked to from (a cron or CLI turn has none), kept in the store so a restart
+     * does not forget it. Written only when it changes.
      */
-    const announce = async (lesson, chat) => {
-        if (!settings.notifyOnLesson)
+    const currentChat = (agentId, turn) => {
+        const path = `chats/${agentId}.json`;
+        const known = store.read(path);
+        if (!turn)
+            return known && known.channel && known.to ? known : null;
+        if (!known || known.channel !== turn.channel || known.to !== turn.to || known.accountId !== turn.accountId) {
+            store.write(path, turn);
+        }
+        return turn;
+    };
+    /**
+     * Tell the user that new lessons were learned: one line, in the chat they are talking
+     * from. Once per run that activated lessons (the caller compares the active lessons
+     * before and after); a send that fails is logged, not retried.
+     */
+    const announce = async (lessonIds, chat) => {
+        if (!settings.notifyOnLesson || lessonIds.length === 0)
             return;
+        const which = lessonIds.join(", ");
         if (!chat) {
-            log(`lesson ${lesson.id}: no chat to tell (the turn did not come from a channel)`);
+            log(`lesson ${which}: no chat to tell (the agent has not been talked to from a channel)`);
             return;
         }
         try {
             const adapter = await api.runtime?.channel?.outbound?.loadAdapter?.(chat.channel);
             if (!adapter?.sendText) {
-                log(`lesson ${lesson.id}: channel ${chat.channel} cannot take a message from a plugin`);
+                log(`lesson ${which}: channel ${chat.channel} cannot take a message from a plugin`);
                 return;
             }
-            await adapter.sendText({ cfg: api.config, to: chat.to, text: lessonNotice(lesson), accountId: chat.accountId ?? null });
-            log(`lesson ${lesson.id}: told the user on ${chat.channel}`);
+            await adapter.sendText({ cfg: api.config, to: chat.to, text: lessonNotice(lessonIds.length), accountId: chat.accountId ?? null });
+            log(`lesson ${which}: told the user on ${chat.channel}`);
         }
         catch (error) {
-            warn(`lesson ${lesson.id}: could not tell the user on ${chat.channel}: ${String(error)}`);
+            warn(`lesson ${which}: could not tell the user on ${chat.channel}: ${String(error)}`);
         }
     };
     const enqueue = (ctx) => {
@@ -229,10 +244,11 @@ export default function register(api) {
         queued.add(sessionId);
         const agentId = ctx.agentId || DEFAULT_AGENT;
         const workspaceDir = ctx.workspaceDir;
-        const chat = ctx.channel && ctx.chatId ? { channel: ctx.channel, to: ctx.chatId, accountId: ctx.accountId } : null;
+        const turnChat = ctx.channel && ctx.chatId ? { channel: ctx.channel, to: ctx.chatId, ...(ctx.accountId ? { accountId: ctx.accountId } : {}) } : null;
         queue = queue.then(async () => {
             queued.delete(sessionId);
             try {
+                const chat = currentChat(agentId, turnChat);
                 const before = new Set(activeLessons(store, agentId).map((lesson) => lesson.id));
                 const shown = injected.get(sessionId) ?? [];
                 injected.delete(sessionId);
@@ -252,10 +268,7 @@ export default function register(api) {
                     log(`session ${sessionId}: ${decision.outcome}`);
                 // Every lesson that became active during this run, whichever way it got there
                 // (this session, a deferred one, a recovered activation).
-                for (const lesson of activeLessons(store, agentId)) {
-                    if (!before.has(lesson.id))
-                        await announce(lesson, chat);
-                }
+                await announce(activeLessons(store, agentId).filter((lesson) => !before.has(lesson.id)).map((lesson) => lesson.id), chat);
             }
             catch (error) {
                 warn(`learning skipped for ${sessionId}: ${String(error)}`);

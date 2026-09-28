@@ -431,8 +431,8 @@ function learningSetup(pluginConfig: Record<string, unknown> = {}, send?: (ctx: 
 
 const telegramTurn = (sessionId: string) => ({ sessionId, agentId: "main", channel: "telegram", accountId: "default", chatId: "4242" });
 
-test("a new lesson is told once, in the chat the turn came from", async () => {
-  const { hooks, sent, channels, stateDir } = learningSetup();
+test("a new lesson is told in one line, once, in the chat the user is talking from", async () => {
+  const { hooks, sent, channels } = learningSetup();
   const agentEnd = hooks.get("agent_end")!.handler;
   agentEnd({}, telegramTurn("s1"));
   await settle();
@@ -441,11 +441,7 @@ test("a new lesson is told once, in the chat the turn came from", async () => {
   assert.equal(sent[0].to, "4242");
   assert.equal(sent[0].accountId, "default");
   assert.ok(sent[0].cfg, "the host config goes with the send");
-  const store = new FileStore(path.join(stateDir, "plugin-data", "refine-cycle"));
-  const [lesson] = store.list("lessons").map((name) => store.read<{ id: string; text: string }>(`lessons/${name}.json`)!);
-  assert.match(String(sent[0].text), /new lesson learned/);
-  assert.ok(String(sent[0].text).includes(lesson.text));
-  assert.ok(String(sent[0].text).includes(`/refine disable ${lesson.id}`));
+  assert.equal(sent[0].text, "♾️ Refine Cycle — new lesson learned");
   // Later turns, in the same or another chat, never repeat it.
   agentEnd({}, telegramTurn("s2"));
   agentEnd({}, { ...telegramTurn("s3"), chatId: "9999" });
@@ -453,14 +449,44 @@ test("a new lesson is told once, in the chat the turn came from", async () => {
   assert.equal(sent.length, 1);
 });
 
-test("no message without a chat, with the setting off, or on a channel that takes none", async () => {
-  {
-    const { hooks, sent, logs } = learningSetup();
-    hooks.get("agent_end")!.handler({}, { sessionId: "s1", agentId: "main" });
-    await settle();
-    assert.equal(sent.length, 0);
-    assert.ok(logs.some((line) => line.includes("no chat to tell")));
-  }
+test("a lesson learned with no chat on the turn and none known is not sent, and the log says why", async () => {
+  const { hooks, sent, logs } = learningSetup();
+  const agentEnd = hooks.get("agent_end")!.handler;
+  // Nothing known yet: nothing sent, and the log says why.
+  agentEnd({}, { sessionId: "s1", agentId: "main" });
+  await settle();
+  assert.equal(sent.length, 0);
+  assert.ok(logs.some((line) => line.includes("no chat to tell")));
+});
+
+test("the last chat is remembered across turns and restarts", async () => {
+  const stateDir = tempDir();
+  const error = "cron expression '* * *' has 3 fields, expected 5";
+  const failing = () => new Transcript().user("schedule it").call("cron_add", { schedule: "* * *" }, { error });
+  writeAgentDb(stateDir, { chatty: new Transcript().user("hi"), s1: failing(), s2: failing() });
+  const sent: Array<Record<string, unknown>> = [];
+  const loadAdapter = async (id: string) => (id === "telegram" ? { sendText: async (ctx: Record<string, unknown>) => void sent.push(ctx) } : undefined);
+  const reply = async () => ({
+    text: JSON.stringify({
+      decision: "lesson",
+      fingerprint: fingerprint("cron_add", error),
+      lesson: "When calling cron_add, write the schedule as five cron fields, e.g. 0 3 * * *.",
+      reason: "three-field schedules failed twice",
+    }),
+  });
+  // A plain Telegram turn: nothing to learn, but the chat is remembered...
+  fakeApi(stateDir, reply, true, undefined, {}, loadAdapter).hooks.get("agent_end")!.handler({}, telegramTurn("chatty"));
+  await settle();
+  assert.equal(sent.length, 0);
+  // ...by a gateway started afresh, whose next turn comes from a cron job.
+  fakeApi(stateDir, reply, true, undefined, {}, loadAdapter).hooks.get("agent_end")!.handler({}, { sessionId: "s1", agentId: "main" });
+  await settle();
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].to, "4242");
+  assert.equal(sent[0].text, "♾️ Refine Cycle — new lesson learned");
+});
+
+test("no message with the setting off, or on a channel that takes none", async () => {
   {
     const { hooks, sent } = learningSetup({ notifyOnLesson: false });
     hooks.get("agent_end")!.handler({}, telegramTurn("s1"));
