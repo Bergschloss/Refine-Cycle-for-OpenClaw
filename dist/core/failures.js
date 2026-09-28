@@ -12,7 +12,23 @@
 import { fingerprintOfShape, normalizeError } from "./fingerprint.js";
 import { py } from "./pyre.js";
 /** Bumped whenever extraction changes, so stored summaries from an older parser get re-read. */
-export const SUMMARY_FORMAT = 6;
+export const SUMMARY_FORMAT = 7;
+/**
+ * A shell-like tool's own time limit on the command it ran (Bash, OpenClaw's exec), as
+ * opposed to a remote side timing out ("request timed out", "connection timed out"),
+ * which stays transient. Matched on the normalized shape.
+ */
+export const OWN_COMMAND_TIMEOUT = /\bcommand (?:timed out|did not complete within its\b)/;
+/** The command text a call ran, whitespace-normalized; null when the call has no command argument. */
+function commandText(args) {
+    for (const key of ["command", "cmd", "script"]) {
+        const value = args[key];
+        const text = typeof value === "string" ? value : Array.isArray(value) ? value.join(" ") : "";
+        if (text.trim())
+            return text.replace(/\s+/g, " ").trim();
+    }
+    return null;
+}
 const SAMPLE_CHARS = 600;
 /**
  * The Hermes plugin fingerprints at most 4000 characters of an error: the first
@@ -574,6 +590,20 @@ function* summarize(sessionId, agentId, rows) {
         }
         return commands.get(i);
     };
+    // Every command text each tool ran successfully in this session. A timeout counts as
+    // "every time" only if the very same text never succeeded; unknown commands (no
+    // argument kept) never count as the same, the lean the command comparison always takes.
+    const succeeded = new Map();
+    for (const step of steps) {
+        if (step.kind !== "result" || step.isError)
+            continue;
+        const text = commandText(step.args);
+        if (text === null)
+            continue;
+        const known = succeeded.get(step.tool) ?? new Set();
+        known.add(text);
+        succeeded.set(step.tool, known);
+    }
     const byFingerprint = new Map();
     /** Argument names each tool has been called with successfully so far. */
     const usedArgs = new Map();
@@ -607,6 +637,8 @@ function* summarize(sessionId, agentId, rows) {
         const correctionArgs = fixedStep?.kind === "result" && Object.keys(fixedStep.args).length > 0 ? boundedJson(fixedStep.args, ARGS_CHARS) : "";
         const already = usedArgs.get(step.tool);
         const dropped = !!already && missingParameters(step.text).some((name) => already.has(name));
+        const ran = commandText(step.args);
+        const timesOut = OWN_COMMAND_TIMEOUT.test(shapes.get(index)) && !(ran !== null && succeeded.get(step.tool)?.has(ran));
         const pattern = byFingerprint.get(fp);
         if (!pattern) {
             byFingerprint.set(fp, {
@@ -621,6 +653,7 @@ function* summarize(sessionId, agentId, rows) {
                 times: [step.at],
                 droppedArgument: dropped,
                 correctionArgs,
+                commandTimesOut: timesOut,
             });
             continue;
         }
@@ -631,6 +664,7 @@ function* summarize(sessionId, agentId, rows) {
             pattern.occurrences.push(occurrence);
         pattern.droppedArgument ||= dropped;
         pattern.correctionArgs ||= correctionArgs;
+        pattern.commandTimesOut = !!pattern.commandTimesOut && timesOut;
     }
     const lastSeq = rows.reduce((max, row) => Math.max(max, row.seq), -1);
     return {
@@ -664,6 +698,7 @@ export function aggregate(summaries) {
                     sessionIds: [summary.sessionId],
                     droppedArgument: pattern.droppedArgument,
                     correctionArgs: pattern.correctionArgs ?? "",
+                    commandTimesOut: pattern.commandTimesOut === true,
                 });
                 continue;
             }
@@ -672,6 +707,7 @@ export function aggregate(summaries) {
                 entry.sessionIds.push(summary.sessionId);
             entry.droppedArgument ||= pattern.droppedArgument;
             entry.correctionArgs ||= pattern.correctionArgs ?? "";
+            entry.commandTimesOut &&= pattern.commandTimesOut === true;
         }
     }
     return out;

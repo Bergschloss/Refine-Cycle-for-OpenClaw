@@ -833,3 +833,48 @@ test("a failure whose call ended in an error stays in the queue", async () => {
   assert.equal(s3.fingerprint, fpOf("beta"));
   assert.equal(s3.outcome, "nothing");
 });
+
+
+// -- A command that times out every time (owner decision 2026-09-28) --
+
+const TIMEOUT = "Exit code 143\nCommand timed out after 2m 0s";
+
+function timingOut(command: string, times: number, okAfter?: string): Transcript {
+  const t = new Transcript().user("run the suite");
+  for (let i = 0; i < times; i++) t.call("Bash", { command }, { error: TIMEOUT });
+  if (okAfter) t.call("Bash", { command: okAfter }, { ok: "done" });
+  return t.say("it keeps timing out");
+}
+
+test("a tool's own command timeout that hit every run of the command is lesson-shaped", async () => {
+  const history = new FakeHistory().add("s1", timingOut("npm run e2e", 2)).add("s2", timingOut("npm run e2e", 2, "ls"));
+  const llm = new ScriptedLlm(nothingReply(fingerprint("Bash", TIMEOUT)));
+  const d = deps(history, llm);
+  const decision = await processSession(d, "s2", "main");
+  assert.equal(decision.evaluated[0].refusal, undefined);
+  assert.equal(decision.outcome, "nothing");
+  assert.equal(llm.calls.length, 1);
+});
+
+test("a command timeout is still transient when the same command succeeded, in any session", async () => {
+  // Here: the very command that timed out ran fine later in the same session.
+  {
+    const history = new FakeHistory().add("s1", timingOut("npm run e2e", 2, "npm run e2e")).add("s2", timingOut("npm run e2e", 2));
+    const llm = new ScriptedLlm();
+    const d = deps(history, llm);
+    const decision = await processSession(d, "s2", "main");
+    assert.equal(decision.evaluated[0].refusal?.rule, "not_lesson_shaped:transient");
+    assert.equal(llm.calls.length, 0);
+  }
+  // Remote timeouts and rate limits stay transient however often they repeat.
+  for (const error of ["MCP error -32001: Request timed out", "429 Too Many Requests: rate limit exceeded", "ssh: connect to host example port 22: Connection timed out"]) {
+    const t = () => new Transcript().call("Bash", { command: "deploy" }, { error }).call("Bash", { command: "deploy" }, { error });
+    const llm = new ScriptedLlm();
+    const d = deps(new FakeHistory().add("s1", t()).add("s2", t()), llm);
+    const decision = await processSession(d, "s2", "main");
+    assert.equal(decision.evaluated[0].refusal?.rule, "not_lesson_shaped:transient", error);
+    assert.equal(llm.calls.length, 0);
+  }
+});
+
+

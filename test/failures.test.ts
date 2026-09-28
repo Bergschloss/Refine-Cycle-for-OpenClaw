@@ -376,3 +376,21 @@ test("a long session is summarized in slices that give the host its turn, with t
   assert.ok(pauses >= 200, `paused ${pauses} times`);
   assert.ok(longest < 50, `longest slice ${Math.round(longest)} ms`);
 });
+
+
+test("a command that timed out every time it ran is marked; one that also succeeded, or a different text, decides", () => {
+  const timeout = "Exit code 143\nCommand timed out after 2m 0s";
+  const every = new Transcript().call("Bash", { command: "npm run e2e" }, { error: timeout }).call("Bash", { command: "npm  run e2e" }, { error: timeout });
+  assert.equal(summarizeSession("s1", "main", every.rows).patterns[0].commandTimesOut, true);
+  const also = new Transcript().call("Bash", { command: "npm run e2e" }, { error: timeout }).call("Bash", { command: "npm  run e2e " }, { ok: "passed" });
+  assert.equal(summarizeSession("s2", "main", also.rows).patterns[0].commandTimesOut, false);
+  // A success of another command, or of a call with no command kept, is not "the same command".
+  const other = new Transcript().call("Bash", { command: "npm run e2e" }, { error: timeout }).call("Bash", { command: "npm run e2e -- --grep x" }, { ok: "passed" }).call("Bash", {}, { ok: "?" });
+  assert.equal(summarizeSession("s3", "main", other.rows).patterns[0].commandTimesOut, true);
+  // Across sessions it holds only if it held in every one.
+  const all = aggregate([summarizeSession("s1", "main", every.rows), summarizeSession("s2", "main", also.rows)]);
+  assert.equal([...all.values()][0].commandTimesOut, false);
+  // A remote timeout is never the command's own.
+  const remote = new Transcript().call("Bash", { command: "curl x" }, { error: "curl: (28) Connection timed out after 5000 milliseconds" });
+  assert.equal(summarizeSession("s4", "main", remote.rows).patterns[0].commandTimesOut, false);
+});

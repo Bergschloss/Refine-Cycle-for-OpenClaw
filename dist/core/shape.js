@@ -25,7 +25,9 @@ const WRONG_TOOL = new RegExp([
 const PREREQUISITE = /\b(?:is not (?:displayed|open|running|visible|enabled|installed)\b|(?:display|open|start) (?:the|it)\b[^.;\n]{0,40}?\b(?:and (?:retry|try again)|first)\b)/iu;
 export function lessonShape(pattern) {
     const text = `${pattern.shape}\n${pattern.sample}`;
-    if (TRANSIENT.test(text) && !PREREQUISITE.test(text))
+    // A command that hit the tool's own time limit every time it ran is not an outage: it
+    // will time out again, and a lesson (run it in the background, give it a longer limit) can change that.
+    if (TRANSIENT.test(text) && !PREREQUISITE.test(text) && !pattern.commandTimesOut)
         return "transient";
     if (WRONG_TOOL.test(text))
         return "wrong_tool";

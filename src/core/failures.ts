@@ -51,10 +51,33 @@ export interface SessionPattern {
    * empty when the agent never fixed it here (and in summaries from before format 6).
    */
   correctionArgs?: string;
+  /**
+   * The tool's own command timeout ("Command timed out after …"), and every command that
+   * hit it here timed out every time it ran in this session: never a success of the same
+   * command text. Absent in summaries from before format 7.
+   */
+  commandTimesOut?: boolean;
 }
 
 /** Bumped whenever extraction changes, so stored summaries from an older parser get re-read. */
-export const SUMMARY_FORMAT = 6;
+export const SUMMARY_FORMAT = 7;
+
+/**
+ * A shell-like tool's own time limit on the command it ran (Bash, OpenClaw's exec), as
+ * opposed to a remote side timing out ("request timed out", "connection timed out"),
+ * which stays transient. Matched on the normalized shape.
+ */
+export const OWN_COMMAND_TIMEOUT = /\bcommand (?:timed out|did not complete within its\b)/;
+
+/** The command text a call ran, whitespace-normalized; null when the call has no command argument. */
+function commandText(args: Record<string, unknown>): string | null {
+  for (const key of ["command", "cmd", "script"]) {
+    const value = args[key];
+    const text = typeof value === "string" ? value : Array.isArray(value) ? value.join(" ") : "";
+    if (text.trim()) return text.replace(/\s+/g, " ").trim();
+  }
+  return null;
+}
 
 export interface SessionSummary {
   $v: 1;
@@ -629,6 +652,18 @@ function* summarize(sessionId: string, agentId: string, rows: TranscriptRow[]): 
     }
     return commands.get(i)!;
   };
+  // Every command text each tool ran successfully in this session. A timeout counts as
+  // "every time" only if the very same text never succeeded; unknown commands (no
+  // argument kept) never count as the same, the lean the command comparison always takes.
+  const succeeded = new Map<string, Set<string>>();
+  for (const step of steps) {
+    if (step.kind !== "result" || step.isError) continue;
+    const text = commandText(step.args);
+    if (text === null) continue;
+    const known = succeeded.get(step.tool) ?? new Set<string>();
+    known.add(text);
+    succeeded.set(step.tool, known);
+  }
   const byFingerprint = new Map<string, SessionPattern>();
   /** Argument names each tool has been called with successfully so far. */
   const usedArgs = new Map<string, Set<string>>();
@@ -661,6 +696,8 @@ function* summarize(sessionId: string, agentId: string, rows: TranscriptRow[]): 
       fixedStep?.kind === "result" && Object.keys(fixedStep.args).length > 0 ? boundedJson(fixedStep.args, ARGS_CHARS) : "";
     const already = usedArgs.get(step.tool);
     const dropped = !!already && missingParameters(step.text).some((name) => already.has(name));
+    const ran = commandText(step.args);
+    const timesOut = OWN_COMMAND_TIMEOUT.test(shapes.get(index)!) && !(ran !== null && succeeded.get(step.tool)?.has(ran));
     const pattern = byFingerprint.get(fp);
     if (!pattern) {
       byFingerprint.set(fp, {
@@ -675,6 +712,7 @@ function* summarize(sessionId: string, agentId: string, rows: TranscriptRow[]): 
         times: [step.at],
         droppedArgument: dropped,
         correctionArgs,
+        commandTimesOut: timesOut,
       });
       continue;
     }
@@ -684,6 +722,7 @@ function* summarize(sessionId: string, agentId: string, rows: TranscriptRow[]): 
     if (pattern.occurrences.length < OCCURRENCES_KEPT) pattern.occurrences.push(occurrence);
     pattern.droppedArgument ||= dropped;
     pattern.correctionArgs ||= correctionArgs;
+    pattern.commandTimesOut = !!pattern.commandTimesOut && timesOut;
   }
 
   const lastSeq = rows.reduce((max, row) => Math.max(max, row.seq), -1);
@@ -712,6 +751,8 @@ export interface AggregatePattern {
   droppedArgument: boolean;
   /** A call that fixed this failure in some session, if the agent ever fixed it. */
   correctionArgs: string;
+  /** Its command timed out every time it ran, in every session: a lesson can change that. */
+  commandTimesOut: boolean;
 }
 
 /**
@@ -734,6 +775,7 @@ export function aggregate(summaries: SessionSummary[]): Map<string, AggregatePat
           sessionIds: [summary.sessionId],
           droppedArgument: pattern.droppedArgument,
           correctionArgs: pattern.correctionArgs ?? "",
+          commandTimesOut: pattern.commandTimesOut === true,
         });
         continue;
       }
@@ -741,6 +783,7 @@ export function aggregate(summaries: SessionSummary[]): Map<string, AggregatePat
       if (!entry.sessionIds.includes(summary.sessionId)) entry.sessionIds.push(summary.sessionId);
       entry.droppedArgument ||= pattern.droppedArgument;
       entry.correctionArgs ||= pattern.correctionArgs ?? "";
+      entry.commandTimesOut &&= pattern.commandTimesOut === true;
     }
   }
   return out;

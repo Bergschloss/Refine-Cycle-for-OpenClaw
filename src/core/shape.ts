@@ -40,7 +40,9 @@ const PREREQUISITE =
 
 export function lessonShape(pattern: AggregatePattern): NotLessonShaped | null {
   const text = `${pattern.shape}\n${pattern.sample}`;
-  if (TRANSIENT.test(text) && !PREREQUISITE.test(text)) return "transient";
+  // A command that hit the tool's own time limit every time it ran is not an outage: it
+  // will time out again, and a lesson (run it in the background, give it a longer limit) can change that.
+  if (TRANSIENT.test(text) && !PREREQUISITE.test(text) && !pattern.commandTimesOut) return "transient";
   if (WRONG_TOOL.test(text)) return "wrong_tool";
   if (pattern.droppedArgument) return "dropped_argument";
   return null;
