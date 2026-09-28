@@ -26,6 +26,10 @@ function yieldToHost() {
 function budgetPath(now) {
     return `budget/${now.toISOString().slice(0, 10)}.json`;
 }
+/** Model calls recorded today (UTC), the shortening calls included: what `budget/<date>.json` holds. */
+export function callsToday(store, now) {
+    return store.read(budgetPath(now))?.calls?.length ?? 0;
+}
 /** Spend one call before making it, and mark its failure proposed. A refusal when the day is spent or its record cannot be trusted. */
 function reserveCall(store, now, max, sessionId, agentId, fingerprint) {
     let release;
@@ -827,7 +831,7 @@ async function applyDeferred(deps, agentId, now) {
     }
 }
 /** What the loop decided. With `agentId`, only that agent's sessions and lessons. */
-export function report(store, agentId) {
+export function report(store, agentId, budget) {
     const summaries = new Map();
     for (const name of store.list("sessions")) {
         const summary = store.read(`sessions/${name}.json`);
@@ -871,6 +875,7 @@ export function report(store, agentId) {
         queuedCalls: decisions.filter((d) => d.called && d.queued).length,
         lessons,
         restatementsCaught: restatements,
+        ...(budget ? { budget: { callsToday: callsToday(store, budget.now), limit: budget.limit } } : {}),
     };
 }
 const OUTCOME_WORDS = {
@@ -930,6 +935,8 @@ export function describeReport(r) {
         `Sessions read: ${r.sessions}, ${r.sessionsWithFailures} with tool failures. Model calls: ${r.modelCalls}` +
             (r.queuedCalls ? `, ${r.queuedCalls} of them on a failure that had waited in the queue.` : "."),
     ];
+    if (r.budget)
+        lines.push(`model calls today: ${r.budget.callsToday}/${r.budget.limit}`);
     if (decided > 0)
         lines.push(`Turns the loop looked at: ${decided}`, ...counted(r.outcomes, OUTCOME_WORDS));
     if (Object.keys(r.refusals).length > 0)

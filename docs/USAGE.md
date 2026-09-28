@@ -40,7 +40,7 @@ openclaw refine-cycle list
 
 | In chat | On the command line | |
 |---|---|---|
-| `/refine list` | `openclaw refine-cycle list` | Lessons and their status |
+| `/refine list` | `openclaw refine-cycle list` | Lessons and their status, and today's model calls against the daily cap |
 | `/refine status` | `openclaw refine-cycle status` | Whether learning and injection work and what blocks them, the model, calls used today, the block's size against its soft limit, the queue, the journal (`--json` on the command line) |
 | `/refine disable <id>` | `openclaw refine-cycle disable <id>` | Stop showing a lesson |
 | `/refine delete <id>` | `openclaw refine-cycle delete <id>` | Delete a lesson (kept as a tombstone) |
@@ -51,7 +51,7 @@ openclaw refine-cycle list
 | `/refine dry-run [session <id>] [reason]` | `openclaw refine-cycle dry-run session <id> [reason]` | Propose and check a lesson and show it, save nothing; it spends the session's call and one of the day's, as any pass does |
 | `/refine model [auto \| <provider>/<model>]` | `openclaw refine-cycle model [value]` | Show or choose the model lessons are written with; `auto` goes back to the default agent's. OpenClaw sends it only when you allow it: `plugins.entries.refine-cycle.llm.allowModelOverride: true` |
 | `/refine update` | `openclaw refine-cycle update` | Update the plugin with OpenClaw's own `plugins update`, with no restart; only senders on the channel's allowlist; a plugin loaded from a directory is not updated |
-| `/refine report` | `openclaw refine-cycle report` | What the loop decided and why, in words (`--json` on the command line for the numbers) |
+| `/refine report` | `openclaw refine-cycle report` | What the loop decided and why, in words, with today's model calls against the daily cap (`--json` on the command line for the numbers) |
 
 **The `refine_run` tool.** As in the Hermes plugin, the agent itself can ask for a pass over its own failures, with an optional `reason`, `session_id` and `dry_run`. It answers at once and the pass runs in the background under the same limits, so the agent's turn never waits for the model. It is an optional tool: OpenClaw shows it to the agent only when you add `refine_run` to `tools.alsoAllow` in `openclaw.json` (keep the entries already there), because each pass may spend one of the day's model calls.
 

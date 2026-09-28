@@ -23,7 +23,7 @@ import { sqliteHistory, agentDatabasePath } from "./host/history.js";
 import { warmUpNormalizer } from "./core/fingerprint.js";
 import { readSources } from "./host/sources.js";
 import { activeLessons, allLessons, DEFAULT_AGENT, lessonAgent, recover, setStatus } from "./lessons.js";
-import { audit, describeAudit, describePass, ensureLedger, describeReport, describeStatus, knownAgents, processSession, recordExposure, report, status } from "./pipeline.js";
+import { audit, callsToday, describeAudit, describePass, ensureLedger, describeReport, describeStatus, knownAgents, processSession, recordExposure, report, status } from "./pipeline.js";
 import { replay } from "./replay.js";
 import { readSettings } from "./settings.js";
 import { lessonNotice } from "./core/notice.js";
@@ -622,11 +622,12 @@ export default function register(api) {
         const mine = allLessons(store).filter((lesson) => agentId === undefined || lessonAgent(lesson) === agentId);
         if (verb === "list") {
             const lessons = mine.filter((lesson) => lesson.status !== "deleted");
+            const budget = `model calls today: ${callsToday(store, now)}/${settings.maxModelCallsPerDay}`;
             if (lessons.length === 0)
-                return { text: "No lessons yet.", ok: true };
+                return { text: `No lessons yet.\n${budget}`, ok: true };
             // The command line lists every agent's lessons, so it says whose each one is.
             const owner = (lesson) => (agentId === undefined ? ` (agent ${lessonAgent(lesson)})` : "");
-            return { text: lessons.map((lesson) => `${lesson.id} [${lesson.status}]${owner(lesson)} ${lesson.text}`).join("\n"), ok: true };
+            return { text: [...lessons.map((lesson) => `${lesson.id} [${lesson.status}]${owner(lesson)} ${lesson.text}`), budget].join("\n"), ok: true };
         }
         // `rollback` is the Hermes plugin's name for taking a lesson back; here it is `delete`: a tombstone.
         if (verb === "disable" || verb === "delete" || verb === "rollback") {
@@ -654,7 +655,7 @@ export default function register(api) {
             return { text: scope.json ? JSON.stringify(rows, null, 2) : describeAudit(rows, agentId !== undefined, (id) => `${command} ${id}`), ok: true };
         }
         if (verb === "report") {
-            const numbers = report(store, agentId);
+            const numbers = report(store, agentId, { now, limit: settings.maxModelCallsPerDay });
             return { text: scope.json ? JSON.stringify(numbers, null, 2) : describeReport(numbers), ok: true };
         }
         if (verb === "status") {

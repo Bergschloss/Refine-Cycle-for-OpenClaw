@@ -164,8 +164,8 @@ test("with prompt injection denied, nothing is injected or counted as shown, and
 
 test("/refine with no arguments lists the lessons", async () => {
   const { commands } = fakeApi(tempDir());
-  assert.equal((await commands.get("refine")!({ args: "", agentId: "main" }) as { text: string }).text, "No lessons yet.");
-  assert.equal((await commands.get("refine")!({ agentId: "main" }) as { text: string }).text, "No lessons yet.");
+  assert.equal((await commands.get("refine")!({ args: "", agentId: "main" }) as { text: string }).text, "No lessons yet.\nmodel calls today: 0/3");
+  assert.equal((await commands.get("refine")!({ agentId: "main" }) as { text: string }).text, "No lessons yet.\nmodel calls today: 0/3");
 });
 
 test("lessons of one agent are not injected into another agent's prompt", () => {
@@ -192,7 +192,7 @@ test("/refine in chat sees and changes only the calling agent's lessons", async 
     agentId: "ops",
   }, new Date());
   const refine = commands.get("refine")!;
-  assert.equal((await refine({ args: "list", agentId: "main" }) as { text: string }).text, "No lessons yet.");
+  assert.equal((await refine({ args: "list", agentId: "main" }) as { text: string }).text, "No lessons yet.\nmodel calls today: 0/3");
   assert.equal((await refine({ args: "delete l3", agentId: "main" }) as { text: string }).text, "No lesson l3.");
   assert.match((await refine({ args: "list", agentId: "ops" }) as { text: string }).text, /l3 \[active\]/);
   // Without the host's agentId, the session key names the agent; with neither, nothing is guessed.
@@ -622,7 +622,7 @@ test("/refine dry-run shows the lesson it would save, saves none, and spends the
   const refine = setup.commands.get("refine")!;
   const text = (await refine({ args: "dry-run session s1", agentId: "main" }) as { text: string }).text;
   assert.match(text, /^🔍 Dry run — nothing saved\.\nsession: s1\nfailure: cron_add .*\nlesson: When calling cron_add, write the schedule as five cron fields, e\.g\. 0 3 \* \* \*\.\nwould be saved: yes$/);
-  assert.equal((await refine({ args: "list", agentId: "main" }) as { text: string }).text, "No lessons yet.");
+  assert.equal((await refine({ args: "list", agentId: "main" }) as { text: string }).text, "No lessons yet.\nmodel calls today: 1/3");
   const store = new FileStore(path.join(setup.stateDir, "plugin-data", "refine-cycle"));
   assert.equal(store.read<{ outcome: string }>("candidates/s1.json")!.outcome, "dry_run");
   assert.equal(store.list("budget").length, 1);
@@ -1028,4 +1028,23 @@ test("the package icon is where OpenClaw looks for it, and register() without an
   assert.ok(pkg.files.includes("assets"), "assets/ is packaged");
   // `openclaw plugins validate` calls the default export with no argument.
   assert.doesNotThrow(() => (register as (api?: unknown) => void)());
+});
+
+
+test("list and report show today's model calls as the budget file counts them, the shortening call included", async () => {
+  let calls = 0;
+  const long = `When calling cron_add, write the schedule as five cron fields, e.g. 0 3 * * *, ${"and keep it to one line ".repeat(8)}.`;
+  const setup = passSetup(async () => {
+    calls++;
+    return { text: calls === 1 ? lessonJson(fingerprint("cron_add", "cron expression '* * *' has 3 fields, expected 5"), long) : "When calling cron_add, write the schedule as five cron fields, e.g. 0 3 * * *." };
+  });
+  const refine = setup.commands.get("refine")!;
+  assert.match((await refine({ args: "session s1", agentId: "main" }) as { text: string }).text, /lesson learned/);
+  assert.equal(calls, 2, "a proposal and one shortening call");
+  const store = new FileStore(path.join(setup.stateDir, "plugin-data", "refine-cycle"));
+  const [day] = store.list("budget");
+  const recorded = store.read<{ calls: Array<{ purpose?: string }> }>(`budget/${day}.json`)!.calls;
+  assert.deepEqual(recorded.map((call) => call.purpose ?? "propose"), ["propose", "shorten"]);
+  assert.match((await refine({ args: "list", agentId: "main" }) as { text: string }).text, /\nmodel calls today: 2\/3$/);
+  assert.match((await refine({ args: "report", agentId: "main" }) as { text: string }).text, /\nmodel calls today: 2\/3\n/);
 });

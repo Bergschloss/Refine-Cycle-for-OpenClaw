@@ -121,6 +121,11 @@ function budgetPath(now: Date): string {
   return `budget/${now.toISOString().slice(0, 10)}.json`;
 }
 
+/** Model calls recorded today (UTC), the shortening calls included: what `budget/<date>.json` holds. */
+export function callsToday(store: FileStore, now: Date): number {
+  return store.read<BudgetDay>(budgetPath(now))?.calls?.length ?? 0;
+}
+
 /** Spend one call before making it, and mark its failure proposed. A refusal when the day is spent or its record cannot be trusted. */
 function reserveCall(store: FileStore, now: Date, max: number, sessionId: string, agentId: string, fingerprint: string): Refusal | null {
   let release: () => void;
@@ -1005,10 +1010,12 @@ export interface Report {
   queuedCalls: number;
   lessons: { active: number; disabled: number; deleted: number; draft: number };
   restatementsCaught: number;
+  /** Today's model calls against the daily cap, when the caller asks for them (not in a replay). */
+  budget?: { callsToday: number; limit: number };
 }
 
 /** What the loop decided. With `agentId`, only that agent's sessions and lessons. */
-export function report(store: FileStore, agentId?: string): Report {
+export function report(store: FileStore, agentId?: string, budget?: { now: Date; limit: number }): Report {
   const summaries = new Map<string, SessionSummary>();
   for (const name of store.list("sessions")) {
     const summary = store.read<SessionSummary>(`sessions/${name}.json`);
@@ -1047,6 +1054,7 @@ export function report(store: FileStore, agentId?: string): Report {
     queuedCalls: decisions.filter((d) => d.called && d.queued).length,
     lessons,
     restatementsCaught: restatements,
+    ...(budget ? { budget: { callsToday: callsToday(store, budget.now), limit: budget.limit } } : {}),
   };
 }
 
@@ -1110,6 +1118,7 @@ export function describeReport(r: Report): string {
     `Sessions read: ${r.sessions}, ${r.sessionsWithFailures} with tool failures. Model calls: ${r.modelCalls}` +
       (r.queuedCalls ? `, ${r.queuedCalls} of them on a failure that had waited in the queue.` : "."),
   ];
+  if (r.budget) lines.push(`model calls today: ${r.budget.callsToday}/${r.budget.limit}`);
   if (decided > 0) lines.push(`Turns the loop looked at: ${decided}`, ...counted(r.outcomes, OUTCOME_WORDS));
   if (Object.keys(r.refusals).length > 0) lines.push("Failures not turned into a lesson, and why:", ...counted(r.refusals, RULE_WORDS));
   return lines.join("\n");
