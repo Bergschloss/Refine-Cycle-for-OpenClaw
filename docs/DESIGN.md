@@ -24,6 +24,10 @@ This is not a port. OpenClaw takes TypeScript plugins, so the code is new. What 
 
 The Hermes version carries an installer, a patch to eight host files, a self-update path, a Fix command, a host restart, a desktop status bar and unsolicited chat messages. Every one of those exists because that host made it necessary. OpenClaw installs plugins through its own CLI, refuses an incompatible one instead of crashing, and needs no patch, so none of that is here.
 
+## The loop
+
+![How the Refine Cycle plugin works on OpenClaw: a session ends, repeated failures are found across sessions, the gate opens only on recurrence, one lesson is proposed, safety checks run, the lesson is journaled and then shown to the agent, and it is checked later, with three exits where the plugin stops, rejects, or you turn the lesson off](media/refine-cycle.gif)
+
 ## How lessons reach the agent
 
 Through `before_prompt_build`, which prepends a bounded block of the agent's active lessons to the prompt. No exclusive slot is taken: the user's memory plugin and context engine stay theirs. The plugin keeps lessons in its own store and never edits `AGENTS.md`, `SOUL.md` or any other file the user owns.
