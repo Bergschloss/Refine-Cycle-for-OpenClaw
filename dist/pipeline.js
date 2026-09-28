@@ -13,6 +13,7 @@ import { lessonShape } from "./core/shape.js";
 import { buildUserMessage, parseProposal, SYSTEM_PROMPT, validateLesson } from "./core/proposal.js";
 import { formatBlock } from "./core/injection.js";
 import { BRAND, usageNote } from "./core/notice.js";
+import { AGE_GATE_DAYS, RECURRENCE_HORIZON_DAYS, REMOVAL_CANDIDATES, verdict } from "./core/audit.js";
 import { activate, activeLessons, allLessons, DEFAULT_AGENT, journalState, lessonAgent, LessonExistsError, lessonId, recover } from "./lessons.js";
 import { safeName, StoreError } from "./store.js";
 const REPLY_KEPT_CHARS = 2000;
@@ -236,6 +237,129 @@ function updateRecurrence(store, summary) {
             unplaced[lessonIdValue] = unknown;
     }
     store.write(effectsPath(summary.sessionId), { ...current, recurrence, unplaced });
+    recordLedger(store, summary.sessionId, recurrence, unplaced, new Date());
+}
+// -- The per-lesson ledger (what /refine audit rests on) ----------------------------
+/** Sessions kept one by one per lesson; older ones are folded into totals, so a record stays small. */
+const LEDGER_SESSIONS_KEPT = 1000;
+function ledgerPath(lessonIdValue) {
+    return `ledger/${safeName(lessonIdValue)}.json`;
+}
+function pendingLedgerPath(sessionId) {
+    return `ledger-pending/${safeName(sessionId)}.json`;
+}
+/**
+ * Add one session's effect to each shown lesson's record, under the ledger lock and
+ * without waiting. If another process holds it, the session is marked and its effect
+ * (kept in `effects/`) is added by the next update that gets the lock: never lost.
+ */
+function recordLedger(store, sessionId, recurrence, unplaced, now) {
+    let release;
+    try {
+        release = store.lock("ledger", 0);
+    }
+    catch (error) {
+        if (!(error instanceof StoreError))
+            throw error;
+        store.write(pendingLedgerPath(sessionId), { sessionId });
+        return;
+    }
+    try {
+        const apply = (sid, rec, un) => {
+            for (const [id, n] of Object.entries(rec)) {
+                const record = store.read(ledgerPath(id)) ?? { lessonId: id, sessions: {}, folded: { shown: 0, cameBack: 0, recurrences: 0, unplaced: 0 }, updatedAt: "" };
+                const sessions = { ...record.sessions, [sid]: { recurrence: n, unplaced: un[id] ?? 0, at: now.toISOString() } };
+                const folded = { ...record.folded };
+                const ids = Object.keys(sessions);
+                if (ids.length > LEDGER_SESSIONS_KEPT) {
+                    const oldest = ids.sort((a, b) => sessions[a].at.localeCompare(sessions[b].at)).slice(0, ids.length - LEDGER_SESSIONS_KEPT);
+                    for (const old of oldest) {
+                        const entry = sessions[old];
+                        folded.shown++;
+                        if (entry.recurrence > 0)
+                            folded.cameBack++;
+                        folded.recurrences += entry.recurrence;
+                        folded.unplaced += entry.unplaced;
+                        delete sessions[old];
+                    }
+                }
+                store.write(ledgerPath(id), { lessonId: id, sessions, folded, updatedAt: now.toISOString() });
+            }
+        };
+        for (const name of store.list("ledger-pending")) {
+            const marker = store.read(`ledger-pending/${name}.json`);
+            const effect = marker && store.read(effectsPath(marker.sessionId));
+            if (effect && marker.sessionId !== sessionId)
+                apply(marker.sessionId, effect.recurrence ?? {}, effect.unplaced ?? {});
+            store.remove(`ledger-pending/${name}.json`);
+        }
+        apply(sessionId, recurrence, unplaced);
+    }
+    finally {
+        release();
+    }
+}
+/** A lesson's counts, from its ledger record. */
+export function ledgerCounts(store, lessonIdValue) {
+    const record = store.read(ledgerPath(lessonIdValue));
+    const counts = { ...(record?.folded ?? { shown: 0, cameBack: 0, recurrences: 0, unplaced: 0 }) };
+    for (const entry of Object.values(record?.sessions ?? {})) {
+        counts.shown++;
+        if (entry.recurrence > 0)
+            counts.cameBack++;
+        counts.recurrences += entry.recurrence;
+        counts.unplaced += entry.unplaced;
+    }
+    return counts;
+}
+/**
+ * Every lesson's verdict (of one agent, when given). The verdict and when it was given
+ * are kept per lesson (`verdicts/`), best effort: the audit's answer does not depend on it.
+ */
+export function audit(store, now, agentId) {
+    const decisions = store
+        .list("candidates")
+        .map((name) => store.read(`candidates/${name}.json`))
+        .filter((d) => !!d);
+    const rows = [];
+    for (const lesson of allLessons(store)) {
+        const owner = lessonAgent(lesson);
+        if (lesson.status === "draft" || (agentId !== undefined && owner !== agentId))
+            continue;
+        const counts = ledgerCounts(store, lesson.id);
+        const windowOpen = counts.shown > 0 || decisions.some((d) => (d.agentId || DEFAULT_AGENT) === owner && d.at > lesson.createdAt);
+        const ageDays = Math.max(0, Math.floor((now.getTime() - Date.parse(lesson.createdAt)) / 86_400_000));
+        const judged = verdict({ ...counts, status: lesson.status, ageDays, windowOpen });
+        rows.push({ id: lesson.id, agentId: owner, text: lesson.text, status: lesson.status, ageDays, counts, ...judged });
+        try {
+            const last = store.read(`verdicts/${safeName(lesson.id)}.json`);
+            if (last?.verdict !== judged.verdict)
+                store.write(`verdicts/${safeName(lesson.id)}.json`, { lessonId: lesson.id, ...judged, at: now.toISOString() });
+        }
+        catch {
+            // the verdict is shown either way
+        }
+    }
+    return rows.sort((a, b) => a.agentId.localeCompare(b.agentId) || a.ageDays - b.ageDays || a.id.localeCompare(b.id));
+}
+/** The audit for people, in the shape of the Hermes one: a row per lesson, then the removal candidates. */
+export function describeAudit(rows, oneAgent, rollback) {
+    if (rows.length === 0)
+        return "No lessons yet.";
+    const lines = [`Refine Cycle lessons (${rows.length}):`, "", `  ${"lesson".padEnd(oneAgent ? 10 : 22)} ${"age".padStart(5)}  ${"shown".padStart(5)}  ${"came back".padStart(9)}  verdict`];
+    for (const row of rows) {
+        const name = oneAgent ? row.id : `${row.id} (${row.agentId})`;
+        lines.push(`  ${name.padEnd(oneAgent ? 10 : 22)} ${`${row.ageDays}d`.padStart(5)}  ${String(row.counts.shown).padStart(5)}  ${String(row.counts.cameBack).padStart(9)}  ${row.verdict}`);
+        lines.push(`      ${row.text.length > 80 ? `${row.text.slice(0, 79)}…` : row.text}`);
+        lines.push(`      why: ${row.why}`);
+    }
+    const candidates = rows.filter((row) => REMOVAL_CANDIDATES.has(row.verdict));
+    if (candidates.length) {
+        lines.push("", "Candidates for removal:", ...candidates.map((row) => `  ${row.id} — ${rollback(row.id)}`), "", "Nothing was deleted. Run the command yourself if you agree.");
+    }
+    lines.push("", `shown = sessions it was in front of the agent; came back = of those, sessions where its failure happened again after it was shown. ` +
+        `working after ${RECURRENCE_HORIZON_DAYS} quiet days; unused and too early wait ${AGE_GATE_DAYS} days.`);
+    return lines.join("\n");
 }
 // -- The loop ---------------------------------------------------------------------
 function sessionPath(sessionId) {

@@ -387,6 +387,8 @@ test("the command line lists every agent's lessons with their agent, reports JSO
     process.exitCode = undefined;
     await actions.get("report")!({ json: true });
     assert.equal(JSON.parse(printed.at(-1)!).lessons.active, 1);
+    await actions.get("audit")!({});
+    assert.match(printed.at(-1)!, /opslesson \(ops\)/);
     await actions.get("status")!({});
     assert.match(printed.at(-1)!, /agent ops: lessons: 1 active/, "the command line shows every agent, by name");
     await actions.get("status")!({ json: true });
@@ -558,4 +560,15 @@ test("chat /refine status shows the calling agent's state, and every blocker in 
     assert.match(text, /Learning is off in the settings/);
     assert.match(text, /no model call/);
   }
+});
+
+test("chat /refine audit judges only the calling agent's lessons; the command line judges all", async () => {
+  const stateDir = tempDir();
+  seedLesson(stateDir, "mainlesson", "main");
+  seedLesson(stateDir, "opslesson", "ops");
+  const { commands } = fakeApi(stateDir);
+  const text = (await commands.get("refine")!({ args: "audit", agentId: "main" }) as { text: string }).text;
+  assert.match(text, /^Refine Cycle lessons \(1\):/);
+  assert.match(text, /mainlesson .* no recurrence window/);
+  assert.doesNotMatch(text, /opslesson/);
 });

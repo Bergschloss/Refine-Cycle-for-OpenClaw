@@ -18,7 +18,7 @@
 
 1. **Notice what keeps going wrong.** One failed call may be noise. The same failure in two sessions, or five times, is a pattern.
 2. **Write the smallest useful lesson.** One sentence, such as *"When calling send_report, format the date as YYYY-MM-DD, such as 2026-09-25, rather than DD/MM/YYYY."* The model may also answer that there is nothing to learn, and often does.
-3. **Check the result.** Each later session records which lessons it saw and whether the failure came back after it.
+3. **Check the result.** Each later session records which lessons it saw and whether the failure came back after it; `/refine audit` turns that into a verdict per lesson.
 
 ## You stay in control
 
@@ -85,6 +85,7 @@ openclaw refine-cycle list
 | `/refine status` | `openclaw refine-cycle status` | Whether learning and injection work and what blocks them, the model, calls used today, the block's size against its soft limit, the queue, the journal (`--json` on the command line) |
 | `/refine disable <id>` | `openclaw refine-cycle disable <id>` | Stop showing a lesson |
 | `/refine delete <id>` | `openclaw refine-cycle delete <id>` | Delete a lesson (kept as a tombstone) |
+| `/refine audit` | `openclaw refine-cycle audit` | Did each lesson help: a verdict per lesson (`working`, `did not help`, `unused`, `too early`, `no recurrence window`, `unreliable`), from the sessions it was shown in and whether its failure came back after; it lists the ones worth removing and deletes nothing |
 | `/refine report` | `openclaw refine-cycle report` | What the loop decided and why, in words (`--json` on the command line for the numbers) |
 
 In chat, the commands see only the lessons of the agent you are talking to. On the command line they see every agent, and `list` says whose each lesson is; a command that did not do what was asked (an unknown id, a busy store) exits with status 1.

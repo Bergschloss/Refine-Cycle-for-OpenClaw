@@ -20,7 +20,7 @@ import { formatBlock, type Block } from "./core/injection.ts";
 import { sqliteHistory, agentDatabasePath } from "./host/history.ts";
 import { readSources } from "./host/sources.ts";
 import { activeLessons, allLessons, DEFAULT_AGENT, lessonAgent, recover, setStatus } from "./lessons.ts";
-import { describeReport, describeStatus, knownAgents, processSession, recordExposure, report, status, type Deps, type Llm } from "./pipeline.ts";
+import { audit, describeAudit, describeReport, describeStatus, knownAgents, processSession, recordExposure, report, status, type Deps, type Llm } from "./pipeline.ts";
 import { replay } from "./replay.ts";
 import { readSettings } from "./settings.ts";
 import { lessonNotice } from "./core/notice.ts";
@@ -410,7 +410,7 @@ export default function register(api: PluginApi): void {
     json?: boolean;
   }
 
-  const USAGE = "Usage: list | status | report | disable <id> | delete <id>";
+  const USAGE = "Usage: list | status | audit | report | disable <id> | delete <id>";
 
   /**
    * One place for chat and command line. `ok` is false when the command did not do what
@@ -448,6 +448,11 @@ export default function register(api: PluginApi): void {
       }
       return changed ? { text: `Lesson ${id} ${changed.status}.`, ok: true } : { text: `No lesson ${id}.`, ok: false };
     }
+    if (verb === "audit") {
+      const rows = audit(store, now, agentId);
+      const command = agentId === undefined ? "openclaw refine-cycle delete" : "/refine delete";
+      return { text: scope.json ? JSON.stringify(rows, null, 2) : describeAudit(rows, agentId !== undefined, (id) => `${command} ${id}`), ok: true };
+    }
     if (verb === "report") {
       const numbers = report(store, agentId);
       return { text: scope.json ? JSON.stringify(numbers, null, 2) : describeReport(numbers), ok: true };
@@ -472,7 +477,7 @@ export default function register(api: PluginApi): void {
 
   api.registerCommand?.({
     name: "refine",
-    description: "Refine Cycle: list, status, report, disable <id>, delete <id>",
+    description: "Refine Cycle: list, status, audit, report, disable <id>, delete <id>",
     acceptsArgs: true,
     handler: async (ctx) => {
       const agentId = commandAgent(ctx);
@@ -500,6 +505,11 @@ export default function register(api: PluginApi): void {
         .description("Whether learning and injection work, what blocks them, the budget, the queue; --json for the raw record")
         .option("--json", "the raw record as JSON")
         .action(async (options) => print(await control("status", { json: json(options) })));
+      root
+        .command("audit")
+        .description("Did each lesson help? A verdict per lesson, from how often it was shown and whether its failure came back; --json")
+        .option("--json", "the rows as JSON")
+        .action(async (options) => print(await control("audit", { json: json(options) })));
       root.command("disable <id>").description("Stop injecting a lesson").action(async (id) => print(await control(`disable ${String(id)}`)));
       root.command("delete <id>").description("Delete a lesson (kept as a tombstone)").action(async (id) => print(await control(`delete ${String(id)}`)));
       root

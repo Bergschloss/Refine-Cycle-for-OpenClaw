@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { describeReport, describeStatus, processSession, recordExposure, report, status, type Deps, type Llm } from "../src/pipeline.ts";
+import { audit, describeAudit, describeReport, describeStatus, ledgerCounts, processSession, recordExposure, report, status, type Deps, type Llm } from "../src/pipeline.ts";
 import { DEFAULTS, type Settings } from "../src/settings.ts";
 import { FileStore } from "../src/store.ts";
 import { activate, activeLessons, allLessons, setStatus } from "../src/lessons.ts";
@@ -945,4 +945,68 @@ test("status names a spent budget, an unreadable history, the queue and an over-
   assert.match(text, /history of agent main's last session could not be read: Error: unable to open database file/);
   assert.match(text, /over the soft limit/);
   assert.match(text, /this session has had its call/);
+});
+
+
+// -- The per-lesson ledger and the audit --
+
+test("the ledger counts, per lesson, the sessions it was shown in and those where its failure came back after", async () => {
+  const history = new FakeHistory().add("s1", failing(5));
+  const d = deps(history, new ScriptedLlm(lessonReply()), { backfillSessions: 0 });
+  await processSession(d, "s1", "main");
+  const [lesson] = activeLessons(d.store);
+  const block = { text: "x", lessonIds: [lesson.id], hash: "h" };
+  // s2: shown, the failure came back after; s3: shown, it did not.
+  history.add("s2", failing(2)).add("s3", new Transcript().user("hi").say("ok"));
+  recordExposure(d.store, "s2", block, Transcript.time(0) - 1, new Date());
+  recordExposure(d.store, "s3", block, Transcript.time(0) - 1, new Date());
+  await processSession(d, "s2", "main");
+  await processSession(d, "s3", "main");
+  // Reading a session again replaces its entry: nothing is counted twice.
+  await processSession(d, "s2", "main");
+  assert.deepEqual(ledgerCounts(d.store, lesson.id), { shown: 2, cameBack: 1, recurrences: 2, unplaced: 0 });
+  const [row] = audit(d.store, new Date("2026-09-30T10:00:00Z"));
+  assert.equal(row.verdict, "did not help");
+  assert.match(describeAudit([row], true, (id) => `/refine delete ${id}`), /Candidates for removal:\n  \w+ — \/refine delete \w+\n\nNothing was deleted/);
+  // The last verdict is kept per lesson, with when it was given.
+  assert.equal(JSON.parse(fs.readFileSync(path.join(d.store.root, "verdicts", `${lesson.id}.json`), "utf8")).verdict, "did not help");
+});
+
+test("a busy ledger lock loses no effect: the session waits and is counted by the next update", async () => {
+  const history = new FakeHistory().add("s1", failing(5));
+  const d = deps(history, new ScriptedLlm(lessonReply()), { backfillSessions: 0 });
+  await processSession(d, "s1", "main");
+  const [lesson] = activeLessons(d.store);
+  const block = { text: "x", lessonIds: [lesson.id], hash: "h" };
+  history.add("s2", failing(1)).add("s3", new Transcript().user("hi"));
+  recordExposure(d.store, "s2", block, Transcript.time(0) - 1, new Date());
+  const release = d.store.lock("ledger", 0);
+  await processSession(d, "s2", "main");
+  release();
+  assert.ok(fs.existsSync(path.join(d.store.root, "ledger-pending", "s2.json")));
+  recordExposure(d.store, "s3", block, Transcript.time(0) - 1, new Date());
+  await processSession(d, "s3", "main");
+  assert.deepEqual(ledgerCounts(d.store, lesson.id), { shown: 2, cameBack: 1, recurrences: 1, unplaced: 0 });
+  assert.equal(fs.existsSync(path.join(d.store.root, "ledger-pending", "s2.json")), false);
+});
+
+test("the audit's verdicts over time: too early, then working; never shown, then unused; no window without sessions", async () => {
+  const history = new FakeHistory().add("s1", failing(5));
+  const d = deps(history, new ScriptedLlm(lessonReply()), { backfillSessions: 0 });
+  await processSession(d, "s1", "main");
+  const [lesson] = activeLessons(d.store);
+  const created = Date.parse(lesson.createdAt);
+  const at = (days: number) => new Date(created + days * 86_400_000);
+  assert.equal(audit(d.store, at(1))[0].verdict, "no recurrence window");
+  history.add("s2", new Transcript().user("hi"));
+  d.now = () => at(1);
+  await processSession(d, "s2", "main");
+  assert.equal(audit(d.store, at(1))[0].verdict, "too early");
+  assert.equal(audit(d.store, at(14))[0].verdict, "unused");
+  recordExposure(d.store, "s2", { text: "x", lessonIds: [lesson.id], hash: "h" }, Transcript.time(0) - 1, new Date());
+  await processSession(d, "s2", "main");
+  assert.equal(audit(d.store, at(2))[0].verdict, "too early");
+  assert.equal(audit(d.store, at(3))[0].verdict, "working");
+  setStatus(d.store, lesson.id, "deleted", at(4));
+  assert.equal(audit(d.store, at(5))[0].verdict, "rolled back");
 });
