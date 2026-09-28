@@ -449,6 +449,12 @@ export default function register(api) {
      * leaves the installed version in place (the host rolls back) and is said in one line.
      */
     const runUpdate = async () => {
+        const result = await hostUpdate();
+        // The log keeps the answer too: a chat that takes no message from a plugin still has it there.
+        (result.ok ? log : warn)(`/refine update: ${result.text}`);
+        return result;
+    };
+    const hostUpdate = async () => {
         if (updating)
             return { text: failedText("An update is already running."), ok: false };
         updating = true;
