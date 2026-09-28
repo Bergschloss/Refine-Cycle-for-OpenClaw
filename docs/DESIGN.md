@@ -63,9 +63,9 @@ Through `before_prompt_build`, which prepends a marked block of the agent's acti
 
 ## Layout
 
-- `src/plugin.ts`: the only file that knows OpenClaw. Hooks, the background queue, `/refine` and `openclaw refine-cycle`.
+- `src/plugin.ts`: the only file that knows OpenClaw. Hooks, the background queue, `/refine` and `openclaw refine-cycle`, the `refine_run` tool, the model choice, the update check and `/refine update`.
 - `src/pipeline.ts`: the learning loop for one ended turn, host-independent.
-- `src/core/`: pure functions. The fingerprint, failure extraction, the refusal rules, the already-covered check, the injected block, the proposal and its validation.
+- `src/core/`: pure functions. The fingerprint, failure extraction, the refusal rules, the already-covered check, the injected block, the proposal and its validation, the audit's verdicts, the update rules and messages.
 - `src/store.ts`, `src/lessons.ts`: atomic JSON files with `$v`, a cross-process lock, and the journal that makes lesson changes crash-safe.
 - `src/host/`: reading the agent's SQLite history and its skills and instruction files.
 - `src/replay.ts`: the measurement harness, `openclaw refine-cycle replay`.

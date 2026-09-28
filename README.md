@@ -23,7 +23,7 @@
 ## You stay in control
 
 - At most one model call per session and three a day, on the model and account OpenClaw uses for your default agent, or on a model you choose with `/refine model` if you let OpenClaw allow that. The plugin has no key of its own.
-- `/refine list` shows your lessons and their status; `/refine disable <id>` and `/refine delete <id>` take one away, and a lesson you took away is never learned again.
+- `/refine list` shows your lessons and their status, and `/refine audit` whether each one helped; `/refine disable <id>` and `/refine delete <id>` take one away, and a lesson you took away is never learned again.
 - It never edits your `AGENTS.md`, `SOUL.md`, skills or memory. Lessons live in the plugin's own folder.
 - It does not filter your conversation or its lessons. The evidence for a lesson (the failing call's error and arguments, and the call that fixed it) goes to that model, as your agent would send it; the lessons and the plugin's records, which keep short excerpts of failed calls, stay in its folder on your machine. With several agents, the evidence from every agent goes to the default agent's model: OpenClaw does not let a plugin's background call choose the agent.
 - When it learns a lesson, it sends one line, such as "♾️ Refine Cycle — new lesson learned (lessons 412/4400)", to the chat you are talking from (or the last one you talked from, when the turn came from a cron job or the command line). The numbers are how many characters your active lessons take in the prompt, against a soft limit of 4400; it says `getting tight` from 90% and `over the soft limit` past it. Every active lesson is still shown: the limit is a warning, not a cut. `notifyOnLesson: false` turns this off. The only other message it sends by itself is "♾️ Refine Cycle — update available: <version>", once per new release, with an **Update** button (on a channel without buttons, the command to type); pressing it runs `/refine update`, which answers "updated to <version>", "is up to date" or "update failed" with the reason. `checkForUpdates: false` turns that off.
@@ -41,7 +41,7 @@ Design, host contract and code layout: [docs/DESIGN.md](docs/DESIGN.md).
 
 In a 120-session test on OpenClaw 2026.9.6 with GPT-6 Luna, the agent got the first tool call right in 36 of 40 sessions with the lesson, 8 of 40 with nothing, and 3 of 40 with a placebo note. The placebo did no better than nothing, so the gain comes from what the lesson says. The tasks were two test tools built to provoke one specific mistake each, so this shows that a correct lesson changes behaviour; how often the plugin finds one in real use is a separate number.
 
-On 125 of the author's real coding-agent dialogs, replayed in order, the plugin sent 7 failures to the model and got 1 lesson back (commit `d7b0831`; 5 and 1 before the self-correction change). That lesson was useful: it corrected an out-of-date example in the author's own instructions that had caused the same error twice. These dialogs keep no tool-call arguments, so the model saw less than it would on a live install; most of its "nothing to learn" answers said so. Method, limits and raw data: [docs/MEASUREMENT-2026-09-25.md](docs/MEASUREMENT-2026-09-25.md).
+On 125 of the author's real coding-agent dialogs, replayed in order, the plugin sent 7 failures to the model and got 1 lesson back (commit `d7b0831`; 5 and 1 before the self-correction change). That lesson was useful: it corrected an out-of-date example in the author's own instructions that had caused the same error twice. These dialogs keep no tool-call arguments, so the model saw less than it would on a live install; most of its "nothing to learn" answers said so. On the same replay with a stub model that always answers "nothing" (so only what reaches the model is counted), 20 different failures reach it at commit `955ea0f`, against 7 at `7d64d59`: 12 that another failure had crowded out of their session's one call come back through the queue, and one command that timed out every time is no longer written off as an outage. What the model would write for them was not measured. Method, limits and raw data: [docs/MEASUREMENT-2026-09-25.md](docs/MEASUREMENT-2026-09-25.md).
 
 ## Install
 
@@ -95,11 +95,12 @@ openclaw refine-cycle list
 | `/refine report` | `openclaw refine-cycle report` | What the loop decided and why, in words (`--json` on the command line for the numbers) |
 
 **The `refine_run` tool.** As in the Hermes plugin, the agent itself can ask for a pass over its own failures, with an optional `reason`, `session_id` and `dry_run`. It answers at once and the pass runs in the background under the same limits, so the agent's turn never waits for the model. It is an optional tool: OpenClaw shows it to the agent only when you add `refine_run` to `tools.alsoAllow` in `openclaw.json` (keep the entries already there), because each pass may spend one of the day's model calls.
+
 A pass started in chat answers within a few seconds; when the model takes longer, the answer says so and the result follows in the chat you talk from. In chat, the commands see only the lessons of the agent you are talking to. On the command line they see every agent, and `list` says whose each lesson is; a command that did not do what was asked (an unknown id, a busy store) exits with status 1.
 
 ## Settings
 
-Under `plugins.entries.refine-cycle.config` in `openclaw.json`. All are optional.
+Under `plugins.entries.refine-cycle.config` in `openclaw.json`. All are optional. Three switches that OpenClaw itself reads sit one level up, under `plugins.entries.refine-cycle`: `hooks.allowConversationAccess` (required, see Install), `hooks.allowPromptInjection` (lessons are shown unless it is `false`) and `llm.allowModelOverride` (lets `/refine model` and `model` take effect).
 
 | Setting | Default | |
 |---|---|---|
@@ -113,6 +114,11 @@ Under `plugins.entries.refine-cycle.config` in `openclaw.json`. All are optional
 | `notifyOnLesson` | `true` | One line in your chat when a new lesson is learned |
 | `model` | `""` | The model lessons are written with, as `provider/model`; empty for the default agent's (needs `llm.allowModelOverride`, above) |
 | `checkForUpdates` | `true` | Once a day, look for a newer release and tell you once, with an Update button |
+| `backfillSessions` / `backfillIntervalMinutes` | `10` / `60` | Recent sessions re-read, at most this often, so failures from before an install or a restart still count |
+| `proposalTimeoutMs` | `120000` | How long the model may take for one lesson |
+| `skillDirs` | none | Extra directories searched for `SKILL.md`, besides the workspace's `skills/` |
+| `historyDbPath` | `""` | The agent's history database, for a single-agent install that keeps it somewhere else |
+| `enabled` | `true` | `false` turns the whole plugin off |
 
 ## Documentation
 

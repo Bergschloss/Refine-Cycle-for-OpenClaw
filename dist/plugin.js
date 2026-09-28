@@ -5,11 +5,14 @@
  *   lesson files and nothing else, and returns nothing on any error.
  * - `agent_end` queues the ended turn's session for the learning loop and
  *   returns at once; the loop runs in the background, one session at a time.
- * - `/refine` in chat and `openclaw refine-cycle` on the command line list,
- *   disable and delete lessons, and report what the loop decided.
+ * - `/refine` in chat and `openclaw refine-cycle` on the command line list, judge,
+ *   disable and delete lessons, report what the loop decided and what blocks it,
+ *   start a pass by hand, choose the model and update the plugin.
+ * - The optional `refine_run` tool lets the agent ask for a pass.
  *
- * Nothing here patches the host, writes the user's files or sends a message the
- * user did not ask for.
+ * Nothing here patches the host or writes the user's files. It sends two messages by
+ * itself, both owner decisions: one line when a lesson is learned, and one when a new
+ * release is out (with an Update button).
  */
 import { AsyncLocalStorage } from "node:async_hooks";
 import fs from "node:fs";
