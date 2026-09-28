@@ -89,10 +89,19 @@ test("disable and delete go through the journal and survive a crash", () => {
   }
 });
 
-test("an unreadable meta record makes the store refuse to open", () => {
+test("a torn meta record is set aside and written again; a store of another schema still refuses to open", () => {
   const root = tempDir();
   fs.writeFileSync(path.join(root, "meta.json"), "not json");
-  assert.throws(() => new FileStore(root).open(), /unreadable/);
+  const store = new FileStore(root);
+  store.open();
+  assert.match(store.repairedMeta!, /^meta\.json\.unreadable-/);
+  assert.equal(fs.readFileSync(path.join(root, store.repairedMeta!), "utf8"), "not json", "kept for inspection");
+  assert.equal(store.read<{ schema: number }>("meta.json")!.schema, 1);
+  new FileStore(root).open();
+  const other = tempDir();
+  fs.writeFileSync(path.join(other, "meta.json"), JSON.stringify({ schema: 2, $v: 2 }));
+  assert.throws(() => new FileStore(other).open(), /store schema 2 is not 1/);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(other, "meta.json"), "utf8")).schema, 2, "never rewritten");
 });
 
 test("activation never overwrites an existing lesson; a leftover draft may be finished", () => {

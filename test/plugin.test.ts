@@ -89,7 +89,8 @@ test("an unusable store means no injection, no learning, and no thrown error", a
   const stateDir = tempDir();
   const root = path.join(stateDir, "plugin-data", "refine-cycle");
   fs.mkdirSync(root, { recursive: true });
-  fs.writeFileSync(path.join(root, "meta.json"), "garbage");
+  // A store of another schema: not this version's to read.
+  fs.writeFileSync(path.join(root, "meta.json"), JSON.stringify({ schema: 99, $v: 99 }));
   const { hooks, commands, logs } = fakeApi(stateDir);
   assert.equal(hooks.get("before_prompt_build")!.handler({}, { sessionId: "s1" }), undefined);
   assert.equal(hooks.get("agent_end")!.handler({}, { sessionId: "s1" }), undefined);

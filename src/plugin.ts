@@ -214,6 +214,7 @@ export default function register(api: PluginApi): void {
   let storeError: string | null = null;
   try {
     store.open();
+    if (store.repairedMeta) warn(`meta.json was unreadable; it is kept as ${store.repairedMeta} and a new one was written`);
   } catch (error) {
     storeError = String(error);
     warn(`store unusable, nothing will be injected or learned: ${storeError}`);

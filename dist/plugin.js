@@ -98,6 +98,8 @@ export default function register(api) {
     let storeError = null;
     try {
         store.open();
+        if (store.repairedMeta)
+            warn(`meta.json was unreadable; it is kept as ${store.repairedMeta} and a new one was written`);
     }
     catch (error) {
         storeError = String(error);

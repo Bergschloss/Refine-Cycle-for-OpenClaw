@@ -44,6 +44,8 @@ export interface StoreOptions {
 export class FileStore {
   readonly root: string;
   private readonly beforeWrite?: (relative: string) => void;
+  /** Set by `open()` when it found meta.json torn, set it aside under this name and wrote a new one. */
+  repairedMeta?: string;
 
   constructor(root: string, options: StoreOptions = {}) {
     this.root = root;
@@ -57,13 +59,41 @@ export class FileStore {
     } catch (error) {
       throw new StoreError(`cannot create ${this.root}: ${String(error)}`);
     }
-    const meta = this.read<{ schema: number }>("meta.json");
-    if (meta === undefined) {
-      if (fs.existsSync(path.join(this.root, "meta.json"))) throw new StoreError("meta.json is unreadable");
-      this.write("meta.json", { schema: SCHEMA_VERSION, createdAt: new Date().toISOString() });
+    const file = path.join(this.root, "meta.json");
+    let raw: string | undefined;
+    try {
+      raw = fs.readFileSync(file, "utf8");
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw new StoreError(`cannot read meta.json: ${String(error)}`);
+    }
+    let meta: { schema?: unknown; $v?: unknown } | null = null;
+    if (raw !== undefined) {
+      try {
+        const parsed = JSON.parse(raw);
+        if (typeof parsed === "object" && parsed !== null) meta = parsed;
+      } catch {
+        // torn: handled below
+      }
+    }
+    if (meta && (typeof meta.schema === "number" || typeof meta.$v === "number")) {
+      // A store another version wrote is not this version's to read or to rewrite.
+      if (meta.schema !== SCHEMA_VERSION || meta.$v !== SCHEMA_VERSION) {
+        throw new StoreError(`store schema ${String(meta.schema ?? meta.$v)} is not ${SCHEMA_VERSION}`);
+      }
       return;
     }
-    if (meta.schema !== SCHEMA_VERSION) throw new StoreError(`store schema ${meta.schema} is not ${SCHEMA_VERSION}`);
+    if (raw !== undefined) {
+      // Torn or emptied by a crash or a full disk: it records nothing but the schema, so it
+      // is set aside (kept for inspection) and written again instead of disabling the plugin.
+      const aside = `meta.json.unreadable-${new Date().toISOString().replace(/[:.]/g, "-")}`;
+      try {
+        fs.renameSync(file, path.join(this.root, aside));
+      } catch (error) {
+        throw new StoreError(`meta.json is unreadable and cannot be set aside: ${String(error)}`);
+      }
+      this.repairedMeta = aside;
+    }
+    this.write("meta.json", { schema: SCHEMA_VERSION, createdAt: new Date().toISOString() });
   }
 
   /** The record, or undefined when it is missing, torn, or of another version. */
