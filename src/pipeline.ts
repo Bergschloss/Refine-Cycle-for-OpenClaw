@@ -973,6 +973,8 @@ export interface RawSessionLine {
   sessionId: string;
   startedAt: string | null;
   endedAt: string | null;
+  /** Replay only: the corpus line's `startedAt`, as given. */
+  corpusStartedAt?: string | number | null;
   settings: { minSessions: number; minOccurrences: number; maxModelCallsPerDay: number; maxLessonChars: number; injectEnabled: boolean; learnEnabled: boolean };
   errorCount: number;
   selfCorrectingSuppressed: number;

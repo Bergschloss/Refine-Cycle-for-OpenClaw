@@ -26,6 +26,10 @@ output beyond those shapes.
 - **One line per pass.** Live, a session gets a line after each turn that ends in it, so one
   session can have several lines. Take the **last line per `(agentId, sessionId)`**: it has
   the session's final decision. A replay has exactly one line per session.
+- **Live files are per UTC day** and start when `rawLog` is turned on. Read every file of the
+  run together: a session that ends on two days has lines in both. The live `/refine report`
+  also counts what the plugin did before `rawLog` was on, so it matches the raw files only
+  for a store that had `rawLog` on from the start; the replay's file always matches its report.
 - A line with `earlier: true` is a pass over a session that already had its model call. It
   repeats that earlier decision and records no new model call (`modelCalls` is empty).
 - The replay's report (`replay-result.json`, and `report` in the command's output) is
