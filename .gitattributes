@@ -1,0 +1,7 @@
+# LF for everything a deploy or an install takes, even from a Windows checkout with
+# core.autocrlf=true: git archive and git checkout apply these, so the shipped files
+# are byte for byte the ones in the repository.
+src/** text eol=lf
+dist/** text eol=lf
+test/** text eol=lf
+
