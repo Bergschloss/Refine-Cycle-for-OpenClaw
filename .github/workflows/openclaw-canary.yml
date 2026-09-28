@@ -27,10 +27,14 @@ jobs:
   canary:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    env:
-      OPENCLAW_STATE_DIR: ${{ runner.temp }}/state
-      OPENCLAW_CONFIG_PATH: ${{ runner.temp }}/state/openclaw.json
     steps:
+      # runner.temp is not available in a job-level env block, so the host state
+      # paths are exported from the first step instead.
+      - name: Host state paths
+        run: |
+          echo "OPENCLAW_STATE_DIR=$RUNNER_TEMP/state" >> "$GITHUB_ENV"
+          echo "OPENCLAW_CONFIG_PATH=$RUNNER_TEMP/state/openclaw.json" >> "$GITHUB_ENV"
+
       - uses: actions/checkout@v5
 
       - uses: actions/setup-node@v5
