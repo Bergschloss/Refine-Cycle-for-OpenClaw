@@ -228,6 +228,12 @@ function answeredBefore(mark: ProposedMark | undefined): boolean {
   return !!mark?.answer && mark.answer !== "error" && mark.answer !== "preview";
 }
 
+/** Has the failure been seen in a session the model had not seen when it last answered? */
+function seenSince(mark: ProposedMark, pattern: AggregatePattern): boolean {
+  const seen = new Set(mark.sessionIds ?? []);
+  return pattern.sessionIds.some((id) => !seen.has(id));
+}
+
 /** When a failure was first seen, over every session of the agent (ms; +Infinity when the host gave no time). */
 function firstSeen(summaries: SessionSummary[]): Map<string, number> {
   const out = new Map<string, number>();
@@ -256,8 +262,8 @@ function latestLocal(summaries: SessionSummary[], fingerprint: string): SessionP
 }
 
 /**
- * The oldest failure of the agent that passes every rule and was never answered by
- * the model: what a session with nothing of its own spends its call on. Cheap filters
+ * The oldest failure of the agent that passes every rule and that the model has not
+ * answered with the evidence there is now: what a session with nothing of its own spends its call on. Cheap filters
  * first (the bar, the mark), the full refusal rules only for the survivors, oldest first.
  */
 async function fromQueue(
@@ -285,7 +291,10 @@ function queueCandidates(
   const out: Array<{ pattern: AggregatePattern; local: SessionPattern; at: number }> = [];
   for (const pattern of patterns.values()) {
     if (!(pattern.sessionIds.length >= minSessions || pattern.count >= minOccurrences)) continue;
-    if (answeredBefore(readProposed(deps.store, agentId, pattern.fingerprint))) continue;
+    const mark = readProposed(deps.store, agentId, pattern.fingerprint);
+    // Answered once, and not seen in any session since: asking again would show the model
+    // the same evidence. A new session is new evidence, as it is for the pause.
+    if (answeredBefore(mark) && !seenSince(mark!, pattern)) continue;
     const local = latestLocal(summaries, pattern.fingerprint);
     if (local) out.push({ pattern, local, at: seen.get(pattern.fingerprint) ?? Number.POSITIVE_INFINITY });
   }

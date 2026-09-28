@@ -781,6 +781,21 @@ test("the queue never offers a failure the model already answered, and an empty 
   assert.equal(llm.calls.length, 2);
 });
 
+test("a failure answered 'nothing' comes back to the queue when a new session shows it again", async () => {
+  // s3 brings both failures back; its own call goes to alpha, so beta's new evidence waits for s4.
+  const history = new FakeHistory()
+    .add("s1", mixed(["alpha", 6], ["beta", 5]))
+    .add("s2", new Transcript().user("hi"))
+    .add("s3", mixed(["alpha", 6], ["beta", 5]))
+    .add("s4", new Transcript().user("hi"));
+  const llm = new ScriptedLlm(nothingReply(fpOf("alpha")), nothingReply(fpOf("beta")), nothingReply(fpOf("alpha")), nothingReply(fpOf("beta")));
+  const d = deps(history, llm, { backfillSessions: 0, maxModelCallsPerDay: 10 });
+  for (const sid of ["s1", "s2", "s3"]) await processSession(d, sid, "main");
+  const s4 = await processSession(d, "s4", "main");
+  assert.equal(s4.queued, true);
+  assert.equal(s4.fingerprint, fpOf("beta"));
+  assert.equal(llm.calls.length, 4);
+});
 test("the queue does not change the budget: one call a session, the day's cap, reserved first", async () => {
   const history = new FakeHistory().add("s1", mixed(["alpha", 6], ["beta", 5])).add("s2", new Transcript().user("hi"));
   const llm = new ScriptedLlm(nothingReply(fpOf("alpha")), nothingReply(fpOf("beta")));
