@@ -205,8 +205,10 @@ test("a lesson naming a fingerprint that was not observed is refused", async () 
 });
 
 test("too long, unparseable and duplicate lessons are refused", async () => {
-  const long = await processSession(deps(new FakeHistory().add("s1", failing(5)), new ScriptedLlm(lessonReply("When x, " + "y".repeat(300)))), "s1", "main");
+  // Too long, and the shortening request declined (empty reply): refused as too long.
+  const long = await processSession(deps(new FakeHistory().add("s1", failing(5)), new ScriptedLlm(lessonReply("When x, " + "y".repeat(300)), "")), "s1", "main");
   assert.equal(long.refusal?.rule, "too_long");
+  assert.deepEqual(long.shortening, { from: 308, refused: "empty" });
   const garbage = await processSession(deps(new FakeHistory().add("s1", failing(5)), new ScriptedLlm("I think you should retry.")), "s1", "main");
   assert.equal(garbage.outcome, "invalid_reply");
 
@@ -1087,4 +1089,36 @@ test("with injection off, a failure an active lesson is about is 'not shown', no
   const decision = await processSession(d, "s2", "main");
   assert.equal(decision.evaluated[0].refusal?.rule, "lesson_not_shown");
   assert.match(describeReport(report(d.store)), /lessons are not shown \(injectEnabled is off\) \(lesson_not_shown\)/);
+});
+test("a lesson over the hard limit is shortened once, as in Hermes, instead of being lost", async () => {
+  const long = "When calling cron_add, " + "always write the schedule with all five cron fields, minute hour day month weekday, ".repeat(3) + "e.g. 0 3 * * *.";
+  const short = "When calling cron_add, write the schedule as five cron fields, e.g. 0 3 * * *.";
+  const llm = new ScriptedLlm(lessonReply(long), `"${short}"`);
+  const d = deps(new FakeHistory().add("s1", failing(5)), llm);
+  const decision = await processSession(d, "s1", "main");
+  assert.equal(decision.outcome, "lesson");
+  assert.equal(decision.lessonText, short);
+  assert.deepEqual(decision.shortening, { from: long.length, to: short.length });
+  // The proposal asked for about 120 characters; the shortening request asks for the same.
+  assert.match(llm.calls[0].user, /about 120 characters; it must be at most 200/);
+  assert.match(llm.calls[1].user, /about 120 characters/);
+  assert.match(llm.calls[1].user, /always write the schedule/);
+  // Both calls are in the day's budget.
+  const day = d.store.read<{ calls: unknown[] }>(`budget/${d.now().toISOString().slice(0, 10)}.json`)!;
+  assert.equal(day.calls.length, 2);
+});
+
+test("no shortening request once the day's budget is spent, and a lesson within the limit needs none", async () => {
+  const long = "When x, " + "y".repeat(300);
+  const llm = new ScriptedLlm(lessonReply(long), "When x, y.");
+  const spent = await processSession(deps(new FakeHistory().add("s1", failing(5)), llm, { maxModelCallsPerDay: 1 }), "s1", "main");
+  assert.equal(spent.refusal?.rule, "too_long");
+  assert.deepEqual(spent.shortening, { from: long.length, refused: "budget_spent" });
+  assert.equal(llm.calls.length, 1);
+
+  const fits = new ScriptedLlm(lessonReply());
+  const ok = await processSession(deps(new FakeHistory().add("s1", failing(5)), fits), "s1", "main");
+  assert.equal(ok.outcome, "lesson");
+  assert.equal(ok.shortening, undefined);
+  assert.equal(fits.calls.length, 1);
 });

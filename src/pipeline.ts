@@ -11,7 +11,7 @@
 import { aggregate, summarizeSessionInSlices, SUMMARY_FORMAT, type AggregatePattern, type SessionPattern, type SessionSummary, type TranscriptRow } from "./core/failures.ts";
 import { findCoveringRule, type Covering, type Source } from "./core/covered.ts";
 import { lessonShape } from "./core/shape.ts";
-import { buildUserMessage, parseProposal, SYSTEM_PROMPT, validateLesson } from "./core/proposal.ts";
+import { buildShortenMessage, buildUserMessage, parseProposal, parseShortened, SHORTEN_SYSTEM_PROMPT, SYSTEM_PROMPT, validateLesson } from "./core/proposal.ts";
 import { formatBlock, type Block } from "./core/injection.ts";
 import { BRAND, usageNote } from "./core/notice.ts";
 import { AGE_GATE_DAYS, RECURRENCE_HORIZON_DAYS, REMOVAL_CANDIDATES, verdict, type LedgerCounts, type Verdict } from "./core/audit.ts";
@@ -77,6 +77,8 @@ export type Outcome =
 
 export interface Decision {
   sessionId: string;
+  /** A lesson over the hard limit and the one request to shorten it: its length before, after, or why not. */
+  shortening?: { from: number; to?: number; refused?: string };
   /** The agent the session belongs to; absent in records written before it was kept. */
   agentId?: string;
   at: string;
@@ -112,7 +114,7 @@ function yieldToHost(): Promise<void> {
 
 interface BudgetDay {
   day: string;
-  calls: Array<{ sessionId: string; fingerprint: string; at: string }>;
+  calls: Array<{ sessionId: string; fingerprint: string; at: string; purpose?: "shorten" }>;
 }
 
 function budgetPath(now: Date): string {
@@ -146,6 +148,35 @@ function reserveCall(store: FileStore, now: Date, max: number, sessionId: string
 function callLeft(store: FileStore, now: Date, max: number, sessionId: string): boolean {
   const calls = store.read<BudgetDay>(budgetPath(now))?.calls ?? [];
   return calls.length < max && !calls.some((call) => call.sessionId === sessionId);
+}
+
+/**
+ * Room in the day's budget for one more call of a session that already has its call
+ * (the shortening request). The per-session rule does not apply to it; the daily cap does,
+ * and the call is recorded so the cap counts every model call made.
+ */
+function reserveExtraCall(store: FileStore, now: Date, max: number, sessionId: string, fingerprint: string): Refusal | null {
+  let release: () => void;
+  try {
+    release = store.lock("budget", 0);
+  } catch (error) {
+    if (error instanceof StoreError) return { rule: "budget_busy" };
+    throw error;
+  }
+  try {
+    const relative = budgetPath(now);
+    const day = store.read<BudgetDay>(relative);
+    if (!day && store.exists(relative)) return { rule: "budget_unreadable" };
+    const calls = day?.calls ?? [];
+    if (calls.length >= max) return { rule: "budget_spent", detail: `${calls.length}/${max} calls today` };
+    store.write(relative, {
+      day: now.toISOString().slice(0, 10),
+      calls: [...calls, { sessionId, fingerprint, at: now.toISOString(), purpose: "shorten" }],
+    });
+    return null;
+  } finally {
+    release();
+  }
 }
 
 function reserveLocked(store: FileStore, now: Date, max: number, sessionId: string, fingerprint: string): Refusal | null {
@@ -803,8 +834,30 @@ export async function processSession(deps: Deps, sessionId: string, agentId: str
   if (!proposal) return finish({ ...called, outcome: "invalid_reply" });
   if (proposal.decision === "nothing") return finish({ ...called, outcome: "nothing" });
 
+  // A lesson over the hard limit gets one request to say the same thing shorter, as in
+  // the Hermes plugin, instead of being lost as too long. It is a second model call of
+  // this session, so it runs only while the day's budget has room, and is recorded there.
+  let shortening: Decision["shortening"];
+  if (proposal.lesson.length > settings.maxLessonChars) {
+    const room = reserveExtraCall(store, now, settings.maxModelCallsPerDay, sessionId, fp);
+    if (room) {
+      shortening = { from: proposal.lesson.length, refused: room.rule };
+    } else {
+      try {
+        const shorter = parseShortened(
+          await deps.llm.complete(SHORTEN_SYSTEM_PROMPT, buildShortenMessage(proposal.lesson, settings.maxLessonChars), settings.proposalTimeoutMs),
+        );
+        shortening = shorter ? { from: proposal.lesson.length, to: shorter.length } : { from: proposal.lesson.length, refused: "empty" };
+        if (shorter) proposal.lesson = shorter;
+      } catch (error) {
+        shortening = { from: proposal.lesson.length, refused: `model_error: ${String(error).slice(0, 200)}` };
+      }
+    }
+  }
+
   const known = allLessons(store).filter((lesson) => lessonAgent(lesson) === agentId && lesson.status !== "draft");
   const validation = validateLesson(proposal, fp, chosen.pattern.tool, known, sources(), settings.maxLessonChars);
+  if (shortening) Object.assign(called, { shortening });
   if (options.dryRun) {
     return finish({
       ...called,

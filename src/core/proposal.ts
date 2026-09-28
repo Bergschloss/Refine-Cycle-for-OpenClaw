@@ -68,8 +68,53 @@ export function buildUserMessage(
       ? [`The user started this pass by hand and asked to focus on: ${untrusted(focus.trim().slice(0, 500))}`]
       : []),
     "",
-    `The lesson must be at most ${maxLessonChars} characters.`,
+    `Write the lesson in about ${lessonTarget(maxLessonChars)} characters; it must be at most ${maxLessonChars}.`,
   ].join("\n");
+}
+
+/**
+ * What the model is asked for, as opposed to the hard limit it is held to. One number
+ * feeds both the proposal and the shortening request, as in the Hermes plugin
+ * (`MEMORY_ENTRY_TARGET_CHARS`): a limit restated in two prompts drifts. A well-written
+ * lesson there measured about 120 characters.
+ */
+export const LESSON_TARGET_CHARS = 120;
+
+export function lessonTarget(maxLessonChars: number): number {
+  return Math.min(LESSON_TARGET_CHARS, maxLessonChars);
+}
+
+export const SHORTEN_SYSTEM_PROMPT = [
+  "You shorten one lesson for a coding agent. Reply with the shortened lesson text only: one plain sentence,",
+  "no quotes, no markup, no explanation. If it cannot be said within the limit without losing part of it,",
+  "reply with nothing at all.",
+].join(" ");
+
+/**
+ * The shortening request: text only, so nothing else of the proposal (fingerprint,
+ * reason) can drift. The lesson being shortened is the model's own, shown as data.
+ */
+export function buildShortenMessage(lesson: string, maxLessonChars: number): string {
+  return [
+    `The lesson you proposed is ${lesson.length} characters; the hard limit is ${maxLessonChars}.`,
+    `Say the SAME lesson in one plain sentence of about ${lessonTarget(maxLessonChars)} characters.`,
+    "Keep the situation that triggers it, every corrective step in the order the evidence shows them,",
+    "and the tool or operation it applies to. A sentence that fits by dropping one of those is a",
+    "different lesson, not a shorter one; if it cannot be said within the limit without losing one,",
+    "reply with nothing.",
+    "",
+    `The lesson: ${untrusted(lesson)}`,
+  ].join("\n");
+}
+
+/** The shortened text from a reply: one line, without quotes or a code fence. Empty means refused. */
+export function parseShortened(reply: string): string {
+  const text = reply
+    .replace(/^\s*```[a-z]*\s*/i, "")
+    .replace(/\s*```\s*$/, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return text.replace(/^["'“”‘’]+|["'“”‘’]+$/g, "").trim();
 }
 
 export interface Proposal {

@@ -20,7 +20,11 @@ export function usageNote(used: number, limit: number): string {
   return "";
 }
 
+/** Past the soft limit the line says what it costs and what to do about it. */
+export const OVER_LIMIT_ADVICE = "every turn now costs more tokens; /refine audit shows which lessons to turn off";
+
 export function lessonNotice(used: number, limit: number): string {
   const words = usageNote(used, limit);
-  return `${BRAND} — new lesson learned (lessons ${used}/${limit}${words ? `, ${words}` : ""})`;
+  const note = used > limit ? `${words}: ${OVER_LIMIT_ADVICE}` : words;
+  return `${BRAND} — new lesson learned (${used}/${limit}${note ? `, ${note}` : ""})`;
 }
