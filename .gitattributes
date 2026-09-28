@@ -4,4 +4,10 @@
 src/** text eol=lf
 dist/** text eol=lf
 test/** text eol=lf
+# The package's root files (package.json "files"), which an install or a deploy takes too.
+package.json text eol=lf
+openclaw.plugin.json text eol=lf
+README.md text eol=lf
+LICENSE text eol=lf
+*.png binary
 
