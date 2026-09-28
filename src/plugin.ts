@@ -105,7 +105,11 @@ export interface PluginApi {
   config?: {
     agents?: { defaults?: { model?: string | { primary?: string } } };
     plugins?: {
-      entries?: Record<string, { hooks?: { allowConversationAccess?: boolean; allowPromptInjection?: boolean } } | undefined>;
+      entries?: Record<string, {
+        hooks?: { allowConversationAccess?: boolean; allowPromptInjection?: boolean };
+        /** The host's own policy for this plugin's model calls (2026.9.6 runtime-llm): a model is sent only when allowed. */
+        llm?: { allowModelOverride?: boolean; allowedModels?: string[] };
+      } | undefined>;
     };
   };
   pluginConfig?: Record<string, unknown>;
@@ -225,6 +229,22 @@ export default function register(api: PluginApi): void {
     }
   }
 
+  /**
+   * The model lessons are written with, as in Hermes' `/refine model`: the one set with
+   * `/refine model` first, then the `model` setting, else none (the default agent's). It
+   * is sent only when OpenClaw lets this plugin choose (`llm.allowModelOverride`); a model
+   * that is set but not allowed is dropped, and `status` says so.
+   */
+  const MODEL_OVERRIDE = "model.json";
+  const effectiveModel = (): { chosen?: string; source: "command" | "setting" | "default"; sent?: string; dropped?: string } => {
+    const command = store.read<{ model?: string }>(MODEL_OVERRIDE)?.model;
+    const chosen = command || settings.model || undefined;
+    const source = command ? "command" : settings.model ? "setting" : "default";
+    if (!chosen) return { source };
+    const allowed = api.config?.plugins?.entries?.[api.id]?.llm?.allowModelOverride === true;
+    return allowed ? { chosen, source, sent: chosen } : { chosen, source, dropped: chosen };
+  };
+
   /** The workspace each agent was last seen working in; else the host's own answer. */
   const workspaces = new Map<string, string>();
   const workspaceFor = (agentId: string): string | undefined => {
@@ -309,6 +329,8 @@ export default function register(api: PluginApi): void {
               messages: [{ role: "user", content: userMessage }],
               systemPrompt,
               purpose: "refine-cycle: propose a lesson from a repeated failure",
+              // Only a model the host lets this plugin choose; otherwise none, and the host uses its default agent's.
+              ...(effectiveModel().sent ? { model: effectiveModel().sent } : {}),
               maxTokens: 400,
               temperature: 0,
               // No agentId: OpenClaw refuses a plugin call that names a target agent
@@ -623,8 +645,10 @@ export default function register(api: PluginApi): void {
     }
   })();
 
-  /** The model lessons are written with, in words: the plugin sends none, so it is the default agent's. */
+  /** The model lessons are written with, in words. */
   const modelRoute = (): string => {
+    const target = effectiveModel();
+    if (target.sent) return `${target.sent} (source: ${target.source}; OpenClaw allows this plugin to choose it)`;
     const configured = api.config?.agents?.defaults?.model;
     const name = typeof configured === "string" ? configured : configured?.primary;
     return `${name || "the host's default"} (the default agent's model: OpenClaw chooses it, the plugin sends none)`;
@@ -640,14 +664,46 @@ export default function register(api: PluginApi): void {
     json?: boolean;
   }
 
-  const USAGE = "Usage: list | status | audit | report | run [reason] | session <id> [reason] | dry-run [session <id>] [reason] | update | disable <id> | delete <id>";
+  const USAGE = "Usage: list | status | audit | report | run [reason] | session <id> [reason] | dry-run [session <id>] [reason] | model [auto | <provider>/<model>] | update | disable <id> | delete <id>";
 
-  /** An update the last check found, for `status`. */
+  /** `model`, `model auto`, `model <provider/model>`: show, clear or set the model lessons are written with. */
+  const modelCommand = (value: string, scope: Scope): { text: string; ok: boolean } => {
+    const allowed = api.config?.plugins?.entries?.[api.id]?.llm?.allowModelOverride === true;
+    const trust = `OpenClaw lets this plugin choose its model: ${allowed ? "yes" : "no"} (plugins.entries.${api.id}.llm.allowModelOverride)`;
+    const denied = `⚠ OpenClaw does not let this plugin choose its model, so it is not sent: set plugins.entries.${api.id}.llm.allowModelOverride to true to use it.`;
+    if (!value) {
+      const target = effectiveModel();
+      const lines = [`model: ${target.chosen ?? "(the default agent's)"}`, `source: ${target.source}`, trust];
+      if (target.dropped) lines.push(denied);
+      return { text: lines.join("\n"), ok: true };
+    }
+    if (scope.agentId !== undefined && scope.authorized === false) return { text: "Only an authorized sender may change the model.", ok: false };
+    if (value === "auto") {
+      const had = store.read<{ model?: string }>(MODEL_OVERRIDE)?.model;
+      if (had) store.remove(MODEL_OVERRIDE);
+      const target = effectiveModel();
+      return { text: `${had ? "Override removed." : "No override was set."} Effective model: ${target.chosen ?? "(the default agent's)"} (source: ${target.source})`, ok: true };
+    }
+    if (!/^[A-Za-z0-9._:-]+(\/[A-Za-z0-9._:@-]+)?$/.test(value)) {
+      return { text: "Invalid model. Usage: model [auto | <model> | <provider>/<model>]", ok: false };
+    }
+    store.write(MODEL_OVERRIDE, { model: value, at: new Date().toISOString() });
+    return { text: [`Override set: model=${value}`, ...(allowed ? [] : [denied])].join("\n"), ok: true };
+  };
+
+  /** An update the last check found, and a model that is set but not sent, for `status`. */
   const updateWarnings = (): string[] => {
-    const state = store.read<UpdateState>(UPDATE_STATE);
-    return state?.ok && state.latest && state.installed && isNewer(state.latest, state.installed)
-      ? [`Refine Cycle ${state.latest} is available (installed ${state.installed}): ${UPDATE_COMMAND}`]
+    const dropped = effectiveModel().dropped;
+    const modelWarning = dropped
+      ? [`Model ${dropped} is set (${effectiveModel().source}) but OpenClaw does not let this plugin choose its model, so it is dropped before the call; set plugins.entries.${api.id}.llm.allowModelOverride to true to use it.`]
       : [];
+    const state = store.read<UpdateState>(UPDATE_STATE);
+    return [
+      ...modelWarning,
+      ...(state?.ok && state.latest && state.installed && isNewer(state.latest, state.installed)
+        ? [`Refine Cycle ${state.latest} is available (installed ${state.installed}): ${UPDATE_COMMAND}`]
+        : []),
+    ];
   };
 
   /**
@@ -720,6 +776,7 @@ export default function register(api: PluginApi): void {
     if (verb === "run" || verb === "session" || verb === "dry-run") {
       return passCommand(args, scope);
     }
+    if (verb === "model") return modelCommand(args.trim().split(/\s+/).slice(1).join(" "), scope);
     if (verb === "update") {
       if (agentId === undefined) return runUpdate();
       // The host already refuses senders off the allowlist; this holds if a host lets one through.
@@ -806,7 +863,7 @@ export default function register(api: PluginApi): void {
 
   api.registerCommand?.({
     name: "refine",
-    description: "Refine Cycle: list, status, audit, report, run [reason], session <id>, dry-run, update, disable <id>, delete <id>",
+    description: "Refine Cycle: list, status, audit, report, run [reason], session <id>, dry-run, model, update, disable <id>, delete <id>",
     acceptsArgs: true,
     handler: async (ctx) => {
       const agentId = commandAgent(ctx);
@@ -858,6 +915,10 @@ export default function register(api: PluginApi): void {
         .command("dry-run [args...]")
         .description("dry-run session <id> [reason]: propose and check a lesson, save nothing (the call is spent like any other)")
         .action(async (rest) => print(await control(`dry-run ${words(rest)}`)));
+      root
+        .command("model [value]")
+        .description("Show the model lessons are written with; `model auto` clears it, `model <provider>/<model>` sets it")
+        .action(async (value) => print(await control(`model ${typeof value === "string" ? value : ""}`)));
       root
         .command("update")
         .description("Update the plugin with OpenClaw's own plugins update, and say to which version")

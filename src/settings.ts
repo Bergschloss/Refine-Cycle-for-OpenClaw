@@ -31,6 +31,11 @@ export interface Settings {
   notifyOnLesson: boolean;
   /** Once a day, look for a newer release and tell the user once, with an Update button. */
   checkForUpdates: boolean;
+  /**
+   * The model lessons are written with (`provider/model`); empty for the default agent's.
+   * OpenClaw sends it only with `plugins.entries.refine-cycle.llm.allowModelOverride: true`.
+   */
+  model: string;
 }
 
 export const DEFAULTS: Settings = {
@@ -50,6 +55,7 @@ export const DEFAULTS: Settings = {
   historyDbPath: "",
   notifyOnLesson: true,
   checkForUpdates: true,
+  model: "",
 };
 
 export function readSettings(raw: unknown): Settings {

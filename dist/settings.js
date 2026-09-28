@@ -20,6 +20,7 @@ export const DEFAULTS = {
     historyDbPath: "",
     notifyOnLesson: true,
     checkForUpdates: true,
+    model: "",
 };
 export function readSettings(raw) {
     const input = typeof raw === "object" && raw !== null ? raw : {};

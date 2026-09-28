@@ -22,7 +22,7 @@
 
 ## You stay in control
 
-- At most one model call per session and three a day, on the model and account OpenClaw uses for your default agent. The plugin has no key of its own.
+- At most one model call per session and three a day, on the model and account OpenClaw uses for your default agent, or on a model you choose with `/refine model` if you let OpenClaw allow that. The plugin has no key of its own.
 - `/refine list` shows your lessons and their status; `/refine disable <id>` and `/refine delete <id>` take one away, and a lesson you took away is never learned again.
 - It never edits your `AGENTS.md`, `SOUL.md`, skills or memory. Lessons live in the plugin's own folder.
 - It does not filter your conversation or its lessons. The evidence for a lesson (the failing call's error and arguments, and the call that fixed it) goes to that model, as your agent would send it; the lessons and the plugin's records, which keep short excerpts of failed calls, stay in its folder on your machine. With several agents, the evidence from every agent goes to the default agent's model: OpenClaw does not let a plugin's background call choose the agent.
@@ -89,6 +89,7 @@ openclaw refine-cycle list
 | `/refine run [reason]` | — | A learning pass over this chat's session now, with an optional focus for the model; the same budget and rules as the automatic pass (the command line has no current session) |
 | `/refine session <id> [reason]` | `openclaw refine-cycle session <id> [reason]` | The same, over one exact past session |
 | `/refine dry-run [session <id>] [reason]` | `openclaw refine-cycle dry-run session <id> [reason]` | Propose and check a lesson and show it, save nothing; it spends the session's call and one of the day's, as any pass does |
+| `/refine model [auto \| <provider>/<model>]` | `openclaw refine-cycle model [value]` | Show or choose the model lessons are written with; `auto` goes back to the default agent's. OpenClaw sends it only when you allow it: `plugins.entries.refine-cycle.llm.allowModelOverride: true` |
 | `/refine update` | `openclaw refine-cycle update` | Update the plugin with OpenClaw's own `plugins update`, with no restart; only senders on the channel's allowlist; a plugin loaded from a directory is not updated |
 | `/refine report` | `openclaw refine-cycle report` | What the loop decided and why, in words (`--json` on the command line for the numbers) |
 
@@ -109,6 +110,7 @@ Under `plugins.entries.refine-cycle.config` in `openclaw.json`. All are optional
 | `maxLessonChars` | `200` | Longest lesson accepted |
 | `instructionFiles` | `AGENTS.md`, `TOOLS.md`, `SOUL.md` | Files checked so a lesson never repeats a rule you already wrote |
 | `notifyOnLesson` | `true` | One line in your chat when a new lesson is learned |
+| `model` | `""` | The model lessons are written with, as `provider/model`; empty for the default agent's (needs `llm.allowModelOverride`, above) |
 | `checkForUpdates` | `true` | Once a day, look for a newer release and tell you once, with an Update button |
 
 ## Documentation

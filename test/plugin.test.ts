@@ -924,3 +924,61 @@ test("/refine status starts a due update check, and the next status shows a newe
   assert.match(text, /warnings:\n  ⚠ Refine Cycle 0\.2\.0 is available \(installed 0\.1\.0\): \/refine update/);
   assert.equal(setup.sent.length, 0, "status itself sends nothing");
 });
+
+// -- /refine model --
+
+function modelSetup(allowModelOverride: boolean | undefined, pluginConfig: Record<string, unknown> = {}) {
+  const stateDir = tempDir();
+  const error = "cron expression '* * *' has 3 fields, expected 5";
+  const failing = () => new Transcript().user("schedule it").call("cron_add", { schedule: "* * *" }, { error });
+  writeAgentDb(stateDir, { s1: failing(), s2: failing() });
+  const calls: Array<Record<string, unknown>> = [];
+  const commands = new Map<string, (ctx: Record<string, unknown>) => unknown>();
+  register({
+    id: "refine-cycle",
+    config: { plugins: { entries: { "refine-cycle": { hooks: { allowConversationAccess: true }, ...(allowModelOverride === undefined ? {} : { llm: { allowModelOverride } }) } } } },
+    pluginConfig,
+    runtime: {
+      state: { resolveStateDir: () => stateDir },
+      llm: { complete: async (params) => (calls.push(params), { text: JSON.stringify({ decision: "nothing", fingerprint: fingerprint("cron_add", error), lesson: "", reason: "" }) }) },
+    },
+    logger: {},
+    on: () => {},
+    registerCommand: (command) => commands.set(command.name, command.handler as never),
+  });
+  const refine = async (args: string, extra: Record<string, unknown> = {}) => ((await commands.get("refine")!({ args, agentId: "main", ...extra })) as { text: string }).text;
+  return { refine, calls };
+}
+
+test("/refine model sets the model lessons are written with, and it is sent when OpenClaw allows it", async () => {
+  const { refine, calls } = modelSetup(true);
+  assert.equal(await refine("model"), "model: (the default agent's)\nsource: default\nOpenClaw lets this plugin choose its model: yes (plugins.entries.refine-cycle.llm.allowModelOverride)");
+  assert.equal(await refine("model openai/gpt-6-luna"), "Override set: model=openai/gpt-6-luna");
+  assert.match(await refine("status"), /model: openai\/gpt-6-luna \(source: command; OpenClaw allows this plugin to choose it\)/);
+  await refine("session s1");
+  assert.equal(calls[0].model, "openai/gpt-6-luna");
+  assert.match(await refine("model auto"), /^Override removed\. Effective model: \(the default agent's\) \(source: default\)$/);
+});
+
+test("a model OpenClaw does not let the plugin choose is dropped before the call, and status says so", async () => {
+  const { refine, calls } = modelSetup(undefined, { model: "openai/gpt-6-luna" });
+  assert.match(await refine("model"), /source: setting\n.*: no \(.*\)\n⚠ OpenClaw does not let this plugin choose its model/);
+  assert.match(await refine("status"), /warnings:\n  ⚠ Model openai\/gpt-6-luna is set \(setting\) but OpenClaw does not let this plugin choose its model, so it is dropped before the call/);
+  await refine("session s1");
+  assert.equal("model" in calls[0], false, "no model is sent: the host would refuse the call");
+});
+
+test("/refine model refuses a malformed model and a sender off the allowlist", async () => {
+  const { refine } = modelSetup(true);
+  assert.match(await refine("model not a model"), /^Invalid model\./);
+  assert.equal(await refine("model openai/x", { isAuthorizedSender: false }), "Only an authorized sender may change the model.");
+  assert.equal(await refine("model auto"), "No override was set. Effective model: (the default agent's) (source: default)");
+});
+
+test("a model set with /refine model wins over the model setting, as Hermes' command override does", async () => {
+  const { refine, calls } = modelSetup(true, { model: "openai/from-setting" });
+  await refine("model openai/from-command");
+  await refine("session s1");
+  assert.equal(calls[0].model, "openai/from-command");
+  assert.match(await refine("model auto"), /Effective model: openai\/from-setting \(source: setting\)/);
+});

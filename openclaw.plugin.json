@@ -109,6 +109,11 @@
         "default": true,
         "description": "Once a day, look for a newer release and send one message about it, with an Update button, to the chat you talk from."
       },
+      "model": {
+        "type": "string",
+        "default": "",
+        "description": "The model lessons are written with, as provider/model; empty for the default agent's model. OpenClaw only sends it when plugins.entries.refine-cycle.llm.allowModelOverride is true. /refine model sets it from chat."
+      },
       "historyDbPath": {
         "type": "string",
         "default": "",
