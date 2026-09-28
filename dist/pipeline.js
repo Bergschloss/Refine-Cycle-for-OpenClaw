@@ -13,7 +13,7 @@ import { lessonShape } from "./core/shape.js";
 import { buildShortenMessage, buildUserMessage, parseProposal, parseShortened, SHORTEN_SYSTEM_PROMPT, SYSTEM_PROMPT, validateLesson } from "./core/proposal.js";
 import { formatBlock } from "./core/injection.js";
 import { BRAND, usageNote } from "./core/notice.js";
-import { AGE_GATE_DAYS, RECURRENCE_HORIZON_DAYS, REMOVAL_CANDIDATES, verdict } from "./core/audit.js";
+import { AGE_GATE_DAYS, MIN_QUIET_SESSIONS, RECURRENCE_HORIZON_DAYS, REMOVAL_CANDIDATES, verdict } from "./core/audit.js";
 import { activate, activeLessons, allLessons, DEFAULT_AGENT, journalState, lessonAgent, LessonExistsError, lessonId, recover } from "./lessons.js";
 import { safeName, StoreError } from "./store.js";
 const REPLY_KEPT_CHARS = 2000;
@@ -395,10 +395,10 @@ export function ledgerCounts(store, lessonIdValue) {
     return counts;
 }
 /**
- * Every lesson's verdict (of one agent, when given). The verdict and when it was given
- * are kept per lesson (`verdicts/`), best effort: the audit's answer does not depend on it.
+ * Every lesson's verdict (of one agent, when given), from its ledger record. Read-only:
+ * `audit` and `status` both answer from this, so they cannot disagree.
  */
-export function audit(store, now, agentId) {
+export function judgeLessons(store, now, agentId) {
     const decisions = store
         .list("candidates")
         .map((name) => store.read(`candidates/${name}.json`))
@@ -413,16 +413,26 @@ export function audit(store, now, agentId) {
         const ageDays = Math.max(0, Math.floor((now.getTime() - Date.parse(lesson.createdAt)) / 86_400_000));
         const judged = verdict({ ...counts, status: lesson.status, ageDays, windowOpen });
         rows.push({ id: lesson.id, agentId: owner, text: lesson.text, status: lesson.status, ageDays, counts, ...judged });
+    }
+    return rows.sort((a, b) => a.agentId.localeCompare(b.agentId) || a.ageDays - b.ageDays || a.id.localeCompare(b.id));
+}
+/**
+ * Every lesson's verdict (of one agent, when given). The verdict and when it was given
+ * are kept per lesson (`verdicts/`), best effort: the audit's answer does not depend on it.
+ */
+export function audit(store, now, agentId) {
+    const rows = judgeLessons(store, now, agentId);
+    for (const row of rows) {
         try {
-            const last = store.read(`verdicts/${safeName(lesson.id)}.json`);
-            if (last?.verdict !== judged.verdict)
-                store.write(`verdicts/${safeName(lesson.id)}.json`, { lessonId: lesson.id, ...judged, at: now.toISOString() });
+            const last = store.read(`verdicts/${safeName(row.id)}.json`);
+            if (last?.verdict !== row.verdict)
+                store.write(`verdicts/${safeName(row.id)}.json`, { lessonId: row.id, verdict: row.verdict, why: row.why, at: now.toISOString() });
         }
         catch {
             // the verdict is shown either way
         }
     }
-    return rows.sort((a, b) => a.agentId.localeCompare(b.agentId) || a.ageDays - b.ageDays || a.id.localeCompare(b.id));
+    return rows;
 }
 /** The audit for people, in the shape of the Hermes one: a row per lesson, then the removal candidates. */
 export function describeAudit(rows, oneAgent, rollback) {
@@ -440,7 +450,7 @@ export function describeAudit(rows, oneAgent, rollback) {
         lines.push("", "Candidates for removal:", ...candidates.map((row) => `  ${row.id} — ${rollback(row.id)}`), "", "Nothing was deleted. Run the command yourself if you agree.");
     }
     lines.push("", `shown = sessions it was in front of the agent; came back = of those, sessions where its failure happened again after it was shown. ` +
-        `working after ${RECURRENCE_HORIZON_DAYS} quiet days; unused and too early wait ${AGE_GATE_DAYS} days.`);
+        `working after ${MIN_QUIET_SESSIONS} sessions that showed it with no recurrence and ${RECURRENCE_HORIZON_DAYS} days; below that, too early; unused waits ${AGE_GATE_DAYS} days.`);
     return lines.join("\n");
 }
 // -- The loop ---------------------------------------------------------------------
@@ -957,11 +967,15 @@ export async function status(deps, input, depsOf = () => deps) {
         const newest = decisions
             .filter((d) => (d.agentId || DEFAULT_AGENT) === agentId)
             .sort((a, b) => b.at.localeCompare(a.at))[0];
+        const verdicts = {};
+        for (const row of judgeLessons(store, now, agentId))
+            verdicts[row.verdict] = (verdicts[row.verdict] ?? 0) + 1;
         agents.push({
             agentId,
             lessons,
             blockChars: formatBlock(activeLessons(store, agentId))?.text.length ?? 0,
             queue: settings.learnEnabled ? await queueLength(depsOf(agentId), agentId) : 0,
+            verdicts,
             ...(newest?.outcome === "history_unreadable" ? { historyUnreadable: String(newest.reply ?? "").slice(0, 160) } : {}),
         });
     }
@@ -1025,6 +1039,9 @@ export function describeStatus(s, oneAgent) {
         lines.push(`${who}lessons: ${agent.lessons.active} active, ${agent.lessons.disabled} disabled, ${agent.lessons.deleted} deleted`);
         lines.push(`${who}lessons block: ${agent.blockChars}/${s.softLimit} characters${words ? `, ${words}` : ""}`);
         lines.push(`${who}queue: ${agent.queue} failure(s) waiting for a model call`);
+        const judged = Object.entries(agent.verdicts).sort((a, b) => b[1] - a[1]).map(([name, n]) => `${n} ${name}`);
+        if (judged.length)
+            lines.push(`${who}audit: ${judged.join(", ")}`);
     }
     lines.push(s.journal.open
         ? `journal: ${s.journal.open} unfinished change(s), finished by recovery on the next turn`

@@ -45,7 +45,7 @@ openclaw refine-cycle list
 | `/refine disable <id>` | `openclaw refine-cycle disable <id>` | Stop showing a lesson |
 | `/refine delete <id>` | `openclaw refine-cycle delete <id>` | Delete a lesson (kept as a tombstone) |
 | `/refine rollback <id>` | `openclaw refine-cycle rollback <id>` | The same as `delete`, under the Hermes plugin's name; `/refine audit` offers it for lessons that did not help or were never used |
-| `/refine audit` | `openclaw refine-cycle audit` | Did each lesson help: a verdict per lesson (`working`, `did not help`, `unused`, `too early`, `no recurrence window`, `unreliable`), from the sessions it was shown in and whether its failure came back after; it lists the ones worth removing and deletes nothing |
+| `/refine audit` | `openclaw refine-cycle audit` | Did each lesson help: a verdict per lesson (`working`, `did not help`, `unused`, `too early`, `no recurrence window`, `unreliable`), from the sessions it was shown in and whether its failure came back after (`working` only after at least 3 sessions that showed it with no recurrence); it lists the ones worth removing and deletes nothing |
 | `/refine run [reason]` | — | A learning pass over this chat's session now, with an optional focus for the model; the same budget and rules as the automatic pass (the command line has no current session) |
 | `/refine session <id> [reason]` | `openclaw refine-cycle session <id> [reason]` | The same, over one exact past session |
 | `/refine dry-run [session <id>] [reason]` | `openclaw refine-cycle dry-run session <id> [reason]` | Propose and check a lesson and show it, save nothing; it spends the session's call and one of the day's, as any pass does |

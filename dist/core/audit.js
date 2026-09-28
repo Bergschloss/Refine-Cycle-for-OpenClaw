@@ -16,8 +16,13 @@
  */
 /** Hermes: `unused` and the `too early` split wait 14 days. */
 export const AGE_GATE_DAYS = 14;
-/** Hermes `audit_recurrence_horizon_days`: silence counts as `working` after 3 days. */
+/** Hermes `audit_recurrence_horizon_days`: a lesson is not called `working` before it is 3 days old. */
 export const RECURRENCE_HORIZON_DAYS = 3;
+/**
+ * Owner decision D5 (2026-09-29): `working` needs at least this many sessions that showed
+ * the lesson, none of them with its failure after it. One quiet exposure is no evidence.
+ */
+export const MIN_QUIET_SESSIONS = 3;
 /** First rule that matches wins, in the Hermes order. */
 export function verdict(input) {
     if (input.status === "deleted")
@@ -37,10 +42,13 @@ export function verdict(input) {
             ? { verdict: "unused", why: `never shown in ${input.ageDays} days` }
             : { verdict: "too early", why: `not shown yet, ${input.ageDays} of ${AGE_GATE_DAYS} days` };
     }
-    if (input.ageDays >= RECURRENCE_HORIZON_DAYS) {
-        return { verdict: "working", why: `shown in ${input.shown} session(s), its failure has not come back` };
+    if (input.shown < MIN_QUIET_SESSIONS) {
+        return { verdict: "too early", why: `shown in ${input.shown} of the ${MIN_QUIET_SESSIONS} sessions a verdict needs; its failure has not come back` };
     }
-    return { verdict: "too early", why: `shown in ${input.shown} session(s), ${input.ageDays} of ${RECURRENCE_HORIZON_DAYS} days` };
+    if (input.ageDays >= RECURRENCE_HORIZON_DAYS) {
+        return { verdict: "working", why: `shown in ${input.shown} session(s), its failure has not come back after it in any` };
+    }
+    return { verdict: "too early", why: `shown in ${input.shown} session(s) without its failure, ${input.ageDays} of ${RECURRENCE_HORIZON_DAYS} days` };
 }
 /** Verdicts the audit offers to remove, as Hermes does: the user runs the command, nothing is deleted. */
 export const REMOVAL_CANDIDATES = new Set(["unused", "did not help"]);

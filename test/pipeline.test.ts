@@ -1023,9 +1023,47 @@ test("the audit's verdicts over time: too early, then working; never shown, then
   recordExposure(d.store, "s2", { text: "x", lessonIds: [lesson.id], hash: "h" }, Transcript.time(0) - 1, new Date());
   await processSession(d, "s2", "main");
   assert.equal(audit(d.store, at(2))[0].verdict, "too early");
+  // One quiet session is no evidence (owner decision D5): still no verdict weeks later.
+  assert.equal(audit(d.store, at(30))[0].verdict, "too early");
+  for (const id of ["s3", "s4"]) {
+    history.add(id, new Transcript().user("hi"));
+    recordExposure(d.store, id, { text: "x", lessonIds: [lesson.id], hash: "h" }, Transcript.time(0) - 1, new Date());
+    await processSession(d, id, "main");
+  }
+  assert.equal(audit(d.store, at(2))[0].verdict, "too early");
   assert.equal(audit(d.store, at(3))[0].verdict, "working");
   setStatus(d.store, lesson.id, "deleted", at(4));
   assert.equal(audit(d.store, at(5))[0].verdict, "rolled back");
+});
+
+test("status, audit and the ledger give a lesson the same verdict: too early below 3 quiet sessions, working at 3, did not help on a recurrence", async () => {
+  const history = new FakeHistory().add("s1", failing(5));
+  const d = deps(history, new ScriptedLlm(lessonReply()), { backfillSessions: 0 });
+  await processSession(d, "s1", "main");
+  const [lesson] = activeLessons(d.store);
+  const later = new Date(Date.parse(lesson.createdAt) + 10 * 86_400_000);
+  d.now = () => later;
+  const input = { agentIds: ["main"], version: "9.9.9", model: "m", llmAvailable: true, conversationAccess: true, promptInjection: true, hostWarnings: [] };
+  const show = async (id: string, transcript: Transcript) => {
+    history.add(id, transcript);
+    recordExposure(d.store, id, { text: "x", lessonIds: [lesson.id], hash: "h" }, Transcript.time(0) - 1, new Date());
+    await processSession(d, id, "main");
+  };
+  const agree = async (expected: string, shown: number) => {
+    assert.equal(ledgerCounts(d.store, lesson.id).shown, shown);
+    assert.equal(audit(d.store, later)[0].verdict, expected);
+    const s = await status(d, input);
+    assert.deepEqual(s.agents[0].verdicts, { [expected]: 1 });
+    assert.match(describeStatus(s, true), new RegExp(`audit: 1 ${expected}`));
+  };
+  await show("s2", new Transcript().user("hi"));
+  await agree("too early", 1);
+  await show("s3", new Transcript().user("hi"));
+  await agree("too early", 2);
+  await show("s4", new Transcript().user("hi"));
+  await agree("working", 3);
+  await show("s5", failing(1));
+  await agree("did not help", 4);
 });
 
 

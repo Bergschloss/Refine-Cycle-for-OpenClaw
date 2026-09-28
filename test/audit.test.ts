@@ -24,6 +24,16 @@ test("the thresholds are Hermes': 3 quiet days for working, 14 days for unused",
   assert.equal(v({ shown: 0, ageDays: 13 }), "too early");
 });
 
+test("working needs 3 sessions that showed the lesson with no recurrence (owner decision D5), however old it is", () => {
+  assert.equal(v({ shown: 1, ageDays: 60 }), "too early");
+  assert.equal(v({ shown: 2, ageDays: 60 }), "too early");
+  assert.match(verdict({ ...base, shown: 2 }).why, /shown in 2 of the 3 sessions a verdict needs/);
+  assert.equal(v({ shown: 3, ageDays: 3 }), "working");
+  // A recurrence in any of them is a verdict of its own, at any count.
+  assert.equal(v({ shown: 2, cameBack: 1 }), "did not help");
+  assert.equal(v({ shown: 3, cameBack: 1 }), "did not help");
+});
+
 test("a failure that came back outweighs time and unplaced failures; a withdrawn lesson is judged by its status", () => {
   assert.equal(v({ cameBack: 1, unplaced: 4, ageDays: 0 }), "did not help");
   assert.equal(v({ status: "deleted", cameBack: 1 }), "rolled back");

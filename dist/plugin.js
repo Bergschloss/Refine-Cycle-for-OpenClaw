@@ -666,6 +666,8 @@ export default function register(api) {
                     await check;
             }
             const agents = agentId === undefined ? knownAgents(store) : [agentId];
+            // Its audit line comes from the same ledger as `audit`, once that is built.
+            await ledgerReady;
             const s = await status(depsFor(agents[0]), {
                 agentIds: agents,
                 ...(scope.sessionId ? { sessionId: scope.sessionId } : {}),
