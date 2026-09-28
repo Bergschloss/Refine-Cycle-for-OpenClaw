@@ -94,8 +94,11 @@ test("an unusable store means no injection, no learning, and no thrown error", a
   const { hooks, commands, logs } = fakeApi(stateDir);
   assert.equal(hooks.get("before_prompt_build")!.handler({}, { sessionId: "s1" }), undefined);
   assert.equal(hooks.get("agent_end")!.handler({}, { sessionId: "s1" }), undefined);
-  assert.match(String((await commands.get("refine")!({ args: "list" }) as { text: string }).text), /cannot use its store/);
-  assert.ok(logs.some((line) => line.includes("store unusable")));
+  const listed = String((await commands.get("refine")!({ args: "list" }) as { text: string }).text);
+  assert.match(listed, /cannot use its store/);
+  assert.ok(listed.includes(`folder: ${root}`));
+  assert.match(listed, /likely cause: the folder was written by another version/);
+  assert.ok(logs.some((line) => line.includes("store unusable") && line.includes("likely cause")));
 });
 
 test("end to end on a real SQLite file: failures in two sessions become a lesson the next prompt carries", async () => {

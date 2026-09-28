@@ -28,3 +28,35 @@ export function lessonNotice(used: number, limit: number): string {
   const note = used > limit ? `${words}: ${OVER_LIMIT_ADVICE}` : words;
   return `${BRAND} — new lesson learned (${used}/${limit}${note ? `, ${note}` : ""})`;
 }
+
+
+/**
+ * What a user reads when the plugin cannot use its store: the folder, the likely cause
+ * read from the error, and what to do. The plugin is idle until then (it fails open).
+ */
+export function storeErrorText(root: string, error: string): string {
+  let cause: string;
+  let fix: string;
+  if (/\bE(ACCES|PERM)\b|cannot be set aside/.test(error)) {
+    cause = "the gateway's user may not write to that folder (permissions)";
+    fix = "give the user OpenClaw runs as write access to the folder, e.g. `chown -R <user> <folder>`";
+  } else if (/\b(ENOSPC|EDQUOT)\b/.test(error)) {
+    cause = "the disk (or the user's quota) is full";
+    fix = "free space on that disk";
+  } else if (/\bEROFS\b/.test(error)) {
+    cause = "the folder is on a read-only file system";
+    fix = "mount it writable, or move OpenClaw's state directory to a writable disk";
+  } else if (/\bstore schema\b/.test(error)) {
+    cause = "the folder was written by another version of Refine Cycle";
+    fix = "update Refine Cycle to that version, or move the folder aside to start an empty store";
+  } else {
+    cause = "the folder cannot be created or read";
+    fix = "check that it exists and that the gateway's user can read and write it";
+  }
+  return [
+    `Refine Cycle cannot use its store: ${error}`,
+    `folder: ${root}`,
+    `likely cause: ${cause}`,
+    `fix: ${fix}, then restart the gateway. Until then nothing is learned or injected; the agent works as without the plugin.`,
+  ].join("\n");
+}

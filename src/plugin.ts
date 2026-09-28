@@ -27,7 +27,7 @@ import { activeLessons, allLessons, DEFAULT_AGENT, lessonAgent, recover, setStat
 import { audit, callsToday, describeAudit, describePass, ensureLedger, describeReport, describeStatus, knownAgents, processSession, recordExposure, report, status, type Decision, type Deps, type Llm, type PassOptions } from "./pipeline.ts";
 import { replay } from "./replay.ts";
 import { readSettings } from "./settings.ts";
-import { lessonNotice } from "./core/notice.ts";
+import { lessonNotice, storeErrorText } from "./core/notice.ts";
 import {
   actionLine, availableText, checkDue, failedText, failureReason, hostUpdateLine, isNewer, latestTag, toAnnounce,
   UPDATE_COMMAND, updatedText, upToDateText, type UpdateState,
@@ -232,7 +232,7 @@ export default function register(api: PluginApi): void {
     if (store.repairedMeta) warn(`meta.json was unreadable; it is kept as ${store.repairedMeta} and a new one was written`);
   } catch (error) {
     storeError = String(error);
-    warn(`store unusable, nothing will be injected or learned: ${storeError}`);
+    warn(`store unusable, nothing will be injected or learned. ${storeErrorText(store.root, storeError).replace(/\n/g, "; ")}`);
   }
   /** The last journal recovery this process ran, for `status`. */
   let lastRecovery: { at: string; finished: number; abandoned: number; unreadable: number; skipped?: boolean } | null = null;
@@ -734,12 +734,7 @@ export default function register(api: PluginApi): void {
   const control = async (args: string, scope: Scope = {}): Promise<{ text: string; ok: boolean }> => {
     const [verb = "list", id = ""] = args.trim().split(/\s+/).filter(Boolean);
     const { agentId } = scope;
-    if (storeError) {
-      const hint =
-        "Check that the directory exists and is writable by the gateway's user; a meta.json that cannot be read " +
-        "can be moved aside (the plugin writes a new one). See `openclaw logs` for the first error.";
-      return { text: `Refine Cycle cannot use its store at ${store.root}: ${storeError}\n${hint}`, ok: false };
-    }
+    if (storeError) return { text: storeErrorText(store.root, storeError), ok: false };
     const now = new Date();
     const mine = allLessons(store).filter((lesson) => agentId === undefined || lessonAgent(lesson) === agentId);
     if (verb === "list") {
@@ -1012,7 +1007,7 @@ export default function register(api: PluginApi): void {
         if (params.reason !== undefined && typeof params.reason !== "string") throw new Error("reason must be a string.");
         if (params.dry_run !== undefined && typeof params.dry_run !== "boolean") throw new Error("dry_run must be a boolean.");
         if (params.session_id !== undefined && typeof params.session_id !== "string") throw new Error("session_id must be a string.");
-        if (storeError) throw new Error(`Refine Cycle cannot use its store: ${storeError}`);
+        if (storeError) throw new Error(storeErrorText(store.root, storeError));
         const agentId = toolContext?.agentId || DEFAULT_AGENT;
         if (toolContext?.workspaceDir) workspaces.set(agentId, toolContext.workspaceDir);
         const explicit = typeof params.session_id === "string" && params.session_id.trim() ? params.session_id.trim() : undefined;
