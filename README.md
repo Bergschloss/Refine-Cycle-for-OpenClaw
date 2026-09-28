@@ -26,7 +26,7 @@
 - `/refine list` shows your lessons and their status; `/refine disable <id>` and `/refine delete <id>` take one away, and a lesson you took away is never learned again.
 - It never edits your `AGENTS.md`, `SOUL.md`, skills or memory. Lessons live in the plugin's own folder.
 - It does not filter your conversation or its lessons. The evidence for a lesson (the failing call's error and arguments, and the call that fixed it) goes to that model, as your agent would send it; the lessons and the plugin's records, which keep short excerpts of failed calls, stay in its folder on your machine. With several agents, the evidence from every agent goes to the default agent's model: OpenClaw does not let a plugin's background call choose the agent.
-- When it learns a lesson, it sends one line, such as "♾️ Refine Cycle — new lesson learned (lessons 412/4400)", to the chat you are talking from (or the last one you talked from, when the turn came from a cron job or the command line). The numbers are how many characters your active lessons take in the prompt, against a soft limit of 4400; it says `getting tight` from 90% and `over the soft limit` past it. Every active lesson is still shown: the limit is a warning, not a cut. Nothing else is sent unasked; `/refine` shows the lessons. `notifyOnLesson: false` turns this off.
+- When it learns a lesson, it sends one line, such as "♾️ Refine Cycle — new lesson learned (lessons 412/4400)", to the chat you are talking from (or the last one you talked from, when the turn came from a cron job or the command line). The numbers are how many characters your active lessons take in the prompt, against a soft limit of 4400; it says `getting tight` from 90% and `over the soft limit` past it. Every active lesson is still shown: the limit is a warning, not a cut. `notifyOnLesson: false` turns this off. The only other message it sends by itself is "♾️ Refine Cycle — update available: <version>", once per new release, with an **Update** button (on a channel without buttons, the command to type); pressing it runs `/refine update`, which answers "updated to <version>", "is up to date" or "update failed" with the reason. `checkForUpdates: false` turns that off.
 - If a hook fails or the store is unreadable, your agent's turn goes on as if the plugin were not there, and the log says why.
 
 ## How it works
@@ -89,6 +89,7 @@ openclaw refine-cycle list
 | `/refine run [reason]` | — | A learning pass over this chat's session now, with an optional focus for the model; the same budget and rules as the automatic pass (the command line has no current session) |
 | `/refine session <id> [reason]` | `openclaw refine-cycle session <id> [reason]` | The same, over one exact past session |
 | `/refine dry-run [session <id>] [reason]` | `openclaw refine-cycle dry-run session <id> [reason]` | Propose and check a lesson and show it, save nothing; it spends the session's call and one of the day's, as any pass does |
+| `/refine update` | `openclaw refine-cycle update` | Update the plugin with OpenClaw's own `plugins update`, with no restart; only senders on the channel's allowlist; a plugin loaded from a directory is not updated |
 | `/refine report` | `openclaw refine-cycle report` | What the loop decided and why, in words (`--json` on the command line for the numbers) |
 
 **The `refine_run` tool.** As in the Hermes plugin, the agent itself can ask for a pass over its own failures, with an optional `reason`, `session_id` and `dry_run`. It answers at once and the pass runs in the background under the same limits, so the agent's turn never waits for the model. It is an optional tool: OpenClaw shows it to the agent only when you add `refine_run` to `tools.alsoAllow` in `openclaw.json` (keep the entries already there), because each pass may spend one of the day's model calls.
@@ -108,6 +109,7 @@ Under `plugins.entries.refine-cycle.config` in `openclaw.json`. All are optional
 | `maxLessonChars` | `200` | Longest lesson accepted |
 | `instructionFiles` | `AGENTS.md`, `TOOLS.md`, `SOUL.md` | Files checked so a lesson never repeats a rule you already wrote |
 | `notifyOnLesson` | `true` | One line in your chat when a new lesson is learned |
+| `checkForUpdates` | `true` | Once a day, look for a newer release and tell you once, with an Update button |
 
 ## Documentation
 

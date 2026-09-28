@@ -755,3 +755,162 @@ test("refine_run keeps the budget and the rules, and refuses bad arguments and u
   assert.equal(calls.length, 1, "one call for the session, dry run or not");
   assert.ok(setup.logs.some((line) => line.includes("refine_run over s1: already had its call (nothing)")));
 });
+
+// -- Update available and /refine update --
+
+interface HostFake {
+  source: "git" | "path";
+  installed: string;
+  tags: string;
+  /** What `plugins update <id>` does: the version it lands on, or a failure. */
+  update: { to: string } | { code: number; stderr: string };
+  runs: string[][];
+  /** Exit code of `git ls-remote`: non-zero is a check without network. */
+  gitCode?: number;
+}
+
+function updateSetup(host: HostFake, adapter?: Record<string, unknown>, pluginConfig: Record<string, unknown> = {}) {
+  const stateDir = tempDir();
+  writeAgentDb(stateDir, { s1: new Transcript().user("hi").say("hello"), s2: new Transcript().user("hi").say("hello") });
+  const sent: Array<Record<string, unknown>> = [];
+  const commands = new Map<string, (ctx: Record<string, unknown>) => unknown>();
+  const hooks = new Map<string, Handler>();
+  const logs: string[] = [];
+  const runCommandWithTimeout = async (argv: string[]) => {
+    host.runs.push(argv);
+    if (argv[0] === "git") {
+      return host.gitCode ? { stdout: "", stderr: "fatal: unable to access: Could not resolve host: github.com\n", code: host.gitCode } : { stdout: host.tags, stderr: "", code: 0 };
+    }
+    const args = argv.slice(2);
+    if (args[1] === "inspect") {
+      const install = host.source === "git" ? { source: "git", version: host.installed, gitUrl: "file:///repo", gitCommit: `c-${host.installed}` } : undefined;
+      return { stdout: `[plugins] noise\n${JSON.stringify({ plugin: { version: host.installed, source: "/x/dist/plugin.js" }, ...(install ? { install } : {}) })}`, stderr: "", code: 0 };
+    }
+    if (args[1] === "update") {
+      if ("code" in host.update) return { stdout: "", stderr: host.update.stderr, code: host.update.code };
+      const from = host.installed;
+      if (from === host.update.to) return { stdout: `refine-cycle already at ${from}.\n`, stderr: "", code: 0 };
+      host.installed = host.update.to;
+      return { stdout: `Updated refine-cycle: ${from} -> ${host.update.to}.\n`, stderr: "", code: 0 };
+    }
+    return { stdout: "", stderr: "unexpected", code: 2 };
+  };
+  const api: PluginApi = {
+    id: "refine-cycle",
+    config: { plugins: { entries: { "refine-cycle": { hooks: { allowConversationAccess: true } } } } },
+    pluginConfig,
+    logger: { info: (m) => logs.push(m), warn: (m) => logs.push(`WARN ${m}`) },
+    runtime: {
+      state: { resolveStateDir: () => stateDir },
+      system: { runCommandWithTimeout },
+      channel: { outbound: { loadAdapter: async (id: string) => (id === "telegram" ? (adapter ?? { sendPayload: async (ctx: Record<string, unknown>) => void sent.push(ctx) }) : undefined) } },
+    },
+    on: (hook, handler) => hooks.set(hook, handler as Handler),
+    registerCommand: (command) => commands.set(command.name, command.handler as never),
+  };
+  register(api);
+  const turn = async (sessionId: string, chat = true) => {
+    hooks.get("agent_end")!({}, chat ? { sessionId, agentId: "main", channel: "telegram", chatId: "4242" } : { sessionId, agentId: "main" });
+    for (let i = 0; i < 10; i++) await settle();
+  };
+  const store = new FileStore(path.join(stateDir, "plugin-data", "refine-cycle"));
+  return { sent, commands, logs, turn, store, host };
+}
+
+const gitHost = (over: Partial<HostFake> = {}): HostFake => ({
+  source: "git", installed: "0.1.0", tags: "a\trefs/tags/v0.1.0\nb\trefs/tags/v0.2.0\n", update: { to: "0.2.0" }, runs: [], ...over,
+});
+
+test("a newer release is announced once, with an Update button that runs /refine update", async () => {
+  const setup = updateSetup(gitHost());
+  await setup.turn("s1");
+  assert.equal(setup.sent.length, 1);
+  assert.equal(setup.sent[0].text, "♾️ Refine Cycle — update available: 0.2.0");
+  assert.equal(setup.sent[0].to, "4242");
+  assert.deepEqual((setup.sent[0].payload as { presentation: unknown }).presentation, {
+    blocks: [{ type: "buttons", buttons: [{ label: "Update", action: { type: "command", command: "/refine update" } }] }],
+  });
+  assert.ok(setup.host.runs.some((argv) => argv.join(" ") === "git ls-remote --tags --refs file:///repo"), "tags only: no code is fetched");
+  // The next turn, the same day: no second check and no second message.
+  const runs = setup.host.runs.length;
+  await setup.turn("s2");
+  assert.equal(setup.sent.length, 1);
+  assert.equal(setup.host.runs.length, runs);
+});
+
+test("a version already announced is not announced again after the day's next check", async () => {
+  const setup = updateSetup(gitHost());
+  await setup.turn("s1");
+  const state = setup.store.read<{ checkedAt: string }>("update/state.json")!;
+  setup.store.write("update/state.json", { ...state, checkedAt: "2026-01-01T00:00:00Z" });
+  await setup.turn("s2");
+  assert.equal(setup.sent.length, 1);
+  assert.equal(setup.store.read<{ checkedAt: string }>("update/state.json")!.checkedAt > "2026-09-01", true, "it did check again");
+});
+
+test("a failed check is logged, not shown, and tried again after an hour", async () => {
+  const setup = updateSetup(gitHost({ gitCode: 128 }));
+  await setup.turn("s1");
+  assert.equal(setup.sent.length, 0);
+  assert.equal(setup.store.read<{ ok: boolean }>("update/state.json")!.ok, false);
+  assert.ok(setup.logs.some((line) => line.startsWith("WARN") && line.includes("update check failed, next try in an hour") && /could not resolve host/i.test(line)));
+  // The network is back, but within the hour nothing is tried.
+  setup.host.gitCode = 0;
+  const runs = setup.host.runs.length;
+  await setup.turn("s2");
+  assert.equal(setup.host.runs.length, runs);
+  assert.equal(setup.sent.length, 0);
+  // An hour later it is.
+  const state = setup.store.read<Record<string, unknown>>("update/state.json")!;
+  setup.store.write("update/state.json", { ...state, checkedAt: new Date(Date.now() - 61 * 60e3).toISOString() });
+  await setup.turn("s1");
+  assert.equal(setup.sent.length, 1);
+});
+test("no chat, no message: the version waits for a turn that has one", async () => {
+  const setup = updateSetup(gitHost());
+  await setup.turn("s1", false);
+  assert.equal(setup.sent.length, 0);
+  assert.ok(setup.logs.some((line) => line.includes("update 0.2.0: no chat to tell yet")));
+  await setup.turn("s2", true);
+  assert.equal(setup.sent.length, 1);
+});
+
+test("a channel without buttons gets the command to type instead", async () => {
+  const texts: string[] = [];
+  const payloads: unknown[] = [];
+  const setup = updateSetup(gitHost(), {
+    sendText: async (ctx: Record<string, unknown>) => void texts.push(String(ctx.text)),
+    sendPayload: async (ctx: Record<string, unknown>) => void payloads.push(ctx),
+    presentationCapabilities: { buttons: false },
+  });
+  await setup.turn("s1");
+  assert.deepEqual(texts, ["♾️ Refine Cycle — update available: 0.2.0\n/refine update — updates the plugin; no restart needed."]);
+  assert.equal(payloads.length, 0, "no buttons where the channel says it has none");
+});
+
+test("/refine update updates through the host and says to which version; up to date; refused for others", async () => {
+  const setup = updateSetup(gitHost());
+  const refine = setup.commands.get("refine")!;
+  assert.equal((await refine({ args: "update", agentId: "main", isAuthorizedSender: false }) as { text: string }).text, "Only an authorized sender may update Refine Cycle.");
+  assert.equal((await refine({ args: "update", agentId: "main", isAuthorizedSender: true }) as { text: string }).text, "♾️ Refine Cycle updated to 0.2.0.");
+  assert.ok(setup.host.runs.some((argv) => argv.slice(2).join(" ") === "plugins update refine-cycle"), "the host's own update, same entry point");
+  setup.host.update = { to: "0.2.0" };
+  const again = (await refine({ args: "update", agentId: "main" }) as { text: string }).text;
+  assert.equal(again, "♾️ Refine Cycle is up to date.");
+});
+
+test("a failed update says why in one line and the installed version stays", async () => {
+  const setup = updateSetup(gitHost({ update: { code: 1, stderr: "Cloning…\nError: git clone failed: could not resolve host github.com\n" } }));
+  const text = (await setup.commands.get("refine")!({ args: "update", agentId: "main" }) as { text: string }).text;
+  assert.equal(text, "♾️ Refine Cycle update failed. Error: git clone failed: could not resolve host github.com");
+  assert.equal(setup.host.installed, "0.1.0");
+});
+
+test("a plugin loaded from a path is not updated, and says so", async () => {
+  const setup = updateSetup(gitHost({ source: "path" }));
+  const text = (await setup.commands.get("refine")!({ args: "update", agentId: "main" }) as { text: string }).text;
+  assert.match(text, /^♾️ Refine Cycle update failed\. It is loaded from a path \(\/x\/dist\/plugin\.js\), not installed/);
+  assert.ok(!setup.host.runs.some((argv) => argv.includes("update")));
+  await setup.turn("s1");
+  assert.equal(setup.sent.length, 0, "nothing to announce for a path install");
+});

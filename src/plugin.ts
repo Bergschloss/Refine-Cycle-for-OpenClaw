@@ -24,6 +24,10 @@ import { audit, describeAudit, describePass, ensureLedger, describeReport, descr
 import { replay } from "./replay.ts";
 import { readSettings } from "./settings.ts";
 import { lessonNotice } from "./core/notice.ts";
+import {
+  actionLine, availableText, checkDue, failedText, failureReason, hostUpdateLine, isNewer, latestTag, toAnnounce,
+  UPDATE_COMMAND, updatedText, upToDateText, type UpdateState,
+} from "./core/update.ts";
 import { FileStore, StoreError } from "./store.ts";
 
 // The slice of OpenClaw's plugin API this plugin uses (openclaw 2026.9.5,
@@ -50,10 +54,15 @@ interface Chat {
 /** A channel's outbound adapter, as far as the plugin uses it (plugin-sdk ChannelOutboundAdapter). */
 interface OutboundAdapter {
   sendText?: (ctx: { cfg: unknown; to: string; text: string; accountId?: string | null }) => Promise<unknown>;
+  /** A payload with a `presentation` (buttons): the channel renders it natively or as text (2026.9.6). */
+  sendPayload?: (ctx: { cfg: unknown; to: string; text: string; accountId?: string | null; payload: Record<string, unknown> }) => Promise<unknown>;
+  presentationCapabilities?: { supported?: boolean; buttons?: boolean };
 }
 
 interface CommandContext {
   args?: string;
+  /** False when the sender is not on the channel's allowlist (the host refuses them unless a command opts out). */
+  isAuthorizedSender?: boolean;
   /** The host's session for the chat, when the command has one. */
   sessionId?: string;
   /** The host's agent for the command's session; absent when the command has no session. */
@@ -107,6 +116,9 @@ export interface PluginApi {
       complete?: (params: Record<string, unknown>) => Promise<{ text: string }>;
     };
     agent?: { resolveAgentWorkspaceDir?: (cfg: unknown, agentId: string) => string };
+    system?: {
+      runCommandWithTimeout?: (argv: string[], options: { timeoutMs?: number; maxOutputBytes?: number }) => Promise<{ stdout: string; stderr: string; code: number | null }>;
+    };
     channel?: { outbound?: { loadAdapter?: (id: string) => Promise<OutboundAdapter | undefined> } };
   };
   on(hook: string, handler: (event: unknown, ctx: HookContext) => unknown, options?: { timeoutMs?: number }): void;
@@ -416,7 +428,169 @@ export default function register(api: PluginApi): void {
       } catch (error) {
         warn(`learning skipped for ${sessionId}: ${String(error)}`);
       }
+      afterTurn(currentChat(agentId, turnChat));
     });
+  };
+
+  // -- Update available, and /refine update -------------------------------------------
+
+  /** Run the host's own CLI, with the running gateway's entry point, state dir and config. */
+  const hostCli = async (args: string[], timeoutMs: number) => {
+    const run = api.runtime?.system?.runCommandWithTimeout;
+    if (!run) throw new Error("OpenClaw offers the plugin no way to run its CLI");
+    const entry = process.argv[1];
+    if (!entry) throw new Error("cannot tell how OpenClaw was started");
+    return run([process.execPath, entry, ...args], { timeoutMs, maxOutputBytes: 4_000_000 });
+  };
+
+  interface InstallInfo {
+    /** git, clawhub, npm, or path: loaded from a directory and not installed. */
+    source: string;
+    version: string;
+    gitUrl?: string;
+    gitCommit?: string;
+    path?: string;
+  }
+
+  /** Where the plugin was installed from, from the host's own install record (`plugins inspect --json`). */
+  const installInfo = async (): Promise<InstallInfo> => {
+    const result = await hostCli(["plugins", "inspect", api.id, "--json"], 60_000);
+    const start = result.stdout.indexOf("{");
+    if (result.code !== 0 || start < 0) throw new Error(`plugins inspect: ${failureReason(result.stdout, result.stderr)}`);
+    const data = JSON.parse(result.stdout.slice(start)) as {
+      plugin?: { version?: string; source?: string };
+      install?: { source?: string; version?: string; gitUrl?: string; gitCommit?: string };
+    };
+    const install = data.install;
+    return {
+      source: install?.source || "path",
+      version: install?.version || data.plugin?.version || version,
+      ...(install?.gitUrl ? { gitUrl: install.gitUrl } : {}),
+      ...(install?.gitCommit ? { gitCommit: install.gitCommit } : {}),
+      ...(data.plugin?.source ? { path: data.plugin.source } : {}),
+    };
+  };
+
+  const UPDATE_STATE = "update/state.json";
+  let checking = false;
+
+  /**
+   * At most once a day, an hour after a failure: find the newest release. A git install
+   * compares release tags (`git ls-remote --tags`, refs only, no code); a ClawHub or npm
+   * install asks the host (`plugins update --dry-run`). A failed check is logged, not shown.
+   */
+  const checkForUpdate = async (now: Date): Promise<UpdateState | undefined> => {
+    const state = store.read<UpdateState>(UPDATE_STATE) ?? { announced: [] };
+    if (!settings.checkForUpdates || checking || !checkDue(state, now)) return state;
+    checking = true;
+    try {
+      const info = await installInfo();
+      let latest: string | null = null;
+      if (info.source === "git" && info.gitUrl) {
+        const run = api.runtime?.system?.runCommandWithTimeout;
+        if (!run) throw new Error("OpenClaw offers the plugin no way to run git");
+        const tags = await run(["git", "ls-remote", "--tags", "--refs", info.gitUrl], { timeoutMs: 30_000, maxOutputBytes: 1_000_000 });
+        if (tags.code !== 0) throw new Error(`git ls-remote: ${failureReason(tags.stdout, tags.stderr)}`);
+        latest = latestTag(tags.stdout);
+      } else if (info.source === "clawhub" || info.source === "npm") {
+        const dry = await hostCli(["plugins", "update", api.id, "--dry-run"], 120_000);
+        if (dry.code !== 0) throw new Error(`plugins update --dry-run: ${failureReason(dry.stdout, dry.stderr)}`);
+        latest = hostUpdateLine(`${dry.stdout}\n${dry.stderr}`, api.id, "would")?.to ?? info.version;
+      }
+      const next: UpdateState = { ...state, checkedAt: now.toISOString(), ok: true, source: info.source, installed: info.version, latest };
+      delete next.error;
+      store.write(UPDATE_STATE, next);
+      log(`update check: ${info.source} install ${info.version}, latest ${latest ?? "(nothing to compare: loaded from a path)"}`);
+      return next;
+    } catch (error) {
+      const next: UpdateState = { ...state, checkedAt: now.toISOString(), ok: false, error: String(error).slice(0, 300) };
+      store.write(UPDATE_STATE, next);
+      warn(`update check failed, next try in an hour: ${next.error}`);
+      return next;
+    } finally {
+      checking = false;
+    }
+  };
+
+  /** One message per new version, in the chat the user talks from, with an Update button where the channel has buttons. */
+  const announceUpdate = async (state: UpdateState | undefined, chat: Chat | null): Promise<void> => {
+    const latest = toAnnounce(state);
+    if (!latest || !state) return;
+    if (!chat) {
+      log(`update ${latest}: no chat to tell yet`);
+      return;
+    }
+    const text = availableText(latest);
+    let sent = false;
+    try {
+      const adapter = await api.runtime?.channel?.outbound?.loadAdapter?.(chat.channel);
+      if (adapter?.sendPayload && adapter.presentationCapabilities?.buttons !== false && adapter.presentationCapabilities?.supported !== false) {
+        await adapter.sendPayload({
+          cfg: api.config,
+          to: chat.to,
+          text,
+          accountId: chat.accountId ?? null,
+          payload: { text, presentation: { blocks: [{ type: "buttons", buttons: [{ label: "Update", action: { type: "command", command: UPDATE_COMMAND } }] }] } },
+        });
+        sent = true;
+        log(`update ${latest}: told the user on ${chat.channel}, with the Update button`);
+      } else {
+        sent = await say(chat, `${text}\n${actionLine()}`, `update ${latest}`);
+      }
+    } catch (error) {
+      warn(`update ${latest}: could not tell the user on ${chat.channel}: ${String(error)}`);
+    }
+    if (sent) store.write(UPDATE_STATE, { ...state, announced: [...state.announced, latest].slice(-20) });
+  };
+
+  /** After a turn: the daily check, off the learning queue, then the message if there is a new version. */
+  const afterTurn = (chat: Chat | null) => {
+    if (!settings.checkForUpdates || storeError) return;
+    void runOutsideHostWorkScope(async () => {
+      try {
+        await announceUpdate(await checkForUpdate(new Date()), chat);
+      } catch (error) {
+        warn(`update check skipped: ${String(error)}`);
+      }
+    });
+  };
+
+  let updating = false;
+
+  /**
+   * The host's own update of this plugin, as a user would run it: `openclaw plugins
+   * update <id>`. With a running gateway the host applies it without a restart. A failure
+   * leaves the installed version in place (the host rolls back) and is said in one line.
+   */
+  const runUpdate = async (): Promise<{ text: string; ok: boolean }> => {
+    if (updating) return { text: failedText("An update is already running."), ok: false };
+    updating = true;
+    try {
+      const before = await installInfo();
+      if (before.source === "path") {
+        return {
+          text: failedText(`It is loaded from a path (${before.path ?? "a directory"}), not installed, so OpenClaw cannot update it; update that directory instead.`),
+          ok: false,
+        };
+      }
+      const result = await hostCli(["plugins", "update", api.id], 300_000);
+      if (result.code !== 0) return { text: failedText(failureReason(result.stdout, result.stderr)), ok: false };
+      const output = `${result.stdout}\n${result.stderr}`;
+      // The host says "<id> already at <version>." when there is nothing newer (2026.9.6).
+      if (output.includes(`${api.id} already at `)) return { text: upToDateText(), ok: true };
+      const after = await installInfo().catch(() => undefined);
+      const line = hostUpdateLine(output, api.id, "updated");
+      const changed = !!after && (after.version !== before.version || (after.gitCommit ?? "") !== (before.gitCommit ?? ""));
+      if (!line && !changed) return { text: upToDateText(), ok: true };
+      const to = after?.version ?? line?.to ?? "the latest version";
+      const state = store.read<UpdateState>(UPDATE_STATE);
+      if (state) store.write(UPDATE_STATE, { ...state, installed: to });
+      return { text: updatedText(to), ok: true };
+    } catch (error) {
+      return { text: failedText(String(error).replace(/^Error: /, "").slice(0, 200)), ok: false };
+    } finally {
+      updating = false;
+    }
   };
 
   /**
@@ -454,10 +628,20 @@ export default function register(api: PluginApi): void {
     agentId?: string;
     /** The chat's own session, when the host gives it. */
     sessionId?: string;
+    /** From the host: is the sender on the channel's allowlist. */
+    authorized?: boolean;
     json?: boolean;
   }
 
-  const USAGE = "Usage: list | status | audit | report | run [reason] | session <id> [reason] | dry-run [session <id>] [reason] | disable <id> | delete <id>";
+  const USAGE = "Usage: list | status | audit | report | run [reason] | session <id> [reason] | dry-run [session <id>] [reason] | update | disable <id> | delete <id>";
+
+  /** An update the last check found, for `status`. */
+  const updateWarnings = (): string[] => {
+    const state = store.read<UpdateState>(UPDATE_STATE);
+    return state?.ok && state.latest && state.installed && isNewer(state.latest, state.installed)
+      ? [`Refine Cycle ${state.latest} is available (installed ${state.installed}): ${UPDATE_COMMAND}`]
+      : [];
+  };
 
   /**
    * One place for chat and command line. `ok` is false when the command did not do what
@@ -515,13 +699,29 @@ export default function register(api: PluginApi): void {
         llmAvailable: llm !== null,
         conversationAccess: hookPolicy?.allowConversationAccess === true,
         promptInjection: injectionAllowed,
-        hostWarnings: [],
+        hostWarnings: updateWarnings(),
         recovery: lastRecovery,
       }, (agent) => depsFor(agent));
       return { text: scope.json ? JSON.stringify(s, null, 2) : describeStatus(s, agentId !== undefined), ok: true };
     }
     if (verb === "run" || verb === "session" || verb === "dry-run") {
       return passCommand(args, scope);
+    }
+    if (verb === "update") {
+      if (agentId === undefined) return runUpdate();
+      // The host already refuses senders off the allowlist; this holds if a host lets one through.
+      if (scope.authorized === false) return { text: "Only an authorized sender may update Refine Cycle.", ok: false };
+      const update = runUpdate();
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const late = new Promise<null>((resolve) => {
+        timer = setTimeout(() => resolve(null), timing.chatWaitMs);
+      });
+      const first = await Promise.race([update, late]);
+      clearTimeout(timer);
+      if (first) return first;
+      const owner = agentId;
+      void update.then((result) => say(currentChat(owner, null), result.text, "update"));
+      return { text: "Updating Refine Cycle; the result follows in this chat.", ok: true };
     }
     return { text: USAGE, ok: false };
   };
@@ -593,7 +793,7 @@ export default function register(api: PluginApi): void {
 
   api.registerCommand?.({
     name: "refine",
-    description: "Refine Cycle: list, status, audit, report, run [reason], session <id>, dry-run, disable <id>, delete <id>",
+    description: "Refine Cycle: list, status, audit, report, run [reason], session <id>, dry-run, update, disable <id>, delete <id>",
     acceptsArgs: true,
     handler: async (ctx) => {
       const agentId = commandAgent(ctx);
@@ -601,7 +801,13 @@ export default function register(api: PluginApi): void {
       if (!agentId && !storeError) {
         return { text: "Refine Cycle cannot tell which agent this chat belongs to. Use `openclaw refine-cycle` on the command line." };
       }
-      return { text: (await control(ctx?.args ?? "", { agentId: agentId ?? DEFAULT_AGENT, ...(ctx?.sessionId ? { sessionId: ctx.sessionId } : {}) })).text };
+      return {
+        text: (await control(ctx?.args ?? "", {
+          agentId: agentId ?? DEFAULT_AGENT,
+          ...(ctx?.sessionId ? { sessionId: ctx.sessionId } : {}),
+          ...(ctx?.isAuthorizedSender !== undefined ? { authorized: ctx.isAuthorizedSender } : {}),
+        })).text,
+      };
     },
   });
 
@@ -639,6 +845,10 @@ export default function register(api: PluginApi): void {
         .command("dry-run [args...]")
         .description("dry-run session <id> [reason]: propose and check a lesson, save nothing (the call is spent like any other)")
         .action(async (rest) => print(await control(`dry-run ${words(rest)}`)));
+      root
+        .command("update")
+        .description("Update the plugin with OpenClaw's own plugins update, and say to which version")
+        .action(async () => print(await control("update")));
       root.command("disable <id>").description("Stop injecting a lesson").action(async (id) => print(await control(`disable ${String(id)}`)));
       root.command("delete <id>").description("Delete a lesson (kept as a tombstone)").action(async (id) => print(await control(`delete ${String(id)}`)));
       root

@@ -104,6 +104,11 @@
         "default": true,
         "description": "Send one line to the chat you are talking from when a new lesson is learned."
       },
+      "checkForUpdates": {
+        "type": "boolean",
+        "default": true,
+        "description": "Once a day, look for a newer release and send one message about it, with an Update button, to the chat you talk from."
+      },
       "historyDbPath": {
         "type": "string",
         "default": "",

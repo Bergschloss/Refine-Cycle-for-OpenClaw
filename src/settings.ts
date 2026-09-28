@@ -29,6 +29,8 @@ export interface Settings {
   historyDbPath: string;
   /** Tell the user, in the chat the lesson came from, when a new lesson is learned. */
   notifyOnLesson: boolean;
+  /** Once a day, look for a newer release and tell the user once, with an Update button. */
+  checkForUpdates: boolean;
 }
 
 export const DEFAULTS: Settings = {
@@ -47,6 +49,7 @@ export const DEFAULTS: Settings = {
   skillDirs: [],
   historyDbPath: "",
   notifyOnLesson: true,
+  checkForUpdates: true,
 };
 
 export function readSettings(raw: unknown): Settings {

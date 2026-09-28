@@ -19,6 +19,7 @@ export const DEFAULTS = {
     skillDirs: [],
     historyDbPath: "",
     notifyOnLesson: true,
+    checkForUpdates: true,
 };
 export function readSettings(raw) {
     const input = typeof raw === "object" && raw !== null ? raw : {};
