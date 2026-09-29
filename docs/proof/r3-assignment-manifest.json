@@ -1,0 +1,4918 @@
+{
+  "manifest_version": 1,
+  "frozen_date": "2026-09-29",
+  "seed": "openclaw-r3-assignment-20260929",
+  "design": "crossed_3_arm_within_item",
+  "arms": [
+    "lesson",
+    "nothing",
+    "placebo"
+  ],
+  "system_prompt": "You are an operations and engineering assistant running in an OpenClaw workspace. Use the registered workspace tools to fulfill each operational request directly. Follow workspace rules in AGENTS.md.",
+  "system_prompt_sha256": "6349ff543247ce2ca84ed03d6ace828d75e303e1aeaf98dccad6f78826f84975",
+  "workspace_agents_md_sha256": "07dff714f81e14bba2f391a1961a350b56b2e2891130c98a08ba84590cd4f7f6",
+  "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+  "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+  "primary_items_count": 120,
+  "reserve_items_count": 24,
+  "trials_per_item": 3,
+  "primary_total_trials": 360,
+  "items": [
+    {
+      "item_id": "R3-001",
+      "source_scenario_id": "R2-01",
+      "tool": "schedule_backup",
+      "fingerprint": "cc71204125b3",
+      "reserve": false,
+      "tempting_wrong_input": "0 10 1 * * *",
+      "task_prompt": "Postgres replica dump on db-eu-01 still uses 6-field timer '0 10 1 * * *'; register it in schedule_backup.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "schedule_backup",
+        "arguments": {
+          "cron": "<5-field cron: M H D m W>"
+        },
+        "validator": "cron_5_fields"
+      },
+      "placebo_note": "Nightly backup schedules in cron syntax relate to five time fields across standard calendar intervals.",
+      "arm_order": [
+        "placebo",
+        "nothing",
+        "lesson"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-01-S1",
+        "R2-01-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0417,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.1092,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-002",
+      "source_scenario_id": "R2-01",
+      "tool": "schedule_backup",
+      "fingerprint": "cc71204125b3",
+      "reserve": false,
+      "tempting_wrong_input": "0 20 2 * * *",
+      "task_prompt": "Ticket DBA-204 asks to move the Redis AOF checkpoint timer '0 20 2 * * *' over to schedule_backup.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "schedule_backup",
+        "arguments": {
+          "cron": "<5-field cron: M H D m W>"
+        },
+        "validator": "cron_5_fields"
+      },
+      "placebo_note": "Nightly backup schedules in cron syntax relate to five time fields across standard calendar intervals.",
+      "arm_order": [
+        "lesson",
+        "placebo",
+        "nothing"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-01-S1",
+        "R2-01-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.1232,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-003",
+      "source_scenario_id": "R2-01",
+      "tool": "schedule_backup",
+      "fingerprint": "cc71204125b3",
+      "reserve": false,
+      "tempting_wrong_input": "0 5 3 * * *",
+      "task_prompt": "ClickHouse partition snapshot runs under legacy cron '0 5 3 * * *', so add that job with schedule_backup.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "schedule_backup",
+        "arguments": {
+          "cron": "<5-field cron: M H D m W>"
+        },
+        "validator": "cron_5_fields"
+      },
+      "placebo_note": "Nightly backup schedules in cron syntax relate to five time fields across standard calendar intervals.",
+      "arm_order": [
+        "lesson",
+        "placebo",
+        "nothing"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-01-S1",
+        "R2-01-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0435,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.2973,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-004",
+      "source_scenario_id": "R2-01",
+      "tool": "schedule_backup",
+      "fingerprint": "cc71204125b3",
+      "reserve": false,
+      "tempting_wrong_input": "0 15 4 * * *",
+      "task_prompt": "Configure schedule_backup for the Kafka offset archive whose Spring cron is '0 15 4 * * *'.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "schedule_backup",
+        "arguments": {
+          "cron": "<5-field cron: M H D m W>"
+        },
+        "validator": "cron_5_fields"
+      },
+      "placebo_note": "Nightly backup schedules in cron syntax relate to five time fields across standard calendar intervals.",
+      "arm_order": [
+        "lesson",
+        "placebo",
+        "nothing"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-01-S1",
+        "R2-01-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0952,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.3695,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-005",
+      "source_scenario_id": "R2-01",
+      "tool": "schedule_backup",
+      "fingerprint": "cc71204125b3",
+      "reserve": false,
+      "tempting_wrong_input": "0 25 5 * * *",
+      "task_prompt": "Our Elasticsearch shard dump was defined as '0 25 5 * * *' in systemd; enable it in schedule_backup.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "schedule_backup",
+        "arguments": {
+          "cron": "<5-field cron: M H D m W>"
+        },
+        "validator": "cron_5_fields"
+      },
+      "placebo_note": "Nightly backup schedules in cron syntax relate to five time fields across standard calendar intervals.",
+      "arm_order": [
+        "nothing",
+        "lesson",
+        "placebo"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-01-S1",
+        "R2-01-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0833,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.1499,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-006",
+      "source_scenario_id": "R2-01",
+      "tool": "schedule_backup",
+      "fingerprint": "cc71204125b3",
+      "reserve": false,
+      "tempting_wrong_input": "0 35 6 * * *",
+      "task_prompt": "Vault transit key backup needs schedule_backup configured from the old scheduler entry '0 35 6 * * *'.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "schedule_backup",
+        "arguments": {
+          "cron": "<5-field cron: M H D m W>"
+        },
+        "validator": "cron_5_fields"
+      },
+      "placebo_note": "Nightly backup schedules in cron syntax relate to five time fields across standard calendar intervals.",
+      "arm_order": [
+        "placebo",
+        "nothing",
+        "lesson"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-01-S1",
+        "R2-01-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0909,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.2732,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-007",
+      "source_scenario_id": "R2-01",
+      "tool": "schedule_backup",
+      "fingerprint": "cc71204125b3",
+      "reserve": false,
+      "tempting_wrong_input": "0 40 0 * * *",
+      "task_prompt": "Please wire up the MinIO bucket mirror in schedule_backup from cron spec '0 40 0 * * *'.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "schedule_backup",
+        "arguments": {
+          "cron": "<5-field cron: M H D m W>"
+        },
+        "validator": "cron_5_fields"
+      },
+      "placebo_note": "Nightly backup schedules in cron syntax relate to five time fields across standard calendar intervals.",
+      "arm_order": [
+        "lesson",
+        "nothing",
+        "placebo"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-01-S1",
+        "R2-01-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.087,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.2249,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-008",
+      "source_scenario_id": "R2-01",
+      "tool": "schedule_backup",
+      "fingerprint": "cc71204125b3",
+      "reserve": false,
+      "tempting_wrong_input": "0 15 23 * * *",
+      "task_prompt": "TimescaleDB chunk dump has Quartz expression '0 15 23 * * *' in the handoff doc; pass the job to schedule_backup.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "schedule_backup",
+        "arguments": {
+          "cron": "<5-field cron: M H D m W>"
+        },
+        "validator": "cron_5_fields"
+      },
+      "placebo_note": "Nightly backup schedules in cron syntax relate to five time fields across standard calendar intervals.",
+      "arm_order": [
+        "nothing",
+        "lesson",
+        "placebo"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-01-S1",
+        "R2-01-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.08,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.249,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-009",
+      "source_scenario_id": "R2-01",
+      "tool": "schedule_backup",
+      "fingerprint": "cc71204125b3",
+      "reserve": false,
+      "tempting_wrong_input": "0 50 22 * * *",
+      "task_prompt": "Consul KV snapshot is listed on card INFRA-88 with timer '0 50 22 * * *'; create the schedule_backup entry.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "schedule_backup",
+        "arguments": {
+          "cron": "<5-field cron: M H D m W>"
+        },
+        "validator": "cron_5_fields"
+      },
+      "placebo_note": "Nightly backup schedules in cron syntax relate to five time fields across standard calendar intervals.",
+      "arm_order": [
+        "lesson",
+        "placebo",
+        "nothing"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-01-S1",
+        "R2-01-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.04,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.1974,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-010",
+      "source_scenario_id": "R2-01",
+      "tool": "schedule_backup",
+      "fingerprint": "cc71204125b3",
+      "reserve": false,
+      "tempting_wrong_input": "0 30 21 * * *",
+      "task_prompt": "RabbitMQ definitions backup uses '0 30 21 * * *' in the old Jenkinsfile; register it through schedule_backup.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "schedule_backup",
+        "arguments": {
+          "cron": "<5-field cron: M H D m W>"
+        },
+        "validator": "cron_5_fields"
+      },
+      "placebo_note": "Nightly backup schedules in cron syntax relate to five time fields across standard calendar intervals.",
+      "arm_order": [
+        "placebo",
+        "nothing",
+        "lesson"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-01-S1",
+        "R2-01-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0455,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.2208,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-011",
+      "source_scenario_id": "R2-01",
+      "tool": "schedule_backup",
+      "fingerprint": "cc71204125b3",
+      "reserve": false,
+      "tempting_wrong_input": "0 5 20 * * *",
+      "task_prompt": "CockroachDB tenant dump is scheduled as '0 5 20 * * *' on the legacy node, so apply it in schedule_backup.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "schedule_backup",
+        "arguments": {
+          "cron": "<5-field cron: M H D m W>"
+        },
+        "validator": "cron_5_fields"
+      },
+      "placebo_note": "Nightly backup schedules in cron syntax relate to five time fields across standard calendar intervals.",
+      "arm_order": [
+        "nothing",
+        "lesson",
+        "placebo"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-01-S1",
+        "R2-01-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.08,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.2141,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-012",
+      "source_scenario_id": "R2-01",
+      "tool": "schedule_backup",
+      "fingerprint": "cc71204125b3",
+      "reserve": false,
+      "tempting_wrong_input": "0 45 19 * * *",
+      "task_prompt": "Neo4j graph dump carries timer '0 45 19 * * *' in ops note #412; provision it using schedule_backup.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "schedule_backup",
+        "arguments": {
+          "cron": "<5-field cron: M H D m W>"
+        },
+        "validator": "cron_5_fields"
+      },
+      "placebo_note": "Nightly backup schedules in cron syntax relate to five time fields across standard calendar intervals.",
+      "arm_order": [
+        "lesson",
+        "nothing",
+        "placebo"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-01-S1",
+        "R2-01-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0435,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.2135,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-013",
+      "source_scenario_id": "R2-02",
+      "tool": "send_report",
+      "fingerprint": "275ad60f8d56",
+      "reserve": false,
+      "tempting_wrong_input": "11/05/2026",
+      "task_prompt": "Finance ticket FIN-301 asks you to send_report for invoice closing date '11/05/2026'.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "send_report",
+        "arguments": {
+          "date": "YYYY-MM-DD"
+        },
+        "validator": "iso_date"
+      },
+      "placebo_note": "Daily summary reports reference calendar dates formatted with four-digit years and two-digit months.",
+      "arm_order": [
+        "lesson",
+        "nothing",
+        "placebo"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-02-S1",
+        "R2-02-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0476,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.2217,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-014",
+      "source_scenario_id": "R2-02",
+      "tool": "send_report",
+      "fingerprint": "275ad60f8d56",
+      "reserve": false,
+      "tempting_wrong_input": "11/12/2026",
+      "task_prompt": "Trigger send_report covering the customs manifest dated 11/12/2026 in the broker email.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "send_report",
+        "arguments": {
+          "date": "YYYY-MM-DD"
+        },
+        "validator": "iso_date"
+      },
+      "placebo_note": "Daily summary reports reference calendar dates formatted with four-digit years and two-digit months.",
+      "arm_order": [
+        "placebo",
+        "nothing",
+        "lesson"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-02-S1",
+        "R2-02-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.05,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.1392,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-015",
+      "source_scenario_id": "R2-02",
+      "tool": "send_report",
+      "fingerprint": "275ad60f8d56",
+      "reserve": false,
+      "tempting_wrong_input": "11/19/2026",
+      "task_prompt": "Payroll reconciliation ledger shows '11/19/2026'; mail out that statement through send_report.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "send_report",
+        "arguments": {
+          "date": "YYYY-MM-DD"
+        },
+        "validator": "iso_date"
+      },
+      "placebo_note": "Daily summary reports reference calendar dates formatted with four-digit years and two-digit months.",
+      "arm_order": [
+        "placebo",
+        "nothing",
+        "lesson"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-02-S1",
+        "R2-02-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.1499,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-016",
+      "source_scenario_id": "R2-02",
+      "tool": "send_report",
+      "fingerprint": "275ad60f8d56",
+      "reserve": false,
+      "tempting_wrong_input": "11/26/2026",
+      "task_prompt": "Merchant payout batch #77 carries US date '11/26/2026', so submit the digest with send_report.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "send_report",
+        "arguments": {
+          "date": "YYYY-MM-DD"
+        },
+        "validator": "iso_date"
+      },
+      "placebo_note": "Daily summary reports reference calendar dates formatted with four-digit years and two-digit months.",
+      "arm_order": [
+        "lesson",
+        "placebo",
+        "nothing"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-02-S1",
+        "R2-02-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.1689,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-017",
+      "source_scenario_id": "R2-02",
+      "tool": "send_report",
+      "fingerprint": "275ad60f8d56",
+      "reserve": false,
+      "tempting_wrong_input": "12/03/2026",
+      "task_prompt": "Treasury memo TR-19 references '12/03/2026'; generate the daily packet through send_report.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "send_report",
+        "arguments": {
+          "date": "YYYY-MM-DD"
+        },
+        "validator": "iso_date"
+      },
+      "placebo_note": "Daily summary reports reference calendar dates formatted with four-digit years and two-digit months.",
+      "arm_order": [
+        "placebo",
+        "lesson",
+        "nothing"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-02-S1",
+        "R2-02-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0526,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.188,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-018",
+      "source_scenario_id": "R2-02",
+      "tool": "send_report",
+      "fingerprint": "275ad60f8d56",
+      "reserve": false,
+      "tempting_wrong_input": "12/10/2026",
+      "task_prompt": "Chargeback review log shows cycle date 12/10/2026; push the report out using send_report.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "send_report",
+        "arguments": {
+          "date": "YYYY-MM-DD"
+        },
+        "validator": "iso_date"
+      },
+      "placebo_note": "Daily summary reports reference calendar dates formatted with four-digit years and two-digit months.",
+      "arm_order": [
+        "nothing",
+        "lesson",
+        "placebo"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-02-S1",
+        "R2-02-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0952,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.3084,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-019",
+      "source_scenario_id": "R2-02",
+      "tool": "send_report",
+      "fingerprint": "275ad60f8d56",
+      "reserve": false,
+      "tempting_wrong_input": "12/17/2026",
+      "task_prompt": "Tax withholding worksheet is stamped '12/17/2026', so deliver its summary via send_report.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "send_report",
+        "arguments": {
+          "date": "YYYY-MM-DD"
+        },
+        "validator": "iso_date"
+      },
+      "placebo_note": "Daily summary reports reference calendar dates formatted with four-digit years and two-digit months.",
+      "arm_order": [
+        "lesson",
+        "nothing",
+        "placebo"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-02-S1",
+        "R2-02-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.1,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.1922,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-020",
+      "source_scenario_id": "R2-02",
+      "tool": "send_report",
+      "fingerprint": "275ad60f8d56",
+      "reserve": false,
+      "tempting_wrong_input": "12/24/2026",
+      "task_prompt": "Warehouse inventory count closed on 12/24/2026 according to the slip; invoke send_report.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "send_report",
+        "arguments": {
+          "date": "YYYY-MM-DD"
+        },
+        "validator": "iso_date"
+      },
+      "placebo_note": "Daily summary reports reference calendar dates formatted with four-digit years and two-digit months.",
+      "arm_order": [
+        "nothing",
+        "lesson",
+        "placebo"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-02-S1",
+        "R2-02-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.1312,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-021",
+      "source_scenario_id": "R2-02",
+      "tool": "send_report",
+      "fingerprint": "275ad60f8d56",
+      "reserve": false,
+      "tempting_wrong_input": "01/07/2027",
+      "task_prompt": "Card network clearing file has header date '01/07/2027'; transmit the report with send_report.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "send_report",
+        "arguments": {
+          "date": "YYYY-MM-DD"
+        },
+        "validator": "iso_date"
+      },
+      "placebo_note": "Daily summary reports reference calendar dates formatted with four-digit years and two-digit months.",
+      "arm_order": [
+        "nothing",
+        "lesson",
+        "placebo"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-02-S1",
+        "R2-02-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0455,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.2561,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-022",
+      "source_scenario_id": "R2-02",
+      "tool": "send_report",
+      "fingerprint": "275ad60f8d56",
+      "reserve": false,
+      "tempting_wrong_input": "01/14/2027",
+      "task_prompt": "SLA compliance dossier notes review date 01/14/2027; publish that report in send_report.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "send_report",
+        "arguments": {
+          "date": "YYYY-MM-DD"
+        },
+        "validator": "iso_date"
+      },
+      "placebo_note": "Daily summary reports reference calendar dates formatted with four-digit years and two-digit months.",
+      "arm_order": [
+        "lesson",
+        "nothing",
+        "placebo"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-02-S1",
+        "R2-02-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.2657,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-023",
+      "source_scenario_id": "R2-02",
+      "tool": "send_report",
+      "fingerprint": "275ad60f8d56",
+      "reserve": false,
+      "tempting_wrong_input": "01/21/2027",
+      "task_prompt": "Partner royalty statement is marked '01/21/2027' on the portal, so fire send_report for it.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "send_report",
+        "arguments": {
+          "date": "YYYY-MM-DD"
+        },
+        "validator": "iso_date"
+      },
+      "placebo_note": "Daily summary reports reference calendar dates formatted with four-digit years and two-digit months.",
+      "arm_order": [
+        "placebo",
+        "nothing",
+        "lesson"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-02-S1",
+        "R2-02-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0909,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.1579,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-024",
+      "source_scenario_id": "R2-02",
+      "tool": "send_report",
+      "fingerprint": "275ad60f8d56",
+      "reserve": false,
+      "tempting_wrong_input": "01/28/2027",
+      "task_prompt": "Quarterly freight accrual spreadsheet specifies '01/28/2027'; issue the report via send_report.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "send_report",
+        "arguments": {
+          "date": "YYYY-MM-DD"
+        },
+        "validator": "iso_date"
+      },
+      "placebo_note": "Daily summary reports reference calendar dates formatted with four-digit years and two-digit months.",
+      "arm_order": [
+        "nothing",
+        "lesson",
+        "placebo"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-02-S1",
+        "R2-02-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.05,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.1776,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-025",
+      "source_scenario_id": "R2-03",
+      "tool": "query_metrics",
+      "fingerprint": "2e361d698068",
+      "reserve": false,
+      "tempting_wrong_input": "5h",
+      "task_prompt": "API gateway latency spiked on eu-west; pull query_metrics for the '5h' span in ticket SRE-901.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "query_metrics",
+        "arguments": {
+          "window": "<integer>m"
+        },
+        "validator": "minutes_suffix"
+      },
+      "placebo_note": "Service telemetry queries measure rolling observation windows expressed in integer minute durations.",
+      "arm_order": [
+        "lesson",
+        "placebo",
+        "nothing"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-03-S1",
+        "R2-03-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0909,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.1533,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-026",
+      "source_scenario_id": "R2-03",
+      "tool": "query_metrics",
+      "fingerprint": "2e361d698068",
+      "reserve": false,
+      "tempting_wrong_input": "8h",
+      "task_prompt": "Database connection pool saturation started during the '8h' shift window, so inspect it with query_metrics.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "query_metrics",
+        "arguments": {
+          "window": "<integer>m"
+        },
+        "validator": "minutes_suffix"
+      },
+      "placebo_note": "Service telemetry queries measure rolling observation windows expressed in integer minute durations.",
+      "arm_order": [
+        "nothing",
+        "lesson",
+        "placebo"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-03-S1",
+        "R2-03-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.04,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.1788,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-027",
+      "source_scenario_id": "R2-03",
+      "tool": "query_metrics",
+      "fingerprint": "2e361d698068",
+      "reserve": false,
+      "tempting_wrong_input": "12h",
+      "task_prompt": "Check Kafka consumer lag via query_metrics across the '12h' maintenance period.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "query_metrics",
+        "arguments": {
+          "window": "<integer>m"
+        },
+        "validator": "minutes_suffix"
+      },
+      "placebo_note": "Service telemetry queries measure rolling observation windows expressed in integer minute durations.",
+      "arm_order": [
+        "lesson",
+        "nothing",
+        "placebo"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-03-S1",
+        "R2-03-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0476,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.1493,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-028",
+      "source_scenario_id": "R2-03",
+      "tool": "query_metrics",
+      "fingerprint": "2e361d698068",
+      "reserve": false,
+      "tempting_wrong_input": "24h",
+      "task_prompt": "Memory RSS crept up on worker-04; execute query_metrics for the '24h' chart range.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "query_metrics",
+        "arguments": {
+          "window": "<integer>m"
+        },
+        "validator": "minutes_suffix"
+      },
+      "placebo_note": "Service telemetry queries measure rolling observation windows expressed in integer minute durations.",
+      "arm_order": [
+        "nothing",
+        "placebo",
+        "lesson"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-03-S1",
+        "R2-03-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.1,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.098,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-029",
+      "source_scenario_id": "R2-03",
+      "tool": "query_metrics",
+      "fingerprint": "2e361d698068",
+      "reserve": false,
+      "tempting_wrong_input": "18h",
+      "task_prompt": "Redis eviction rate jumped over the last '18h' according to PagerDuty; run query_metrics.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "query_metrics",
+        "arguments": {
+          "window": "<integer>m"
+        },
+        "validator": "minutes_suffix"
+      },
+      "placebo_note": "Service telemetry queries measure rolling observation windows expressed in integer minute durations.",
+      "arm_order": [
+        "lesson",
+        "placebo",
+        "nothing"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-03-S1",
+        "R2-03-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0455,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.2352,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-030",
+      "source_scenario_id": "R2-03",
+      "tool": "query_metrics",
+      "fingerprint": "2e361d698068",
+      "reserve": false,
+      "tempting_wrong_input": "36h",
+      "task_prompt": "gRPC error ratio drifted during the '36h' canary soak, so fetch telemetry using query_metrics.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "query_metrics",
+        "arguments": {
+          "window": "<integer>m"
+        },
+        "validator": "minutes_suffix"
+      },
+      "placebo_note": "Service telemetry queries measure rolling observation windows expressed in integer minute durations.",
+      "arm_order": [
+        "nothing",
+        "placebo",
+        "lesson"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-03-S1",
+        "R2-03-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0385,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.1708,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-031",
+      "source_scenario_id": "R2-03",
+      "tool": "query_metrics",
+      "fingerprint": "2e361d698068",
+      "reserve": false,
+      "tempting_wrong_input": "48h",
+      "task_prompt": "Ingress TLS handshake time looks elevated on the '48h' view; query it through query_metrics.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "query_metrics",
+        "arguments": {
+          "window": "<integer>m"
+        },
+        "validator": "minutes_suffix"
+      },
+      "placebo_note": "Service telemetry queries measure rolling observation windows expressed in integer minute durations.",
+      "arm_order": [
+        "placebo",
+        "lesson",
+        "nothing"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-03-S1",
+        "R2-03-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0435,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.1529,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-032",
+      "source_scenario_id": "R2-03",
+      "tool": "query_metrics",
+      "fingerprint": "2e361d698068",
+      "reserve": false,
+      "tempting_wrong_input": "72h",
+      "task_prompt": "Storage IOPS utilization over the '72h' weekend backfill needs checking in query_metrics.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "query_metrics",
+        "arguments": {
+          "window": "<integer>m"
+        },
+        "validator": "minutes_suffix"
+      },
+      "placebo_note": "Service telemetry queries measure rolling observation windows expressed in integer minute durations.",
+      "arm_order": [
+        "nothing",
+        "lesson",
+        "placebo"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-03-S1",
+        "R2-03-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0455,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.1468,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-033",
+      "source_scenario_id": "R2-03",
+      "tool": "query_metrics",
+      "fingerprint": "2e361d698068",
+      "reserve": false,
+      "tempting_wrong_input": "9h",
+      "task_prompt": "Webhook retry queue depth grew across a '9h' interval; retrieve the series via query_metrics.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "query_metrics",
+        "arguments": {
+          "window": "<integer>m"
+        },
+        "validator": "minutes_suffix"
+      },
+      "placebo_note": "Service telemetry queries measure rolling observation windows expressed in integer minute durations.",
+      "arm_order": [
+        "placebo",
+        "nothing",
+        "lesson"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-03-S1",
+        "R2-03-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0476,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.1952,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-034",
+      "source_scenario_id": "R2-03",
+      "tool": "query_metrics",
+      "fingerprint": "2e361d698068",
+      "reserve": false,
+      "tempting_wrong_input": "15h",
+      "task_prompt": "Auth token signing CPU usage is flagged for a '15h' horizon, so poll query_metrics.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "query_metrics",
+        "arguments": {
+          "window": "<integer>m"
+        },
+        "validator": "minutes_suffix"
+      },
+      "placebo_note": "Service telemetry queries measure rolling observation windows expressed in integer minute durations.",
+      "arm_order": [
+        "nothing",
+        "lesson",
+        "placebo"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-03-S1",
+        "R2-03-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.0749,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-035",
+      "source_scenario_id": "R2-03",
+      "tool": "query_metrics",
+      "fingerprint": "2e361d698068",
+      "reserve": false,
+      "tempting_wrong_input": "10h",
+      "task_prompt": "CDN cache miss percentage over the '10h' promo window should be pulled with query_metrics.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "query_metrics",
+        "arguments": {
+          "window": "<integer>m"
+        },
+        "validator": "minutes_suffix"
+      },
+      "placebo_note": "Service telemetry queries measure rolling observation windows expressed in integer minute durations.",
+      "arm_order": [
+        "placebo",
+        "lesson",
+        "nothing"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-03-S1",
+        "R2-03-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0435,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.1777,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-036",
+      "source_scenario_id": "R2-03",
+      "tool": "query_metrics",
+      "fingerprint": "2e361d698068",
+      "reserve": false,
+      "tempting_wrong_input": "16h",
+      "task_prompt": "DNS resolver NXDOMAIN count for the '16h' rollout window is requested via query_metrics.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "query_metrics",
+        "arguments": {
+          "window": "<integer>m"
+        },
+        "validator": "minutes_suffix"
+      },
+      "placebo_note": "Service telemetry queries measure rolling observation windows expressed in integer minute durations.",
+      "arm_order": [
+        "nothing",
+        "lesson",
+        "placebo"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-03-S1",
+        "R2-03-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.05,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.2145,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-037",
+      "source_scenario_id": "R2-04",
+      "tool": "rotate_archive",
+      "fingerprint": "7d4d943db26e",
+      "reserve": false,
+      "tempting_wrong_input": "gzip",
+      "task_prompt": "Ingress proxy logs on edge-02 still list 'gzip' in their rotation unit; run rotate_archive.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "rotate_archive",
+        "arguments": {
+          "codec": "zstd|lz4"
+        },
+        "validator": "codec_zstd_or_lz4"
+      },
+      "placebo_note": "Log archive rotation pipelines rely on modern streaming compression codecs such as zstd and lz4.",
+      "arm_order": [
+        "lesson",
+        "placebo",
+        "nothing"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-04-S1",
+        "R2-04-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.04,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.2059,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-038",
+      "source_scenario_id": "R2-04",
+      "tool": "rotate_archive",
+      "fingerprint": "7d4d943db26e",
+      "reserve": false,
+      "tempting_wrong_input": "bzip2",
+      "task_prompt": "Payment worker tarball config specifies 'bzip2' compression, so trigger rotate_archive for it.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "rotate_archive",
+        "arguments": {
+          "codec": "zstd|lz4"
+        },
+        "validator": "codec_zstd_or_lz4"
+      },
+      "placebo_note": "Log archive rotation pipelines rely on modern streaming compression codecs such as zstd and lz4.",
+      "arm_order": [
+        "lesson",
+        "placebo",
+        "nothing"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-04-S1",
+        "R2-04-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0455,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.2297,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-039",
+      "source_scenario_id": "R2-04",
+      "tool": "rotate_archive",
+      "fingerprint": "7d4d943db26e",
+      "reserve": false,
+      "tempting_wrong_input": "xz",
+      "task_prompt": "Scheduler daemon log bundle has legacy 'xz' set in /etc/default; rotate it via rotate_archive.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "rotate_archive",
+        "arguments": {
+          "codec": "zstd|lz4"
+        },
+        "validator": "codec_zstd_or_lz4"
+      },
+      "placebo_note": "Log archive rotation pipelines rely on modern streaming compression codecs such as zstd and lz4.",
+      "arm_order": [
+        "placebo",
+        "lesson",
+        "nothing"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-04-S1",
+        "R2-04-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.04,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.2787,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-040",
+      "source_scenario_id": "R2-04",
+      "tool": "rotate_archive",
+      "fingerprint": "7d4d943db26e",
+      "reserve": false,
+      "tempting_wrong_input": "gzip",
+      "task_prompt": "Auth service audit trail comes from an old 'gzip' job; invoke rotate_archive.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "rotate_archive",
+        "arguments": {
+          "codec": "zstd|lz4"
+        },
+        "validator": "codec_zstd_or_lz4"
+      },
+      "placebo_note": "Log archive rotation pipelines rely on modern streaming compression codecs such as zstd and lz4.",
+      "arm_order": [
+        "nothing",
+        "placebo",
+        "lesson"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-04-S1",
+        "R2-04-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0455,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.2737,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-041",
+      "source_scenario_id": "R2-04",
+      "tool": "rotate_archive",
+      "fingerprint": "7d4d943db26e",
+      "reserve": false,
+      "tempting_wrong_input": "deflate",
+      "task_prompt": "Mail dispatcher spool archive was configured with codec 'deflate', so execute rotate_archive.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "rotate_archive",
+        "arguments": {
+          "codec": "zstd|lz4"
+        },
+        "validator": "codec_zstd_or_lz4"
+      },
+      "placebo_note": "Log archive rotation pipelines rely on modern streaming compression codecs such as zstd and lz4.",
+      "arm_order": [
+        "placebo",
+        "lesson",
+        "nothing"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-04-S1",
+        "R2-04-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.2106,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-042",
+      "source_scenario_id": "R2-04",
+      "tool": "rotate_archive",
+      "fingerprint": "7d4d943db26e",
+      "reserve": false,
+      "tempting_wrong_input": "bzip2",
+      "task_prompt": "Webhook relay request dump uses 'bzip2' in the v1 playbook; rotate it in rotate_archive.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "rotate_archive",
+        "arguments": {
+          "codec": "zstd|lz4"
+        },
+        "validator": "codec_zstd_or_lz4"
+      },
+      "placebo_note": "Log archive rotation pipelines rely on modern streaming compression codecs such as zstd and lz4.",
+      "arm_order": [
+        "nothing",
+        "placebo",
+        "lesson"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-04-S1",
+        "R2-04-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0455,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.194,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-043",
+      "source_scenario_id": "R2-04",
+      "tool": "rotate_archive",
+      "fingerprint": "7d4d943db26e",
+      "reserve": false,
+      "tempting_wrong_input": "xz",
+      "task_prompt": "Search indexer segment logs carry codec 'xz' on the old VM; call rotate_archive.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "rotate_archive",
+        "arguments": {
+          "codec": "zstd|lz4"
+        },
+        "validator": "codec_zstd_or_lz4"
+      },
+      "placebo_note": "Log archive rotation pipelines rely on modern streaming compression codecs such as zstd and lz4.",
+      "arm_order": [
+        "nothing",
+        "placebo",
+        "lesson"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-04-S1",
+        "R2-04-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0909,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.3001,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-044",
+      "source_scenario_id": "R2-04",
+      "tool": "rotate_archive",
+      "fingerprint": "7d4d943db26e",
+      "reserve": false,
+      "tempting_wrong_input": "gzip",
+      "task_prompt": "Cache warmer trace files reference 'gzip' in ticket INFRA-512, so handle them with rotate_archive.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "rotate_archive",
+        "arguments": {
+          "codec": "zstd|lz4"
+        },
+        "validator": "codec_zstd_or_lz4"
+      },
+      "placebo_note": "Log archive rotation pipelines rely on modern streaming compression codecs such as zstd and lz4.",
+      "arm_order": [
+        "nothing",
+        "placebo",
+        "lesson"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-04-S1",
+        "R2-04-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0417,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.1576,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-045",
+      "source_scenario_id": "R2-04",
+      "tool": "rotate_archive",
+      "fingerprint": "7d4d943db26e",
+      "reserve": false,
+      "tempting_wrong_input": "bzip2",
+      "task_prompt": "Billing engine journal archive is marked 'bzip2' in the migration sheet; run rotate_archive.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "rotate_archive",
+        "arguments": {
+          "codec": "zstd|lz4"
+        },
+        "validator": "codec_zstd_or_lz4"
+      },
+      "placebo_note": "Log archive rotation pipelines rely on modern streaming compression codecs such as zstd and lz4.",
+      "arm_order": [
+        "lesson",
+        "nothing",
+        "placebo"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-04-S1",
+        "R2-04-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.087,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.2033,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-046",
+      "source_scenario_id": "R2-04",
+      "tool": "rotate_archive",
+      "fingerprint": "7d4d943db26e",
+      "reserve": false,
+      "tempting_wrong_input": "xz",
+      "task_prompt": "Notification hub delivery logs specify 'xz' in the ansible role, so rotate via rotate_archive.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "rotate_archive",
+        "arguments": {
+          "codec": "zstd|lz4"
+        },
+        "validator": "codec_zstd_or_lz4"
+      },
+      "placebo_note": "Log archive rotation pipelines rely on modern streaming compression codecs such as zstd and lz4.",
+      "arm_order": [
+        "lesson",
+        "placebo",
+        "nothing"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-04-S1",
+        "R2-04-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0455,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.2602,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-047",
+      "source_scenario_id": "R2-04",
+      "tool": "rotate_archive",
+      "fingerprint": "7d4d943db26e",
+      "reserve": false,
+      "tempting_wrong_input": "deflate",
+      "task_prompt": "Artifact signer provenance logs list 'deflate' in the legacy manifest; pass to rotate_archive.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "rotate_archive",
+        "arguments": {
+          "codec": "zstd|lz4"
+        },
+        "validator": "codec_zstd_or_lz4"
+      },
+      "placebo_note": "Log archive rotation pipelines rely on modern streaming compression codecs such as zstd and lz4.",
+      "arm_order": [
+        "nothing",
+        "placebo",
+        "lesson"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-04-S1",
+        "R2-04-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0476,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.2026,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-048",
+      "source_scenario_id": "R2-04",
+      "tool": "rotate_archive",
+      "fingerprint": "7d4d943db26e",
+      "reserve": false,
+      "tempting_wrong_input": "gzip",
+      "task_prompt": "Quota monitor history dump still shows 'gzip' in ops notes; compress it through rotate_archive.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "rotate_archive",
+        "arguments": {
+          "codec": "zstd|lz4"
+        },
+        "validator": "codec_zstd_or_lz4"
+      },
+      "placebo_note": "Log archive rotation pipelines rely on modern streaming compression codecs such as zstd and lz4.",
+      "arm_order": [
+        "placebo",
+        "lesson",
+        "nothing"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-04-S1",
+        "R2-04-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.04,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.2528,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-049",
+      "source_scenario_id": "R2-05",
+      "tool": "sync_directory",
+      "fingerprint": "5b3cb3a4fe24",
+      "reserve": false,
+      "tempting_wrong_input": "/var/data/ledgers",
+      "task_prompt": "Accounting node mount '/var/data/ledgers' needs replication; trigger sync_directory.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "sync_directory",
+        "arguments": {
+          "target_dir": "<path>/"
+        },
+        "validator": "trailing_slash"
+      },
+      "placebo_note": "Directory synchronization paths in backup storage end with a trailing forward slash character.",
+      "arm_order": [
+        "lesson",
+        "placebo",
+        "nothing"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-05-S1",
+        "R2-05-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.2181,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-050",
+      "source_scenario_id": "R2-05",
+      "tool": "sync_directory",
+      "fingerprint": "5b3cb3a4fe24",
+      "reserve": false,
+      "tempting_wrong_input": "/var/data/invoices",
+      "task_prompt": "Billing PDF folder is listed as '/var/data/invoices' in ticket FIN-88, so run sync_directory.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "sync_directory",
+        "arguments": {
+          "target_dir": "<path>/"
+        },
+        "validator": "trailing_slash"
+      },
+      "placebo_note": "Directory synchronization paths in backup storage end with a trailing forward slash character.",
+      "arm_order": [
+        "lesson",
+        "placebo",
+        "nothing"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-05-S1",
+        "R2-05-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.05,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.3367,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-051",
+      "source_scenario_id": "R2-05",
+      "tool": "sync_directory",
+      "fingerprint": "5b3cb3a4fe24",
+      "reserve": false,
+      "tempting_wrong_input": "/var/data/manifests",
+      "task_prompt": "Release metadata lives under '/var/data/manifests' on build-01; mirror it via sync_directory.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "sync_directory",
+        "arguments": {
+          "target_dir": "<path>/"
+        },
+        "validator": "trailing_slash"
+      },
+      "placebo_note": "Directory synchronization paths in backup storage end with a trailing forward slash character.",
+      "arm_order": [
+        "placebo",
+        "lesson",
+        "nothing"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-05-S1",
+        "R2-05-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0667,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.1549,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-052",
+      "source_scenario_id": "R2-05",
+      "tool": "sync_directory",
+      "fingerprint": "5b3cb3a4fe24",
+      "reserve": false,
+      "tempting_wrong_input": "/var/data/checkpoints",
+      "task_prompt": "Flink state path '/var/data/checkpoints' from the recovery doc must be synced in sync_directory.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "sync_directory",
+        "arguments": {
+          "target_dir": "<path>/"
+        },
+        "validator": "trailing_slash"
+      },
+      "placebo_note": "Directory synchronization paths in backup storage end with a trailing forward slash character.",
+      "arm_order": [
+        "nothing",
+        "placebo",
+        "lesson"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-05-S1",
+        "R2-05-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.05,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.2081,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-053",
+      "source_scenario_id": "R2-05",
+      "tool": "sync_directory",
+      "fingerprint": "5b3cb3a4fe24",
+      "reserve": false,
+      "tempting_wrong_input": "/var/data/bundles",
+      "task_prompt": "Customer support diagnostics path '/var/data/bundles' needs a pass of sync_directory.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "sync_directory",
+        "arguments": {
+          "target_dir": "<path>/"
+        },
+        "validator": "trailing_slash"
+      },
+      "placebo_note": "Directory synchronization paths in backup storage end with a trailing forward slash character.",
+      "arm_order": [
+        "placebo",
+        "nothing",
+        "lesson"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-05-S1",
+        "R2-05-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.1642,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-054",
+      "source_scenario_id": "R2-05",
+      "tool": "sync_directory",
+      "fingerprint": "5b3cb3a4fe24",
+      "reserve": false,
+      "tempting_wrong_input": "/opt/storage/parcels",
+      "task_prompt": "Shipping label repository '/opt/storage/parcels' is queued for replication, so call sync_directory.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "sync_directory",
+        "arguments": {
+          "target_dir": "<path>/"
+        },
+        "validator": "trailing_slash"
+      },
+      "placebo_note": "Directory synchronization paths in backup storage end with a trailing forward slash character.",
+      "arm_order": [
+        "nothing",
+        "lesson",
+        "placebo"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-05-S1",
+        "R2-05-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0556,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.1881,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-055",
+      "source_scenario_id": "R2-05",
+      "tool": "sync_directory",
+      "fingerprint": "5b3cb3a4fe24",
+      "reserve": false,
+      "tempting_wrong_input": "/opt/storage/segments",
+      "task_prompt": "Lucene shard folder '/opt/storage/segments' on idx-03 should be copied with sync_directory.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "sync_directory",
+        "arguments": {
+          "target_dir": "<path>/"
+        },
+        "validator": "trailing_slash"
+      },
+      "placebo_note": "Directory synchronization paths in backup storage end with a trailing forward slash character.",
+      "arm_order": [
+        "placebo",
+        "lesson",
+        "nothing"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-05-S1",
+        "R2-05-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0455,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.1876,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-056",
+      "source_scenario_id": "R2-05",
+      "tool": "sync_directory",
+      "fingerprint": "5b3cb3a4fe24",
+      "reserve": false,
+      "tempting_wrong_input": "/opt/storage/journals",
+      "task_prompt": "Write-ahead log path '/opt/storage/journals' in DR ticket #309 needs sync_directory.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "sync_directory",
+        "arguments": {
+          "target_dir": "<path>/"
+        },
+        "validator": "trailing_slash"
+      },
+      "placebo_note": "Directory synchronization paths in backup storage end with a trailing forward slash character.",
+      "arm_order": [
+        "nothing",
+        "placebo",
+        "lesson"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-05-S1",
+        "R2-05-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.2383,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-057",
+      "source_scenario_id": "R2-05",
+      "tool": "sync_directory",
+      "fingerprint": "5b3cb3a4fe24",
+      "reserve": false,
+      "tempting_wrong_input": "/opt/storage/catalogs",
+      "task_prompt": "Product taxonomy directory '/opt/storage/catalogs' is ready for mirroring via sync_directory.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "sync_directory",
+        "arguments": {
+          "target_dir": "<path>/"
+        },
+        "validator": "trailing_slash"
+      },
+      "placebo_note": "Directory synchronization paths in backup storage end with a trailing forward slash character.",
+      "arm_order": [
+        "placebo",
+        "nothing",
+        "lesson"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-05-S1",
+        "R2-05-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0714,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.273,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-058",
+      "source_scenario_id": "R2-05",
+      "tool": "sync_directory",
+      "fingerprint": "5b3cb3a4fe24",
+      "reserve": false,
+      "tempting_wrong_input": "/opt/storage/indices",
+      "task_prompt": "Vector embedding store '/opt/storage/indices' from the ML handoff requires sync_directory.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "sync_directory",
+        "arguments": {
+          "target_dir": "<path>/"
+        },
+        "validator": "trailing_slash"
+      },
+      "placebo_note": "Directory synchronization paths in backup storage end with a trailing forward slash character.",
+      "arm_order": [
+        "nothing",
+        "placebo",
+        "lesson"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-05-S1",
+        "R2-05-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0588,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.2235,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-059",
+      "source_scenario_id": "R2-05",
+      "tool": "sync_directory",
+      "fingerprint": "5b3cb3a4fe24",
+      "reserve": false,
+      "tempting_wrong_input": "/opt/storage/blobs",
+      "task_prompt": "Media attachment path '/opt/storage/blobs' on nas-02 must be pushed through sync_directory.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "sync_directory",
+        "arguments": {
+          "target_dir": "<path>/"
+        },
+        "validator": "trailing_slash"
+      },
+      "placebo_note": "Directory synchronization paths in backup storage end with a trailing forward slash character.",
+      "arm_order": [
+        "lesson",
+        "nothing",
+        "placebo"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-05-S1",
+        "R2-05-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0476,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.2982,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-060",
+      "source_scenario_id": "R2-05",
+      "tool": "sync_directory",
+      "fingerprint": "5b3cb3a4fe24",
+      "reserve": false,
+      "tempting_wrong_input": "/opt/storage/reports",
+      "task_prompt": "Compliance export folder '/opt/storage/reports' listed in audit note #14 needs sync_directory.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "sync_directory",
+        "arguments": {
+          "target_dir": "<path>/"
+        },
+        "validator": "trailing_slash"
+      },
+      "placebo_note": "Directory synchronization paths in backup storage end with a trailing forward slash character.",
+      "arm_order": [
+        "placebo",
+        "lesson",
+        "nothing"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-05-S1",
+        "R2-05-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0556,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.2955,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-061",
+      "source_scenario_id": "R2-06",
+      "tool": "create_alert_rule",
+      "fingerprint": "631dc73de10c",
+      "reserve": false,
+      "tempting_wrong_input": "critical",
+      "task_prompt": "Gateway halt detector is marked 'critical' in the Statuspage draft; register it via create_alert_rule.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "create_alert_rule",
+        "arguments": {
+          "severity": "SEV1|SEV2|SEV3"
+        },
+        "validator": "sev_code"
+      },
+      "placebo_note": "Monitoring alert rules classify incident thresholds under uppercase codes SEV1, SEV2, and SEV3.",
+      "arm_order": [
+        "nothing",
+        "placebo",
+        "lesson"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-06-S1",
+        "R2-06-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.087,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.1862,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-062",
+      "source_scenario_id": "R2-06",
+      "tool": "create_alert_rule",
+      "fingerprint": "631dc73de10c",
+      "reserve": false,
+      "tempting_wrong_input": "high",
+      "task_prompt": "Postgres replica lag threshold has priority 'high' in DBA-71; add the rule with create_alert_rule.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "create_alert_rule",
+        "arguments": {
+          "severity": "SEV1|SEV2|SEV3"
+        },
+        "validator": "sev_code"
+      },
+      "placebo_note": "Monitoring alert rules classify incident thresholds under uppercase codes SEV1, SEV2, and SEV3.",
+      "arm_order": [
+        "nothing",
+        "lesson",
+        "placebo"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-06-S1",
+        "R2-06-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.08,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.3004,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-063",
+      "source_scenario_id": "R2-06",
+      "tool": "create_alert_rule",
+      "fingerprint": "631dc73de10c",
+      "reserve": false,
+      "tempting_wrong_input": "warning",
+      "task_prompt": "RabbitMQ queue backlog monitor is tagged 'warning' on the triage board, so call create_alert_rule.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "create_alert_rule",
+        "arguments": {
+          "severity": "SEV1|SEV2|SEV3"
+        },
+        "validator": "sev_code"
+      },
+      "placebo_note": "Monitoring alert rules classify incident thresholds under uppercase codes SEV1, SEV2, and SEV3.",
+      "arm_order": [
+        "placebo",
+        "nothing",
+        "lesson"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-06-S1",
+        "R2-06-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0455,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.1602,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-064",
+      "source_scenario_id": "R2-06",
+      "tool": "create_alert_rule",
+      "fingerprint": "631dc73de10c",
+      "reserve": false,
+      "tempting_wrong_input": "critical",
+      "task_prompt": "Payment processor stop condition is listed as 'critical' in the PCI checklist; run create_alert_rule.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "create_alert_rule",
+        "arguments": {
+          "severity": "SEV1|SEV2|SEV3"
+        },
+        "validator": "sev_code"
+      },
+      "placebo_note": "Monitoring alert rules classify incident thresholds under uppercase codes SEV1, SEV2, and SEV3.",
+      "arm_order": [
+        "nothing",
+        "lesson",
+        "placebo"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-06-S1",
+        "R2-06-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.087,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.2219,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-065",
+      "source_scenario_id": "R2-06",
+      "tool": "create_alert_rule",
+      "fingerprint": "631dc73de10c",
+      "reserve": false,
+      "tempting_wrong_input": "high",
+      "task_prompt": "JVM heap watermark check carries level 'high' in the Datadog export; import it into create_alert_rule.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "create_alert_rule",
+        "arguments": {
+          "severity": "SEV1|SEV2|SEV3"
+        },
+        "validator": "sev_code"
+      },
+      "placebo_note": "Monitoring alert rules classify incident thresholds under uppercase codes SEV1, SEV2, and SEV3.",
+      "arm_order": [
+        "nothing",
+        "placebo",
+        "lesson"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-06-S1",
+        "R2-06-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0769,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.1709,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-066",
+      "source_scenario_id": "R2-06",
+      "tool": "create_alert_rule",
+      "fingerprint": "631dc73de10c",
+      "reserve": false,
+      "tempting_wrong_input": "warning",
+      "task_prompt": "Outbound webhook retry spike is graded 'warning' by the partner team, so configure create_alert_rule.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "create_alert_rule",
+        "arguments": {
+          "severity": "SEV1|SEV2|SEV3"
+        },
+        "validator": "sev_code"
+      },
+      "placebo_note": "Monitoring alert rules classify incident thresholds under uppercase codes SEV1, SEV2, and SEV3.",
+      "arm_order": [
+        "placebo",
+        "nothing",
+        "lesson"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-06-S1",
+        "R2-06-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0435,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.1909,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-067",
+      "source_scenario_id": "R2-06",
+      "tool": "create_alert_rule",
+      "fingerprint": "631dc73de10c",
+      "reserve": false,
+      "tempting_wrong_input": "critical",
+      "task_prompt": "BGP peer packet drop alarm is rated 'critical' in NOC ticket #604; set it up in create_alert_rule.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "create_alert_rule",
+        "arguments": {
+          "severity": "SEV1|SEV2|SEV3"
+        },
+        "validator": "sev_code"
+      },
+      "placebo_note": "Monitoring alert rules classify incident thresholds under uppercase codes SEV1, SEV2, and SEV3.",
+      "arm_order": [
+        "lesson",
+        "placebo",
+        "nothing"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-06-S1",
+        "R2-06-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0714,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.2842,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-068",
+      "source_scenario_id": "R2-06",
+      "tool": "create_alert_rule",
+      "fingerprint": "631dc73de10c",
+      "reserve": false,
+      "tempting_wrong_input": "high",
+      "task_prompt": "TLS certificate 7-day expiry check is labeled 'high' in SEC-211; create it with create_alert_rule.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "create_alert_rule",
+        "arguments": {
+          "severity": "SEV1|SEV2|SEV3"
+        },
+        "validator": "sev_code"
+      },
+      "placebo_note": "Monitoring alert rules classify incident thresholds under uppercase codes SEV1, SEV2, and SEV3.",
+      "arm_order": [
+        "placebo",
+        "nothing",
+        "lesson"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-06-S1",
+        "R2-06-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.087,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.21,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-069",
+      "source_scenario_id": "R2-06",
+      "tool": "create_alert_rule",
+      "fingerprint": "631dc73de10c",
+      "reserve": false,
+      "tempting_wrong_input": "warning",
+      "task_prompt": "Worker thread pool saturation has level 'warning' in the capacity doc, so wire up create_alert_rule.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "create_alert_rule",
+        "arguments": {
+          "severity": "SEV1|SEV2|SEV3"
+        },
+        "validator": "sev_code"
+      },
+      "placebo_note": "Monitoring alert rules classify incident thresholds under uppercase codes SEV1, SEV2, and SEV3.",
+      "arm_order": [
+        "placebo",
+        "nothing",
+        "lesson"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-06-S1",
+        "R2-06-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.08,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.2734,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-070",
+      "source_scenario_id": "R2-06",
+      "tool": "create_alert_rule",
+      "fingerprint": "631dc73de10c",
+      "reserve": false,
+      "tempting_wrong_input": "critical",
+      "task_prompt": "Checkout p99 latency breach is classified 'critical' in the SLA table; provision create_alert_rule.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "create_alert_rule",
+        "arguments": {
+          "severity": "SEV1|SEV2|SEV3"
+        },
+        "validator": "sev_code"
+      },
+      "placebo_note": "Monitoring alert rules classify incident thresholds under uppercase codes SEV1, SEV2, and SEV3.",
+      "arm_order": [
+        "lesson",
+        "placebo",
+        "nothing"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-06-S1",
+        "R2-06-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.087,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.1746,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-071",
+      "source_scenario_id": "R2-06",
+      "tool": "create_alert_rule",
+      "fingerprint": "631dc73de10c",
+      "reserve": false,
+      "tempting_wrong_input": "high",
+      "task_prompt": "Consensus heartbeat loss is graded 'high' in the Raft runbook; enable create_alert_rule for that check.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "create_alert_rule",
+        "arguments": {
+          "severity": "SEV1|SEV2|SEV3"
+        },
+        "validator": "sev_code"
+      },
+      "placebo_note": "Monitoring alert rules classify incident thresholds under uppercase codes SEV1, SEV2, and SEV3.",
+      "arm_order": [
+        "nothing",
+        "placebo",
+        "lesson"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-06-S1",
+        "R2-06-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0769,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.2185,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-072",
+      "source_scenario_id": "R2-06",
+      "tool": "create_alert_rule",
+      "fingerprint": "631dc73de10c",
+      "reserve": false,
+      "tempting_wrong_input": "warning",
+      "task_prompt": "Canary checksum mismatch is noted as 'warning' in release note #55; add it through create_alert_rule.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "create_alert_rule",
+        "arguments": {
+          "severity": "SEV1|SEV2|SEV3"
+        },
+        "validator": "sev_code"
+      },
+      "placebo_note": "Monitoring alert rules classify incident thresholds under uppercase codes SEV1, SEV2, and SEV3.",
+      "arm_order": [
+        "lesson",
+        "nothing",
+        "placebo"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-06-S1",
+        "R2-06-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0385,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.2194,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-073",
+      "source_scenario_id": "R2-07",
+      "tool": "export_audit_csv",
+      "fingerprint": "33b052d68f67",
+      "reserve": false,
+      "tempting_wrong_input": "comma",
+      "task_prompt": "Q1 SSO login review asks for a 'comma' file from export_audit_csv.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "export_audit_csv",
+        "arguments": {
+          "delimiter": "pipe|tab"
+        },
+        "validator": "pipe_or_tab"
+      },
+      "placebo_note": "Delimited audit exports separate columns with pipe or tab field tokens rather than commas.",
+      "arm_order": [
+        "nothing",
+        "lesson",
+        "placebo"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-07-S1",
+        "R2-07-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0556,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.2355,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-074",
+      "source_scenario_id": "R2-07",
+      "tool": "export_audit_csv",
+      "fingerprint": "33b052d68f67",
+      "reserve": false,
+      "tempting_wrong_input": "semicolon",
+      "task_prompt": "European auditor requested 'semicolon' separation for Q2 logins, so run export_audit_csv.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "export_audit_csv",
+        "arguments": {
+          "delimiter": "pipe|tab"
+        },
+        "validator": "pipe_or_tab"
+      },
+      "placebo_note": "Delimited audit exports separate columns with pipe or tab field tokens rather than commas.",
+      "arm_order": [
+        "placebo",
+        "nothing",
+        "lesson"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-07-S1",
+        "R2-07-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.05,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.2587,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-075",
+      "source_scenario_id": "R2-07",
+      "tool": "export_audit_csv",
+      "fingerprint": "33b052d68f67",
+      "reserve": false,
+      "tempting_wrong_input": "comma",
+      "task_prompt": "IAM role elevation history is needed in 'comma' format according to ticket SEC-108; call export_audit_csv.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "export_audit_csv",
+        "arguments": {
+          "delimiter": "pipe|tab"
+        },
+        "validator": "pipe_or_tab"
+      },
+      "placebo_note": "Delimited audit exports separate columns with pipe or tab field tokens rather than commas.",
+      "arm_order": [
+        "nothing",
+        "placebo",
+        "lesson"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-07-S1",
+        "R2-07-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0417,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.1854,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-076",
+      "source_scenario_id": "R2-07",
+      "tool": "export_audit_csv",
+      "fingerprint": "33b052d68f67",
+      "reserve": false,
+      "tempting_wrong_input": "semicolon",
+      "task_prompt": "KMS key rotation records should be dumped via export_audit_csv (the German template says 'semicolon').",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "export_audit_csv",
+        "arguments": {
+          "delimiter": "pipe|tab"
+        },
+        "validator": "pipe_or_tab"
+      },
+      "placebo_note": "Delimited audit exports separate columns with pipe or tab field tokens rather than commas.",
+      "arm_order": [
+        "placebo",
+        "lesson",
+        "nothing"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-07-S1",
+        "R2-07-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0455,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.1705,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-077",
+      "source_scenario_id": "R2-07",
+      "tool": "export_audit_csv",
+      "fingerprint": "33b052d68f67",
+      "reserve": false,
+      "tempting_wrong_input": "comma",
+      "task_prompt": "Firewall rule modification log has delimiter 'comma' in the compliance macro, so invoke export_audit_csv.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "export_audit_csv",
+        "arguments": {
+          "delimiter": "pipe|tab"
+        },
+        "validator": "pipe_or_tab"
+      },
+      "placebo_note": "Delimited audit exports separate columns with pipe or tab field tokens rather than commas.",
+      "arm_order": [
+        "lesson",
+        "nothing",
+        "placebo"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-07-S1",
+        "R2-07-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0455,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.3022,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-078",
+      "source_scenario_id": "R2-07",
+      "tool": "export_audit_csv",
+      "fingerprint": "33b052d68f67",
+      "reserve": false,
+      "tempting_wrong_input": "semicolon",
+      "task_prompt": "Vault secret read events are requested with 'semicolon' columns in audit item #92; use export_audit_csv.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "export_audit_csv",
+        "arguments": {
+          "delimiter": "pipe|tab"
+        },
+        "validator": "pipe_or_tab"
+      },
+      "placebo_note": "Delimited audit exports separate columns with pipe or tab field tokens rather than commas.",
+      "arm_order": [
+        "nothing",
+        "placebo",
+        "lesson"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-07-S1",
+        "R2-07-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0769,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.2573,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-079",
+      "source_scenario_id": "R2-07",
+      "tool": "export_audit_csv",
+      "fingerprint": "33b052d68f67",
+      "reserve": false,
+      "tempting_wrong_input": "comma",
+      "task_prompt": "Subscription plan change trail specifies 'comma' in the RevOps sheet, so trigger export_audit_csv.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "export_audit_csv",
+        "arguments": {
+          "delimiter": "pipe|tab"
+        },
+        "validator": "pipe_or_tab"
+      },
+      "placebo_note": "Delimited audit exports separate columns with pipe or tab field tokens rather than commas.",
+      "arm_order": [
+        "placebo",
+        "lesson",
+        "nothing"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-07-S1",
+        "R2-07-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.087,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.2468,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-080",
+      "source_scenario_id": "R2-07",
+      "tool": "export_audit_csv",
+      "fingerprint": "33b052d68f67",
+      "reserve": false,
+      "tempting_wrong_input": "semicolon",
+      "task_prompt": "SAML identity provider updates list 'semicolon' in the external questionnaire; execute export_audit_csv.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "export_audit_csv",
+        "arguments": {
+          "delimiter": "pipe|tab"
+        },
+        "validator": "pipe_or_tab"
+      },
+      "placebo_note": "Delimited audit exports separate columns with pipe or tab field tokens rather than commas.",
+      "arm_order": [
+        "placebo",
+        "lesson",
+        "nothing"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-07-S1",
+        "R2-07-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.05,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.137,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-081",
+      "source_scenario_id": "R2-07",
+      "tool": "export_audit_csv",
+      "fingerprint": "33b052d68f67",
+      "reserve": false,
+      "tempting_wrong_input": "comma",
+      "task_prompt": "Webhook registration history is marked for 'comma' export in partner ticket #315; run export_audit_csv.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "export_audit_csv",
+        "arguments": {
+          "delimiter": "pipe|tab"
+        },
+        "validator": "pipe_or_tab"
+      },
+      "placebo_note": "Delimited audit exports separate columns with pipe or tab field tokens rather than commas.",
+      "arm_order": [
+        "lesson",
+        "placebo",
+        "nothing"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-07-S1",
+        "R2-07-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0476,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.2811,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-082",
+      "source_scenario_id": "R2-07",
+      "tool": "export_audit_csv",
+      "fingerprint": "33b052d68f67",
+      "reserve": false,
+      "tempting_wrong_input": "semicolon",
+      "task_prompt": "Snapshot deletion log carries 'semicolon' in the archival macro, so produce it via export_audit_csv.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "export_audit_csv",
+        "arguments": {
+          "delimiter": "pipe|tab"
+        },
+        "validator": "pipe_or_tab"
+      },
+      "placebo_note": "Delimited audit exports separate columns with pipe or tab field tokens rather than commas.",
+      "arm_order": [
+        "placebo",
+        "nothing",
+        "lesson"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-07-S1",
+        "R2-07-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0909,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.2734,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-083",
+      "source_scenario_id": "R2-07",
+      "tool": "export_audit_csv",
+      "fingerprint": "33b052d68f67",
+      "reserve": false,
+      "tempting_wrong_input": "comma",
+      "task_prompt": "Admin API token issuance table asks for 'comma' separation in SOC2 task #17; call export_audit_csv.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "export_audit_csv",
+        "arguments": {
+          "delimiter": "pipe|tab"
+        },
+        "validator": "pipe_or_tab"
+      },
+      "placebo_note": "Delimited audit exports separate columns with pipe or tab field tokens rather than commas.",
+      "arm_order": [
+        "lesson",
+        "placebo",
+        "nothing"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-07-S1",
+        "R2-07-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0952,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.2061,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-084",
+      "source_scenario_id": "R2-07",
+      "tool": "export_audit_csv",
+      "fingerprint": "33b052d68f67",
+      "reserve": false,
+      "tempting_wrong_input": "semicolon",
+      "task_prompt": "Cross-region bucket policy edits specify 'semicolon' in the governance form, so export with export_audit_csv.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "export_audit_csv",
+        "arguments": {
+          "delimiter": "pipe|tab"
+        },
+        "validator": "pipe_or_tab"
+      },
+      "placebo_note": "Delimited audit exports separate columns with pipe or tab field tokens rather than commas.",
+      "arm_order": [
+        "placebo",
+        "lesson",
+        "nothing"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-07-S1",
+        "R2-07-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0909,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.2752,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-085",
+      "source_scenario_id": "R2-08",
+      "tool": "tag_release_artifact",
+      "fingerprint": "bec277ec74e2",
+      "reserve": false,
+      "tempting_wrong_input": "v3.0.1",
+      "task_prompt": "Hotfix image for the auth proxy carries git tag 'v3.0.1'; apply tag_release_artifact to it.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "tag_release_artifact",
+        "arguments": {
+          "version_tag": "rel-X.Y.Z"
+        },
+        "validator": "rel_prefix"
+      },
+      "placebo_note": "Release artifact tags combine the hyphenated rel prefix with three-part semantic version numbers.",
+      "arm_order": [
+        "nothing",
+        "lesson",
+        "placebo"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-08-S1",
+        "R2-08-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.08,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.3217,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-086",
+      "source_scenario_id": "R2-08",
+      "tool": "tag_release_artifact",
+      "fingerprint": "bec277ec74e2",
+      "reserve": false,
+      "tempting_wrong_input": "v3.0.2",
+      "task_prompt": "Ledger patch bundle is labeled 'v3.0.2' in GitHub Releases, so register that in tag_release_artifact.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "tag_release_artifact",
+        "arguments": {
+          "version_tag": "rel-X.Y.Z"
+        },
+        "validator": "rel_prefix"
+      },
+      "placebo_note": "Release artifact tags combine the hyphenated rel prefix with three-part semantic version numbers.",
+      "arm_order": [
+        "lesson",
+        "nothing",
+        "placebo"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-08-S1",
+        "R2-08-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.04,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.1895,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-087",
+      "source_scenario_id": "R2-08",
+      "tool": "tag_release_artifact",
+      "fingerprint": "bec277ec74e2",
+      "reserve": false,
+      "tempting_wrong_input": "v3.1.0",
+      "task_prompt": "Q4 feature train cut tag 'v3.1.0' on main; apply it using tag_release_artifact.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "tag_release_artifact",
+        "arguments": {
+          "version_tag": "rel-X.Y.Z"
+        },
+        "validator": "rel_prefix"
+      },
+      "placebo_note": "Release artifact tags combine the hyphenated rel prefix with three-part semantic version numbers.",
+      "arm_order": [
+        "nothing",
+        "placebo",
+        "lesson"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-08-S1",
+        "R2-08-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0417,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.2689,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-088",
+      "source_scenario_id": "R2-08",
+      "tool": "tag_release_artifact",
+      "fingerprint": "bec277ec74e2",
+      "reserve": false,
+      "tempting_wrong_input": "v3.1.4",
+      "task_prompt": "Search ranking rollback image carries version 'v3.1.4' in Jenkins; call tag_release_artifact.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "tag_release_artifact",
+        "arguments": {
+          "version_tag": "rel-X.Y.Z"
+        },
+        "validator": "rel_prefix"
+      },
+      "placebo_note": "Release artifact tags combine the hyphenated rel prefix with three-part semantic version numbers.",
+      "arm_order": [
+        "lesson",
+        "nothing",
+        "placebo"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-08-S1",
+        "R2-08-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0526,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.2284,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-089",
+      "source_scenario_id": "R2-08",
+      "tool": "tag_release_artifact",
+      "fingerprint": "bec277ec74e2",
+      "reserve": false,
+      "tempting_wrong_input": "v3.2.0",
+      "task_prompt": "Billing API minor release is listed as 'v3.2.0' on the launch board, so run tag_release_artifact.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "tag_release_artifact",
+        "arguments": {
+          "version_tag": "rel-X.Y.Z"
+        },
+        "validator": "rel_prefix"
+      },
+      "placebo_note": "Release artifact tags combine the hyphenated rel prefix with three-part semantic version numbers.",
+      "arm_order": [
+        "lesson",
+        "nothing",
+        "placebo"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-08-S1",
+        "R2-08-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.1304,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.3118,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-090",
+      "source_scenario_id": "R2-08",
+      "tool": "tag_release_artifact",
+      "fingerprint": "bec277ec74e2",
+      "reserve": false,
+      "tempting_wrong_input": "v3.2.5",
+      "task_prompt": "Webhook worker bugfix was pushed under tag 'v3.2.5'; record it via tag_release_artifact.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "tag_release_artifact",
+        "arguments": {
+          "version_tag": "rel-X.Y.Z"
+        },
+        "validator": "rel_prefix"
+      },
+      "placebo_note": "Release artifact tags combine the hyphenated rel prefix with three-part semantic version numbers.",
+      "arm_order": [
+        "placebo",
+        "nothing",
+        "lesson"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-08-S1",
+        "R2-08-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.05,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.2395,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-091",
+      "source_scenario_id": "R2-08",
+      "tool": "tag_release_artifact",
+      "fingerprint": "bec277ec74e2",
+      "reserve": false,
+      "tempting_wrong_input": "v3.3.0",
+      "task_prompt": "Telemetry collector upgrade uses tag 'v3.3.0' in the Helm chart, so invoke tag_release_artifact.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "tag_release_artifact",
+        "arguments": {
+          "version_tag": "rel-X.Y.Z"
+        },
+        "validator": "rel_prefix"
+      },
+      "placebo_note": "Release artifact tags combine the hyphenated rel prefix with three-part semantic version numbers.",
+      "arm_order": [
+        "nothing",
+        "placebo",
+        "lesson"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-08-S1",
+        "R2-08-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.087,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.2248,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-092",
+      "source_scenario_id": "R2-08",
+      "tool": "tag_release_artifact",
+      "fingerprint": "bec277ec74e2",
+      "reserve": false,
+      "tempting_wrong_input": "v3.4.1",
+      "task_prompt": "Storage tiering hotfix has repo tag 'v3.4.1' in ticket REL-809; pass to tag_release_artifact.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "tag_release_artifact",
+        "arguments": {
+          "version_tag": "rel-X.Y.Z"
+        },
+        "validator": "rel_prefix"
+      },
+      "placebo_note": "Release artifact tags combine the hyphenated rel prefix with three-part semantic version numbers.",
+      "arm_order": [
+        "lesson",
+        "placebo",
+        "nothing"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-08-S1",
+        "R2-08-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0476,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.3047,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-093",
+      "source_scenario_id": "R2-08",
+      "tool": "tag_release_artifact",
+      "fingerprint": "bec277ec74e2",
+      "reserve": false,
+      "tempting_wrong_input": "v4.0.0",
+      "task_prompt": "Major schema migration cut 'v4.0.0' in GitLab, so mark the artifact with tag_release_artifact.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "tag_release_artifact",
+        "arguments": {
+          "version_tag": "rel-X.Y.Z"
+        },
+        "validator": "rel_prefix"
+      },
+      "placebo_note": "Release artifact tags combine the hyphenated rel prefix with three-part semantic version numbers.",
+      "arm_order": [
+        "nothing",
+        "lesson",
+        "placebo"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-08-S1",
+        "R2-08-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.05,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.1793,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-094",
+      "source_scenario_id": "R2-08",
+      "tool": "tag_release_artifact",
+      "fingerprint": "bec277ec74e2",
+      "reserve": false,
+      "tempting_wrong_input": "v4.0.3",
+      "task_prompt": "Ingestion backpressure patch is tagged 'v4.0.3' by release engineering; execute tag_release_artifact.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "tag_release_artifact",
+        "arguments": {
+          "version_tag": "rel-X.Y.Z"
+        },
+        "validator": "rel_prefix"
+      },
+      "placebo_note": "Release artifact tags combine the hyphenated rel prefix with three-part semantic version numbers.",
+      "arm_order": [
+        "nothing",
+        "lesson",
+        "placebo"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-08-S1",
+        "R2-08-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0455,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.1849,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-095",
+      "source_scenario_id": "R2-08",
+      "tool": "tag_release_artifact",
+      "fingerprint": "bec277ec74e2",
+      "reserve": false,
+      "tempting_wrong_input": "v4.1.0",
+      "task_prompt": "Multi-tenant router build shows version 'v4.1.0' in the changelog, so stamp via tag_release_artifact.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "tag_release_artifact",
+        "arguments": {
+          "version_tag": "rel-X.Y.Z"
+        },
+        "validator": "rel_prefix"
+      },
+      "placebo_note": "Release artifact tags combine the hyphenated rel prefix with three-part semantic version numbers.",
+      "arm_order": [
+        "placebo",
+        "nothing",
+        "lesson"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-08-S1",
+        "R2-08-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0476,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.3294,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-096",
+      "source_scenario_id": "R2-08",
+      "tool": "tag_release_artifact",
+      "fingerprint": "bec277ec74e2",
+      "reserve": false,
+      "tempting_wrong_input": "v4.2.2",
+      "task_prompt": "Audit exporter maintenance build is noted as 'v4.2.2' in handoff #63; call tag_release_artifact.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "tag_release_artifact",
+        "arguments": {
+          "version_tag": "rel-X.Y.Z"
+        },
+        "validator": "rel_prefix"
+      },
+      "placebo_note": "Release artifact tags combine the hyphenated rel prefix with three-part semantic version numbers.",
+      "arm_order": [
+        "lesson",
+        "placebo",
+        "nothing"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-08-S1",
+        "R2-08-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0833,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.2513,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-097",
+      "source_scenario_id": "R2-09",
+      "tool": "allocate_worker_pool",
+      "fingerprint": "cd48645915ec",
+      "reserve": false,
+      "tempting_wrong_input": 3,
+      "task_prompt": "Syslog parser pipeline ticket requests 3 threads; size the group in allocate_worker_pool.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "allocate_worker_pool",
+        "arguments": {
+          "workers": "<even int 2..16>"
+        },
+        "validator": "even_workers"
+      },
+      "placebo_note": "Background worker thread pools operate in even integer sizes ranging from two to sixteen threads.",
+      "arm_order": [
+        "placebo",
+        "lesson",
+        "nothing"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-09-S1",
+        "R2-09-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.1509,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-098",
+      "source_scenario_id": "R2-09",
+      "tool": "allocate_worker_pool",
+      "fingerprint": "cd48645915ec",
+      "reserve": false,
+      "tempting_wrong_input": 5,
+      "task_prompt": "JSON schema parser backlog estimate is 5 workers, so provision that in allocate_worker_pool.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "allocate_worker_pool",
+        "arguments": {
+          "workers": "<even int 2..16>"
+        },
+        "validator": "even_workers"
+      },
+      "placebo_note": "Background worker thread pools operate in even integer sizes ranging from two to sixteen threads.",
+      "arm_order": [
+        "nothing",
+        "placebo",
+        "lesson"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-09-S1",
+        "R2-09-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.05,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.2676,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-099",
+      "source_scenario_id": "R2-09",
+      "tool": "allocate_worker_pool",
+      "fingerprint": "cd48645915ec",
+      "reserve": false,
+      "tempting_wrong_input": 7,
+      "task_prompt": "Full-text search indexer card specifies 7 background workers; call allocate_worker_pool.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "allocate_worker_pool",
+        "arguments": {
+          "workers": "<even int 2..16>"
+        },
+        "validator": "even_workers"
+      },
+      "placebo_note": "Background worker thread pools operate in even integer sizes ranging from two to sixteen threads.",
+      "arm_order": [
+        "placebo",
+        "lesson",
+        "nothing"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-09-S1",
+        "R2-09-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0588,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.2894,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-100",
+      "source_scenario_id": "R2-09",
+      "tool": "allocate_worker_pool",
+      "fingerprint": "cd48645915ec",
+      "reserve": false,
+      "tempting_wrong_input": 9,
+      "task_prompt": "Parquet compaction job requests 9 worker slots in the capacity sheet, so run allocate_worker_pool.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "allocate_worker_pool",
+        "arguments": {
+          "workers": "<even int 2..16>"
+        },
+        "validator": "even_workers"
+      },
+      "placebo_note": "Background worker thread pools operate in even integer sizes ranging from two to sixteen threads.",
+      "arm_order": [
+        "lesson",
+        "placebo",
+        "nothing"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-09-S1",
+        "R2-09-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0909,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.2119,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-101",
+      "source_scenario_id": "R2-09",
+      "tool": "allocate_worker_pool",
+      "fingerprint": "cd48645915ec",
+      "reserve": false,
+      "tempting_wrong_input": 11,
+      "task_prompt": "CSV audit exporter sizing note lists 11 threads; configure it via allocate_worker_pool.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "allocate_worker_pool",
+        "arguments": {
+          "workers": "<even int 2..16>"
+        },
+        "validator": "even_workers"
+      },
+      "placebo_note": "Background worker thread pools operate in even integer sizes ranging from two to sixteen threads.",
+      "arm_order": [
+        "nothing",
+        "lesson",
+        "placebo"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-09-S1",
+        "R2-09-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0909,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.216,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-102",
+      "source_scenario_id": "R2-09",
+      "tool": "allocate_worker_pool",
+      "fingerprint": "cd48645915ec",
+      "reserve": false,
+      "tempting_wrong_input": 13,
+      "task_prompt": "Cross-datacenter ledger syncer was modeled at 13 workers; apply with allocate_worker_pool.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "allocate_worker_pool",
+        "arguments": {
+          "workers": "<even int 2..16>"
+        },
+        "validator": "even_workers"
+      },
+      "placebo_note": "Background worker thread pools operate in even integer sizes ranging from two to sixteen threads.",
+      "arm_order": [
+        "nothing",
+        "lesson",
+        "placebo"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-09-S1",
+        "R2-09-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0526,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.2255,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-103",
+      "source_scenario_id": "R2-09",
+      "tool": "allocate_worker_pool",
+      "fingerprint": "cd48645915ec",
+      "reserve": false,
+      "tempting_wrong_input": 15,
+      "task_prompt": "Checksum verifier runbook suggests 15 parallel workers, so set up the pool in allocate_worker_pool.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "allocate_worker_pool",
+        "arguments": {
+          "workers": "<even int 2..16>"
+        },
+        "validator": "even_workers"
+      },
+      "placebo_note": "Background worker thread pools operate in even integer sizes ranging from two to sixteen threads.",
+      "arm_order": [
+        "lesson",
+        "nothing",
+        "placebo"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-09-S1",
+        "R2-09-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0909,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.3383,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-104",
+      "source_scenario_id": "R2-09",
+      "tool": "allocate_worker_pool",
+      "fingerprint": "cd48645915ec",
+      "reserve": false,
+      "tempting_wrong_input": 3,
+      "task_prompt": "Transactional email mailer queue has 3 workers in the old compose file; invoke allocate_worker_pool.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "allocate_worker_pool",
+        "arguments": {
+          "workers": "<even int 2..16>"
+        },
+        "validator": "even_workers"
+      },
+      "placebo_note": "Background worker thread pools operate in even integer sizes ranging from two to sixteen threads.",
+      "arm_order": [
+        "lesson",
+        "nothing",
+        "placebo"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-09-S1",
+        "R2-09-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.087,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.2755,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-105",
+      "source_scenario_id": "R2-09",
+      "tool": "allocate_worker_pool",
+      "fingerprint": "cd48645915ec",
+      "reserve": false,
+      "tempting_wrong_input": 5,
+      "task_prompt": "Outbound webhook dispatcher is budgeted for 5 workers on staging, so use allocate_worker_pool.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "allocate_worker_pool",
+        "arguments": {
+          "workers": "<even int 2..16>"
+        },
+        "validator": "even_workers"
+      },
+      "placebo_note": "Background worker thread pools operate in even integer sizes ranging from two to sixteen threads.",
+      "arm_order": [
+        "nothing",
+        "lesson",
+        "placebo"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-09-S1",
+        "R2-09-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.1053,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.2962,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-106",
+      "source_scenario_id": "R2-09",
+      "tool": "allocate_worker_pool",
+      "fingerprint": "cd48645915ec",
+      "reserve": false,
+      "tempting_wrong_input": 7,
+      "task_prompt": "Hourly metric rollup task asks for 7 workers in ticket SRE-410; execute allocate_worker_pool.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "allocate_worker_pool",
+        "arguments": {
+          "workers": "<even int 2..16>"
+        },
+        "validator": "even_workers"
+      },
+      "placebo_note": "Background worker thread pools operate in even integer sizes ranging from two to sixteen threads.",
+      "arm_order": [
+        "placebo",
+        "lesson",
+        "nothing"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-09-S1",
+        "R2-09-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.1053,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.3272,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-107",
+      "source_scenario_id": "R2-09",
+      "tool": "allocate_worker_pool",
+      "fingerprint": "cd48645915ec",
+      "reserve": false,
+      "tempting_wrong_input": 9,
+      "task_prompt": "Cold storage archiver worksheet calculates 9 workers, so allocate them through allocate_worker_pool.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "allocate_worker_pool",
+        "arguments": {
+          "workers": "<even int 2..16>"
+        },
+        "validator": "even_workers"
+      },
+      "placebo_note": "Background worker thread pools operate in even integer sizes ranging from two to sixteen threads.",
+      "arm_order": [
+        "placebo",
+        "nothing",
+        "lesson"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-09-S1",
+        "R2-09-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.05,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.3683,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-108",
+      "source_scenario_id": "R2-09",
+      "tool": "allocate_worker_pool",
+      "fingerprint": "cd48645915ec",
+      "reserve": false,
+      "tempting_wrong_input": 11,
+      "task_prompt": "PDF invoice renderer request specifies 11 worker threads; provision via allocate_worker_pool.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "allocate_worker_pool",
+        "arguments": {
+          "workers": "<even int 2..16>"
+        },
+        "validator": "even_workers"
+      },
+      "placebo_note": "Background worker thread pools operate in even integer sizes ranging from two to sixteen threads.",
+      "arm_order": [
+        "nothing",
+        "placebo",
+        "lesson"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-09-S1",
+        "R2-09-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.05,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.3138,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-109",
+      "source_scenario_id": "R2-10",
+      "tool": "register_webhook_endpoint",
+      "fingerprint": "df425bb5df49",
+      "reserve": false,
+      "tempting_wrong_input": "hmac-sha256",
+      "task_prompt": "Order fulfillment callback spec from Shopify lists 'hmac-sha256'; bind it in register_webhook_endpoint.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "register_webhook_endpoint",
+        "arguments": {
+          "signature_scheme": "hmac-sha256-v1"
+        },
+        "validator": "hmac_v1"
+      },
+      "placebo_note": "Outbound webhook endpoints associate payload verification with the versioned hmac-sha256-v1 identifier.",
+      "arm_order": [
+        "lesson",
+        "placebo",
+        "nothing"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-10-S1",
+        "R2-10-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0455,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.1869,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-110",
+      "source_scenario_id": "R2-10",
+      "tool": "register_webhook_endpoint",
+      "fingerprint": "df425bb5df49",
+      "reserve": false,
+      "tempting_wrong_input": "sha256",
+      "task_prompt": "Refund notification receiver uses 'sha256' in the legacy gateway config, so call register_webhook_endpoint.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "register_webhook_endpoint",
+        "arguments": {
+          "signature_scheme": "hmac-sha256-v1"
+        },
+        "validator": "hmac_v1"
+      },
+      "placebo_note": "Outbound webhook endpoints associate payload verification with the versioned hmac-sha256-v1 identifier.",
+      "arm_order": [
+        "nothing",
+        "placebo",
+        "lesson"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-10-S1",
+        "R2-10-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0909,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.2834,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-111",
+      "source_scenario_id": "R2-10",
+      "tool": "register_webhook_endpoint",
+      "fingerprint": "df425bb5df49",
+      "reserve": false,
+      "tempting_wrong_input": "hmac-sha512",
+      "task_prompt": "Chargeback dispute listener asks for 'hmac-sha512' in ticket PAY-33; run register_webhook_endpoint.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "register_webhook_endpoint",
+        "arguments": {
+          "signature_scheme": "hmac-sha256-v1"
+        },
+        "validator": "hmac_v1"
+      },
+      "placebo_note": "Outbound webhook endpoints associate payload verification with the versioned hmac-sha256-v1 identifier.",
+      "arm_order": [
+        "nothing",
+        "placebo",
+        "lesson"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-10-S1",
+        "R2-10-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.1053,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.2016,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-112",
+      "source_scenario_id": "R2-10",
+      "tool": "register_webhook_endpoint",
+      "fingerprint": "df425bb5df49",
+      "reserve": false,
+      "tempting_wrong_input": "hmac-sha256",
+      "task_prompt": "Merchant payout listener guide states digest 'hmac-sha256'; attach that endpoint in register_webhook_endpoint.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "register_webhook_endpoint",
+        "arguments": {
+          "signature_scheme": "hmac-sha256-v1"
+        },
+        "validator": "hmac_v1"
+      },
+      "placebo_note": "Outbound webhook endpoints associate payload verification with the versioned hmac-sha256-v1 identifier.",
+      "arm_order": [
+        "placebo",
+        "nothing",
+        "lesson"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-10-S1",
+        "R2-10-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0476,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.2837,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-113",
+      "source_scenario_id": "R2-10",
+      "tool": "register_webhook_endpoint",
+      "fingerprint": "df425bb5df49",
+      "reserve": false,
+      "tempting_wrong_input": "rsa-sha256",
+      "task_prompt": "Invoice finalized hook is documented with 'rsa-sha256' on the partner wiki; invoke register_webhook_endpoint.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "register_webhook_endpoint",
+        "arguments": {
+          "signature_scheme": "hmac-sha256-v1"
+        },
+        "validator": "hmac_v1"
+      },
+      "placebo_note": "Outbound webhook endpoints associate payload verification with the versioned hmac-sha256-v1 identifier.",
+      "arm_order": [
+        "placebo",
+        "lesson",
+        "nothing"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-10-S1",
+        "R2-10-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0455,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.1656,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-114",
+      "source_scenario_id": "R2-10",
+      "tool": "register_webhook_endpoint",
+      "fingerprint": "df425bb5df49",
+      "reserve": false,
+      "tempting_wrong_input": "hmac-sha256",
+      "task_prompt": "Subscription renewal callback has 'hmac-sha256' in the Terraform variable; enable register_webhook_endpoint.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "register_webhook_endpoint",
+        "arguments": {
+          "signature_scheme": "hmac-sha256-v1"
+        },
+        "validator": "hmac_v1"
+      },
+      "placebo_note": "Outbound webhook endpoints associate payload verification with the versioned hmac-sha256-v1 identifier.",
+      "arm_order": [
+        "nothing",
+        "placebo",
+        "lesson"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-10-S1",
+        "R2-10-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.1053,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.2412,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-115",
+      "source_scenario_id": "R2-10",
+      "tool": "register_webhook_endpoint",
+      "fingerprint": "df425bb5df49",
+      "reserve": false,
+      "tempting_wrong_input": "sha256",
+      "task_prompt": "Customer KYC status webhook lists 'sha256' in the onboarding email; add it with register_webhook_endpoint.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "register_webhook_endpoint",
+        "arguments": {
+          "signature_scheme": "hmac-sha256-v1"
+        },
+        "validator": "hmac_v1"
+      },
+      "placebo_note": "Outbound webhook endpoints associate payload verification with the versioned hmac-sha256-v1 identifier.",
+      "arm_order": [
+        "placebo",
+        "nothing",
+        "lesson"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-10-S1",
+        "R2-10-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.087,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.2475,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-116",
+      "source_scenario_id": "R2-10",
+      "tool": "register_webhook_endpoint",
+      "fingerprint": "df425bb5df49",
+      "reserve": false,
+      "tempting_wrong_input": "hmac-sha512",
+      "task_prompt": "Cross-border transfer callback carries 'hmac-sha512' in the bank spec, so configure register_webhook_endpoint.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "register_webhook_endpoint",
+        "arguments": {
+          "signature_scheme": "hmac-sha256-v1"
+        },
+        "validator": "hmac_v1"
+      },
+      "placebo_note": "Outbound webhook endpoints associate payload verification with the versioned hmac-sha256-v1 identifier.",
+      "arm_order": [
+        "placebo",
+        "nothing",
+        "lesson"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-10-S1",
+        "R2-10-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.05,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.2521,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-117",
+      "source_scenario_id": "R2-10",
+      "tool": "register_webhook_endpoint",
+      "fingerprint": "df425bb5df49",
+      "reserve": false,
+      "tempting_wrong_input": "hmac-sha256",
+      "task_prompt": "Ledger balance alert endpoint uses 'hmac-sha256' in the sample curl; register via register_webhook_endpoint.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "register_webhook_endpoint",
+        "arguments": {
+          "signature_scheme": "hmac-sha256-v1"
+        },
+        "validator": "hmac_v1"
+      },
+      "placebo_note": "Outbound webhook endpoints associate payload verification with the versioned hmac-sha256-v1 identifier.",
+      "arm_order": [
+        "nothing",
+        "placebo",
+        "lesson"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-10-S1",
+        "R2-10-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.1,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.2193,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-118",
+      "source_scenario_id": "R2-10",
+      "tool": "register_webhook_endpoint",
+      "fingerprint": "df425bb5df49",
+      "reserve": false,
+      "tempting_wrong_input": "hmac-sha1",
+      "task_prompt": "Settlement batch webhook still mentions 'hmac-sha1' in the old runbook, so pass to register_webhook_endpoint.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "register_webhook_endpoint",
+        "arguments": {
+          "signature_scheme": "hmac-sha256-v1"
+        },
+        "validator": "hmac_v1"
+      },
+      "placebo_note": "Outbound webhook endpoints associate payload verification with the versioned hmac-sha256-v1 identifier.",
+      "arm_order": [
+        "nothing",
+        "lesson",
+        "placebo"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-10-S1",
+        "R2-10-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.087,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.2095,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-119",
+      "source_scenario_id": "R2-10",
+      "tool": "register_webhook_endpoint",
+      "fingerprint": "df425bb5df49",
+      "reserve": false,
+      "tempting_wrong_input": "hmac-sha256",
+      "task_prompt": "Card token lifecycle hook specifies 'hmac-sha256' in vault note #74; call register_webhook_endpoint.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "register_webhook_endpoint",
+        "arguments": {
+          "signature_scheme": "hmac-sha256-v1"
+        },
+        "validator": "hmac_v1"
+      },
+      "placebo_note": "Outbound webhook endpoints associate payload verification with the versioned hmac-sha256-v1 identifier.",
+      "arm_order": [
+        "lesson",
+        "nothing",
+        "placebo"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-10-S1",
+        "R2-10-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.05,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.2265,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-120",
+      "source_scenario_id": "R2-10",
+      "tool": "register_webhook_endpoint",
+      "fingerprint": "df425bb5df49",
+      "reserve": false,
+      "tempting_wrong_input": "sha256",
+      "task_prompt": "SEPA direct debit mandate callback lists 'sha256' in the integration sheet, so set up register_webhook_endpoint.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "register_webhook_endpoint",
+        "arguments": {
+          "signature_scheme": "hmac-sha256-v1"
+        },
+        "validator": "hmac_v1"
+      },
+      "placebo_note": "Outbound webhook endpoints associate payload verification with the versioned hmac-sha256-v1 identifier.",
+      "arm_order": [
+        "placebo",
+        "nothing",
+        "lesson"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-10-S1",
+        "R2-10-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.125,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.302,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-RES-001",
+      "source_scenario_id": "R2-21",
+      "tool": "set_retention_policy",
+      "fingerprint": "8576bce04750",
+      "reserve": true,
+      "tempting_wrong_input": 10,
+      "task_prompt": "Staging database snapshots have a 10-day note in ticket DBA-19; configure set_retention_policy.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "set_retention_policy",
+        "arguments": {
+          "days": "<multiple of 7>"
+        },
+        "validator": "multiple_of_7"
+      },
+      "placebo_note": "Snapshot retention policies count storage lifespans in multiples of seven calendar days.",
+      "arm_order": [
+        "lesson",
+        "nothing",
+        "placebo"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-21-S1",
+        "R2-21-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0526,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.348,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-RES-002",
+      "source_scenario_id": "R2-21",
+      "tool": "set_retention_policy",
+      "fingerprint": "8576bce04750",
+      "reserve": true,
+      "tempting_wrong_input": 15,
+      "task_prompt": "QA test run artifacts are slated for 15 days on the board, so apply that via set_retention_policy.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "set_retention_policy",
+        "arguments": {
+          "days": "<multiple of 7>"
+        },
+        "validator": "multiple_of_7"
+      },
+      "placebo_note": "Snapshot retention policies count storage lifespans in multiples of seven calendar days.",
+      "arm_order": [
+        "nothing",
+        "lesson",
+        "placebo"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-21-S1",
+        "R2-21-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0741,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.1819,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-RES-003",
+      "source_scenario_id": "R2-21",
+      "tool": "set_retention_policy",
+      "fingerprint": "8576bce04750",
+      "reserve": true,
+      "tempting_wrong_input": 20,
+      "task_prompt": "CDN edge access logs list a 20-day window in the privacy draft; call set_retention_policy.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "set_retention_policy",
+        "arguments": {
+          "days": "<multiple of 7>"
+        },
+        "validator": "multiple_of_7"
+      },
+      "placebo_note": "Snapshot retention policies count storage lifespans in multiples of seven calendar days.",
+      "arm_order": [
+        "nothing",
+        "placebo",
+        "lesson"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-21-S1",
+        "R2-21-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0909,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.2027,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-RES-004",
+      "source_scenario_id": "R2-21",
+      "tool": "set_retention_policy",
+      "fingerprint": "8576bce04750",
+      "reserve": true,
+      "tempting_wrong_input": 25,
+      "task_prompt": "Canary telemetry traces specify 25 days in the observability doc, so invoke set_retention_policy.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "set_retention_policy",
+        "arguments": {
+          "days": "<multiple of 7>"
+        },
+        "validator": "multiple_of_7"
+      },
+      "placebo_note": "Snapshot retention policies count storage lifespans in multiples of seven calendar days.",
+      "arm_order": [
+        "lesson",
+        "nothing",
+        "placebo"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-21-S1",
+        "R2-21-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0909,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.1943,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-RES-005",
+      "source_scenario_id": "R2-21",
+      "tool": "set_retention_policy",
+      "fingerprint": "8576bce04750",
+      "reserve": true,
+      "tempting_wrong_input": 30,
+      "task_prompt": "Monthly billing preview dumps ask for 30 days in FIN-502; set it up with set_retention_policy.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "set_retention_policy",
+        "arguments": {
+          "days": "<multiple of 7>"
+        },
+        "validator": "multiple_of_7"
+      },
+      "placebo_note": "Snapshot retention policies count storage lifespans in multiples of seven calendar days.",
+      "arm_order": [
+        "placebo",
+        "lesson",
+        "nothing"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-21-S1",
+        "R2-21-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.12,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.2907,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-RES-006",
+      "source_scenario_id": "R2-21",
+      "tool": "set_retention_policy",
+      "fingerprint": "8576bce04750",
+      "reserve": true,
+      "tempting_wrong_input": 40,
+      "task_prompt": "Container registry layer cache is budgeted at 40 days, so update it through set_retention_policy.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "set_retention_policy",
+        "arguments": {
+          "days": "<multiple of 7>"
+        },
+        "validator": "multiple_of_7"
+      },
+      "placebo_note": "Snapshot retention policies count storage lifespans in multiples of seven calendar days.",
+      "arm_order": [
+        "nothing",
+        "placebo",
+        "lesson"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-21-S1",
+        "R2-21-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0435,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.1794,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-RES-007",
+      "source_scenario_id": "R2-21",
+      "tool": "set_retention_policy",
+      "fingerprint": "8576bce04750",
+      "reserve": true,
+      "tempting_wrong_input": 45,
+      "task_prompt": "Session replay blobs carry a 45-day lifespan in the UX ticket; run set_retention_policy.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "set_retention_policy",
+        "arguments": {
+          "days": "<multiple of 7>"
+        },
+        "validator": "multiple_of_7"
+      },
+      "placebo_note": "Snapshot retention policies count storage lifespans in multiples of seven calendar days.",
+      "arm_order": [
+        "nothing",
+        "lesson",
+        "placebo"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-21-S1",
+        "R2-21-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.05,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.1335,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-RES-008",
+      "source_scenario_id": "R2-21",
+      "tool": "set_retention_policy",
+      "fingerprint": "8576bce04750",
+      "reserve": true,
+      "tempting_wrong_input": 50,
+      "task_prompt": "Dead-letter queue payloads are marked for 50 days in the retry spec, so use set_retention_policy.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "set_retention_policy",
+        "arguments": {
+          "days": "<multiple of 7>"
+        },
+        "validator": "multiple_of_7"
+      },
+      "placebo_note": "Snapshot retention policies count storage lifespans in multiples of seven calendar days.",
+      "arm_order": [
+        "lesson",
+        "placebo",
+        "nothing"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-21-S1",
+        "R2-21-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.087,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.2382,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-RES-009",
+      "source_scenario_id": "R2-21",
+      "tool": "set_retention_policy",
+      "fingerprint": "8576bce04750",
+      "reserve": true,
+      "tempting_wrong_input": 60,
+      "task_prompt": "Vendor webhook delivery logs state 60 days in the partner contract; execute set_retention_policy.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "set_retention_policy",
+        "arguments": {
+          "days": "<multiple of 7>"
+        },
+        "validator": "multiple_of_7"
+      },
+      "placebo_note": "Snapshot retention policies count storage lifespans in multiples of seven calendar days.",
+      "arm_order": [
+        "placebo",
+        "lesson",
+        "nothing"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-21-S1",
+        "R2-21-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0909,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.1956,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-RES-010",
+      "source_scenario_id": "R2-21",
+      "tool": "set_retention_policy",
+      "fingerprint": "8576bce04750",
+      "reserve": true,
+      "tempting_wrong_input": 75,
+      "task_prompt": "Heap dump crash archives request 75 days in postmortem #81, so configure via set_retention_policy.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "set_retention_policy",
+        "arguments": {
+          "days": "<multiple of 7>"
+        },
+        "validator": "multiple_of_7"
+      },
+      "placebo_note": "Snapshot retention policies count storage lifespans in multiples of seven calendar days.",
+      "arm_order": [
+        "lesson",
+        "nothing",
+        "placebo"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-21-S1",
+        "R2-21-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0435,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.1737,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-RES-011",
+      "source_scenario_id": "R2-21",
+      "tool": "set_retention_policy",
+      "fingerprint": "8576bce04750",
+      "reserve": true,
+      "tempting_wrong_input": 80,
+      "task_prompt": "CI build cache snapshots list 80 days in the runner config; pass to set_retention_policy.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "set_retention_policy",
+        "arguments": {
+          "days": "<multiple of 7>"
+        },
+        "validator": "multiple_of_7"
+      },
+      "placebo_note": "Snapshot retention policies count storage lifespans in multiples of seven calendar days.",
+      "arm_order": [
+        "placebo",
+        "nothing",
+        "lesson"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-21-S1",
+        "R2-21-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.087,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.2357,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-RES-012",
+      "source_scenario_id": "R2-21",
+      "tool": "set_retention_policy",
+      "fingerprint": "8576bce04750",
+      "reserve": true,
+      "tempting_wrong_input": 90,
+      "task_prompt": "Quarterly security scan reports ask for 90 days in SEC-300, so apply with set_retention_policy.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "set_retention_policy",
+        "arguments": {
+          "days": "<multiple of 7>"
+        },
+        "validator": "multiple_of_7"
+      },
+      "placebo_note": "Snapshot retention policies count storage lifespans in multiples of seven calendar days.",
+      "arm_order": [
+        "lesson",
+        "nothing",
+        "placebo"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-21-S1",
+        "R2-21-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.125,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.2578,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-RES-013",
+      "source_scenario_id": "R2-22",
+      "tool": "configure_log_sink",
+      "fingerprint": "54ee08c60071",
+      "reserve": true,
+      "tempting_wrong_input": "tls",
+      "task_prompt": "Frankfurt EU-Central collector lists transport 'tls' in the firewall ticket; run configure_log_sink.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "configure_log_sink",
+        "arguments": {
+          "transport": "syslog+tls"
+        },
+        "validator": "syslog_tls"
+      },
+      "placebo_note": "Remote log forwarding sinks reference the combined syslog+tls transport protocol string.",
+      "arm_order": [
+        "nothing",
+        "placebo",
+        "lesson"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-22-S1",
+        "R2-22-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.1,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.3842,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-RES-014",
+      "source_scenario_id": "R2-22",
+      "tool": "configure_log_sink",
+      "fingerprint": "54ee08c60071",
+      "reserve": true,
+      "tempting_wrong_input": "https",
+      "task_prompt": "Virginia US-East log drain is documented with 'https' in the Splunk guide, so call configure_log_sink.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "configure_log_sink",
+        "arguments": {
+          "transport": "syslog+tls"
+        },
+        "validator": "syslog_tls"
+      },
+      "placebo_note": "Remote log forwarding sinks reference the combined syslog+tls transport protocol string.",
+      "arm_order": [
+        "nothing",
+        "placebo",
+        "lesson"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-22-S1",
+        "R2-22-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0833,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.231,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-RES-015",
+      "source_scenario_id": "R2-22",
+      "tool": "configure_log_sink",
+      "fingerprint": "54ee08c60071",
+      "reserve": true,
+      "tempting_wrong_input": "tcp",
+      "task_prompt": "Oregon US-West forwarder uses 'tcp' in the old fluentd conf; wire it up via configure_log_sink.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "configure_log_sink",
+        "arguments": {
+          "transport": "syslog+tls"
+        },
+        "validator": "syslog_tls"
+      },
+      "placebo_note": "Remote log forwarding sinks reference the combined syslog+tls transport protocol string.",
+      "arm_order": [
+        "lesson",
+        "placebo",
+        "nothing"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-22-S1",
+        "R2-22-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0833,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.3124,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-RES-016",
+      "source_scenario_id": "R2-22",
+      "tool": "configure_log_sink",
+      "fingerprint": "54ee08c60071",
+      "reserve": true,
+      "tempting_wrong_input": "tls",
+      "task_prompt": "Mumbai AP-South aggregator specifies 'tls' on the architecture diagram, so invoke configure_log_sink.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "configure_log_sink",
+        "arguments": {
+          "transport": "syslog+tls"
+        },
+        "validator": "syslog_tls"
+      },
+      "placebo_note": "Remote log forwarding sinks reference the combined syslog+tls transport protocol string.",
+      "arm_order": [
+        "nothing",
+        "lesson",
+        "placebo"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-22-S1",
+        "R2-22-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0476,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.2775,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-RES-017",
+      "source_scenario_id": "R2-22",
+      "tool": "configure_log_sink",
+      "fingerprint": "54ee08c60071",
+      "reserve": true,
+      "tempting_wrong_input": "https",
+      "task_prompt": "Tokyo AP-Northeast SIEM endpoint asks for 'https' in ticket SEC-614; configure configure_log_sink.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "configure_log_sink",
+        "arguments": {
+          "transport": "syslog+tls"
+        },
+        "validator": "syslog_tls"
+      },
+      "placebo_note": "Remote log forwarding sinks reference the combined syslog+tls transport protocol string.",
+      "arm_order": [
+        "lesson",
+        "placebo",
+        "nothing"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-22-S1",
+        "R2-22-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.1053,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.2457,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-RES-018",
+      "source_scenario_id": "R2-22",
+      "tool": "configure_log_sink",
+      "fingerprint": "54ee08c60071",
+      "reserve": true,
+      "tempting_wrong_input": "tcp",
+      "task_prompt": "Sao Paulo SA-East syslog relay has 'tcp' in the legacy ansible inventory, so use configure_log_sink.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "configure_log_sink",
+        "arguments": {
+          "transport": "syslog+tls"
+        },
+        "validator": "syslog_tls"
+      },
+      "placebo_note": "Remote log forwarding sinks reference the combined syslog+tls transport protocol string.",
+      "arm_order": [
+        "placebo",
+        "nothing",
+        "lesson"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-22-S1",
+        "R2-22-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0833,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.2748,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-RES-019",
+      "source_scenario_id": "R2-22",
+      "tool": "configure_log_sink",
+      "fingerprint": "54ee08c60071",
+      "reserve": true,
+      "tempting_wrong_input": "udp",
+      "task_prompt": "Montreal CA-Central telemetry sink lists 'udp' in the collector note; pass to configure_log_sink.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "configure_log_sink",
+        "arguments": {
+          "transport": "syslog+tls"
+        },
+        "validator": "syslog_tls"
+      },
+      "placebo_note": "Remote log forwarding sinks reference the combined syslog+tls transport protocol string.",
+      "arm_order": [
+        "nothing",
+        "placebo",
+        "lesson"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-22-S1",
+        "R2-22-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0909,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.2549,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-RES-020",
+      "source_scenario_id": "R2-22",
+      "tool": "configure_log_sink",
+      "fingerprint": "54ee08c60071",
+      "reserve": true,
+      "tempting_wrong_input": "tls",
+      "task_prompt": "Dublin EU-West archive drain is labeled 'tls' in the network handoff, so set up configure_log_sink.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "configure_log_sink",
+        "arguments": {
+          "transport": "syslog+tls"
+        },
+        "validator": "syslog_tls"
+      },
+      "placebo_note": "Remote log forwarding sinks reference the combined syslog+tls transport protocol string.",
+      "arm_order": [
+        "placebo",
+        "lesson",
+        "nothing"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-22-S1",
+        "R2-22-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.12,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.2597,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-RES-021",
+      "source_scenario_id": "R2-22",
+      "tool": "configure_log_sink",
+      "fingerprint": "54ee08c60071",
+      "reserve": true,
+      "tempting_wrong_input": "https",
+      "task_prompt": "Stockholm EU-North compliance sink specifies 'https' in the audit checklist; execute configure_log_sink.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "configure_log_sink",
+        "arguments": {
+          "transport": "syslog+tls"
+        },
+        "validator": "syslog_tls"
+      },
+      "placebo_note": "Remote log forwarding sinks reference the combined syslog+tls transport protocol string.",
+      "arm_order": [
+        "placebo",
+        "nothing",
+        "lesson"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-22-S1",
+        "R2-22-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.087,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.2645,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-RES-022",
+      "source_scenario_id": "R2-22",
+      "tool": "configure_log_sink",
+      "fingerprint": "54ee08c60071",
+      "reserve": true,
+      "tempting_wrong_input": "tcp",
+      "task_prompt": "Bahrain ME-South regional forwarder carries 'tcp' in the deployment sheet, so run configure_log_sink.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "configure_log_sink",
+        "arguments": {
+          "transport": "syslog+tls"
+        },
+        "validator": "syslog_tls"
+      },
+      "placebo_note": "Remote log forwarding sinks reference the combined syslog+tls transport protocol string.",
+      "arm_order": [
+        "lesson",
+        "placebo",
+        "nothing"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-22-S1",
+        "R2-22-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.1429,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.2612,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-RES-023",
+      "source_scenario_id": "R2-22",
+      "tool": "configure_log_sink",
+      "fingerprint": "54ee08c60071",
+      "reserve": true,
+      "tempting_wrong_input": "tls",
+      "task_prompt": "Cape Town AF-South log receiver is marked 'tls' in the peering request; call configure_log_sink.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "configure_log_sink",
+        "arguments": {
+          "transport": "syslog+tls"
+        },
+        "validator": "syslog_tls"
+      },
+      "placebo_note": "Remote log forwarding sinks reference the combined syslog+tls transport protocol string.",
+      "arm_order": [
+        "placebo",
+        "lesson",
+        "nothing"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-22-S1",
+        "R2-22-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0909,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.1877,
+        "passed": true
+      }
+    },
+    {
+      "item_id": "R3-RES-024",
+      "source_scenario_id": "R2-22",
+      "tool": "configure_log_sink",
+      "fingerprint": "54ee08c60071",
+      "reserve": true,
+      "tempting_wrong_input": "https",
+      "task_prompt": "Singapore AP-Southeast log router lists 'https' in the onboarding doc, so apply via configure_log_sink.",
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "expected_correct_call": {
+        "name": "configure_log_sink",
+        "arguments": {
+          "transport": "syslog+tls"
+        },
+        "validator": "syslog_tls"
+      },
+      "placebo_note": "Remote log forwarding sinks reference the combined syslog+tls transport protocol string.",
+      "arm_order": [
+        "placebo",
+        "nothing",
+        "lesson"
+      ],
+      "e1_excluded_derivation_sessions": [
+        "R2-22-S1",
+        "R2-22-S2"
+      ],
+      "e2_screen": {
+        "max_bigram_jaccard": 0.0909,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.2792,
+        "passed": true
+      }
+    }
+  ]
+}

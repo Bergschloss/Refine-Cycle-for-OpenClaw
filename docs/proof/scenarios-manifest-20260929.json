@@ -1,0 +1,1234 @@
+{
+  "manifest_version": 1,
+  "frozen_date": "2026-09-29",
+  "seed": "openclaw-r2-schedule-20260929",
+  "system_prompt": "You are an operations and engineering assistant running in an OpenClaw workspace. Use the registered workspace tools to fulfill each operational request directly. Follow workspace rules in AGENTS.md.",
+  "system_prompt_sha256": "6349ff543247ce2ca84ed03d6ace828d75e303e1aeaf98dccad6f78826f84975",
+  "workspace_agents_md_sha256": "07dff714f81e14bba2f391a1961a350b56b2e2891130c98a08ba84590cd4f7f6",
+  "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+  "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+  "primary_counts": {
+    "fixable": 10,
+    "not-fixable": 5,
+    "noise": 5,
+    "total": 20
+  },
+  "reserve_counts": {
+    "fixable": 2,
+    "not-fixable": 1,
+    "noise": 1,
+    "total": 4
+  },
+  "daily_randomized_order": {
+    "day_1": [
+      "R2-05",
+      "R2-03",
+      "R2-13",
+      "R2-20",
+      "R2-04",
+      "R2-09",
+      "R2-11",
+      "R2-10",
+      "R2-17",
+      "R2-15",
+      "R2-14",
+      "R2-06",
+      "R2-18",
+      "R2-07",
+      "R2-02",
+      "R2-19",
+      "R2-16",
+      "R2-01",
+      "R2-12",
+      "R2-08"
+    ],
+    "day_2": [
+      "R2-12",
+      "R2-16",
+      "R2-11",
+      "R2-19",
+      "R2-18",
+      "R2-06",
+      "R2-20",
+      "R2-10",
+      "R2-13",
+      "R2-05",
+      "R2-01",
+      "R2-03",
+      "R2-09",
+      "R2-14",
+      "R2-15",
+      "R2-17",
+      "R2-02",
+      "R2-04",
+      "R2-08",
+      "R2-07"
+    ],
+    "day_3": [
+      "R2-18",
+      "R2-13",
+      "R2-19",
+      "R2-03",
+      "R2-04",
+      "R2-06",
+      "R2-16",
+      "R2-01",
+      "R2-02",
+      "R2-10",
+      "R2-20",
+      "R2-15",
+      "R2-14",
+      "R2-17",
+      "R2-11",
+      "R2-07",
+      "R2-08",
+      "R2-09",
+      "R2-12",
+      "R2-05"
+    ],
+    "day_4": [
+      "R2-06",
+      "R2-04",
+      "R2-02",
+      "R2-17",
+      "R2-09",
+      "R2-01",
+      "R2-03",
+      "R2-20",
+      "R2-13",
+      "R2-19",
+      "R2-11",
+      "R2-18",
+      "R2-07",
+      "R2-15",
+      "R2-16",
+      "R2-08",
+      "R2-14",
+      "R2-10",
+      "R2-05",
+      "R2-12"
+    ],
+    "day_5": [
+      "R2-08",
+      "R2-04",
+      "R2-07",
+      "R2-16",
+      "R2-14",
+      "R2-01",
+      "R2-05",
+      "R2-03",
+      "R2-09",
+      "R2-06",
+      "R2-12",
+      "R2-02",
+      "R2-13",
+      "R2-19",
+      "R2-17",
+      "R2-15",
+      "R2-18",
+      "R2-20",
+      "R2-10",
+      "R2-11"
+    ]
+  },
+  "scenarios": [
+    {
+      "scenario_id": "R2-01",
+      "category": "fixable",
+      "predicate": {
+        "tool": "schedule_backup",
+        "error_pattern": "invalid cron expression: schedule_backup requires exactly n whitespace-separated fields (minute hour day month weekday)",
+        "fingerprint": "cc71204125b3",
+        "preconditions": [
+          "Agent calls schedule_backup with a cron expression"
+        ],
+        "does_not_cover": [
+          "6-field cron strings with seconds",
+          "@daily/@hourly shorthand macros"
+        ]
+      },
+      "expected_correct_call": {
+        "name": "schedule_backup",
+        "arguments": {
+          "cron": "<5-field cron: M H D m W>"
+        },
+        "validator": "cron_5_fields"
+      },
+      "sessions": 5,
+      "tempting_wrong_inputs": [
+        "0 0 2 * * *",
+        "0 30 3 * * *",
+        "0 15 1 * * *",
+        "0 45 4 * * *",
+        "0 0 5 * * *"
+      ],
+      "session_prompts": [
+        "The old scheduler ran this nightly database backup with cron '0 0 2 * * *'; set it up with schedule_backup.",
+        "Migrate the warehouse snapshot job from Quartz cron '0 30 3 * * *' using schedule_backup.",
+        "Schedule the ledger archive job in schedule_backup for the legacy cron string '0 15 1 * * *'.",
+        "The billing runbook lists cron '0 45 4 * * *' for the nightly export; configure it via schedule_backup.",
+        "Set up the audit compaction backup with schedule_backup for the schedule in ticket OPS-118: '0 0 5 * * *'."
+      ],
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "e1_exclusions": [
+        "R2-01-S1",
+        "R2-01-S2"
+      ],
+      "e2_scores": {
+        "max_bigram_jaccard": 0.0952,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.3695
+      },
+      "reserve": false,
+      "expectation": "learn_within_3_sessions_and_pass_first_call",
+      "placebo_note": "Nightly backup schedules in cron syntax relate to five time fields across standard calendar intervals."
+    },
+    {
+      "scenario_id": "R2-02",
+      "category": "fixable",
+      "predicate": {
+        "tool": "send_report",
+        "error_pattern": "invalid date format: send_report requires strict iso format yyyy-mm-dd",
+        "fingerprint": "275ad60f8d56",
+        "preconditions": [
+          "Agent calls send_report with a date parameter"
+        ],
+        "does_not_cover": [
+          "US slash dates MM/DD/YYYY",
+          "European slash or dot dates DD/MM/YYYY"
+        ]
+      },
+      "expected_correct_call": {
+        "name": "send_report",
+        "arguments": {
+          "date": "YYYY-MM-DD"
+        },
+        "validator": "iso_date"
+      },
+      "sessions": 5,
+      "tempting_wrong_inputs": [
+        "09/29/2026",
+        "10/01/2026",
+        "10/02/2026",
+        "10/03/2026",
+        "04/10/2026"
+      ],
+      "session_prompts": [
+        "Send the report for the date in the ticket: 09/29/2026 using send_report.",
+        "Dispatch the daily summary via send_report for the billing sheet date '10/01/2026'.",
+        "Run send_report for the settlement date written on the handoff note: 10/02/2026.",
+        "Use send_report to send out the operations digest for '10/03/2026' from the incident log.",
+        "Call send_report for the European date string '04/10/2026' (4 October 2026) listed in the request."
+      ],
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "e1_exclusions": [
+        "R2-02-S1",
+        "R2-02-S2"
+      ],
+      "e2_scores": {
+        "max_bigram_jaccard": 0.1,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.3084
+      },
+      "reserve": false,
+      "expectation": "learn_within_3_sessions_and_pass_first_call",
+      "placebo_note": "Daily summary reports reference calendar dates formatted with four-digit years and two-digit months."
+    },
+    {
+      "scenario_id": "R2-03",
+      "category": "fixable",
+      "predicate": {
+        "tool": "query_metrics",
+        "error_pattern": "invalid window unit: query_metrics requires duration in minutes with suffix m (e.g. n)",
+        "fingerprint": "2e361d698068",
+        "preconditions": [
+          "Agent calls query_metrics with a window duration"
+        ],
+        "does_not_cover": [
+          "Hour suffixes like 1h or 24h",
+          "Day suffixes like 1d"
+        ]
+      },
+      "expected_correct_call": {
+        "name": "query_metrics",
+        "arguments": {
+          "window": "<integer>m"
+        },
+        "validator": "minutes_suffix"
+      },
+      "sessions": 5,
+      "tempting_wrong_inputs": [
+        "1h",
+        "2h",
+        "3h",
+        "4h",
+        "6h"
+      ],
+      "session_prompts": [
+        "The dashboard config uses window '1h'; run query_metrics for that telemetry window.",
+        "Run query_metrics for the '2h' lookback window specified in the alert ticket.",
+        "Check service telemetry with query_metrics using the '3h' window from the on-call runbook.",
+        "Call query_metrics for the '4h' observation window noted in the postmortem.",
+        "Query service telemetry via query_metrics over the '6h' interval from the incident summary."
+      ],
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "e1_exclusions": [
+        "R2-03-S1",
+        "R2-03-S2"
+      ],
+      "e2_scores": {
+        "max_bigram_jaccard": 0.1,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.2352
+      },
+      "reserve": false,
+      "expectation": "learn_within_3_sessions_and_pass_first_call",
+      "placebo_note": "Service telemetry queries measure rolling observation windows expressed in integer minute durations."
+    },
+    {
+      "scenario_id": "R2-04",
+      "category": "fixable",
+      "predicate": {
+        "tool": "rotate_archive",
+        "error_pattern": "unsupported compression codec: rotate_archive only accepts zstd or lz4",
+        "fingerprint": "7d4d943db26e",
+        "preconditions": [
+          "Agent calls rotate_archive with a codec string"
+        ],
+        "does_not_cover": [
+          "Legacy gzip or bzip2 codecs",
+          "Uncompressed tar archives"
+        ]
+      },
+      "expected_correct_call": {
+        "name": "rotate_archive",
+        "arguments": {
+          "codec": "zstd|lz4"
+        },
+        "validator": "codec_zstd_or_lz4"
+      },
+      "sessions": 5,
+      "tempting_wrong_inputs": [
+        "gzip",
+        "gzip",
+        "bzip2",
+        "gzip",
+        "xz"
+      ],
+      "session_prompts": [
+        "The legacy logrotate script compressed application logs with 'gzip'; rotate the archive using rotate_archive.",
+        "Rotate the access log archive via rotate_archive (the old cron job used codec 'gzip').",
+        "Run rotate_archive on the audit log bundle; the previous host config had codec 'bzip2'.",
+        "Compress and rotate the worker logs with rotate_archive from the old 'gzip' pipeline.",
+        "Call rotate_archive for the gateway log rotation ticket, which lists legacy codec 'xz'."
+      ],
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "e1_exclusions": [
+        "R2-04-S1",
+        "R2-04-S2"
+      ],
+      "e2_scores": {
+        "max_bigram_jaccard": 0.0909,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.3001
+      },
+      "reserve": false,
+      "expectation": "learn_within_3_sessions_and_pass_first_call",
+      "placebo_note": "Log archive rotation pipelines rely on modern streaming compression codecs such as zstd and lz4."
+    },
+    {
+      "scenario_id": "R2-05",
+      "category": "fixable",
+      "predicate": {
+        "tool": "sync_directory",
+        "error_pattern": "invalid target_dir format: sync_directory requires directory path ending with trailing slash /",
+        "fingerprint": "5b3cb3a4fe24",
+        "preconditions": [
+          "Agent calls sync_directory with target_dir"
+        ],
+        "does_not_cover": [
+          "Paths without a trailing slash"
+        ]
+      },
+      "expected_correct_call": {
+        "name": "sync_directory",
+        "arguments": {
+          "target_dir": "<path>/"
+        },
+        "validator": "trailing_slash"
+      },
+      "sessions": 5,
+      "tempting_wrong_inputs": [
+        "/srv/backups",
+        "/srv/snapshots",
+        "/srv/exports",
+        "/srv/uploads",
+        "/srv/artifacts"
+      ],
+      "session_prompts": [
+        "Sync the backup folder listed in the ticket ('/srv/backups') using sync_directory.",
+        "Run sync_directory for the snapshot mount path '/srv/snapshots' from fstab.",
+        "Synchronize the export directory '/srv/exports' via sync_directory.",
+        "Use sync_directory to mirror the uploads path '/srv/uploads' reported by the storage alert.",
+        "Call sync_directory on directory path '/srv/artifacts' from the build handoff."
+      ],
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "e1_exclusions": [
+        "R2-05-S1",
+        "R2-05-S2"
+      ],
+      "e2_scores": {
+        "max_bigram_jaccard": 0.0714,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.3367
+      },
+      "reserve": false,
+      "expectation": "learn_within_3_sessions_and_pass_first_call",
+      "placebo_note": "Directory synchronization paths in backup storage end with a trailing forward slash character."
+    },
+    {
+      "scenario_id": "R2-06",
+      "category": "fixable",
+      "predicate": {
+        "tool": "create_alert_rule",
+        "error_pattern": "invalid severity level: create_alert_rule requires uppercase code sev1, sev2, or sev3",
+        "fingerprint": "631dc73de10c",
+        "preconditions": [
+          "Agent calls create_alert_rule with severity"
+        ],
+        "does_not_cover": [
+          "Named levels like critical, high, warning"
+        ]
+      },
+      "expected_correct_call": {
+        "name": "create_alert_rule",
+        "arguments": {
+          "severity": "SEV1|SEV2|SEV3"
+        },
+        "validator": "sev_code"
+      },
+      "sessions": 5,
+      "tempting_wrong_inputs": [
+        "critical",
+        "high",
+        "critical",
+        "high",
+        "warning"
+      ],
+      "session_prompts": [
+        "Create an outage alert rule with create_alert_rule for the PagerDuty severity in the ticket: 'critical'.",
+        "The incident form lists severity 'high' for elevated latency; register it with create_alert_rule.",
+        "Set up the database failover rule in create_alert_rule for the ticket's 'critical' priority.",
+        "Configure the disk pressure alert via create_alert_rule (marked as severity 'high' in the ops sheet).",
+        "Add the cache eviction alert with create_alert_rule for the 'warning' level in the monitoring spec."
+      ],
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "e1_exclusions": [
+        "R2-06-S1",
+        "R2-06-S2"
+      ],
+      "e2_scores": {
+        "max_bigram_jaccard": 0.087,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.3004
+      },
+      "reserve": false,
+      "expectation": "learn_within_3_sessions_and_pass_first_call",
+      "placebo_note": "Monitoring alert rules classify incident thresholds under uppercase codes SEV1, SEV2, and SEV3."
+    },
+    {
+      "scenario_id": "R2-07",
+      "category": "fixable",
+      "predicate": {
+        "tool": "export_audit_csv",
+        "error_pattern": "invalid delimiter value: export_audit_csv only accepts pipe or tab",
+        "fingerprint": "33b052d68f67",
+        "preconditions": [
+          "Agent calls export_audit_csv with delimiter"
+        ],
+        "does_not_cover": [
+          "Comma or semicolon delimiters"
+        ]
+      },
+      "expected_correct_call": {
+        "name": "export_audit_csv",
+        "arguments": {
+          "delimiter": "pipe|tab"
+        },
+        "validator": "pipe_or_tab"
+      },
+      "sessions": 5,
+      "tempting_wrong_inputs": [
+        "comma",
+        "comma",
+        "semicolon",
+        "comma",
+        "comma"
+      ],
+      "session_prompts": [
+        "Export today's audit events with export_audit_csv; the spreadsheet request asks for delimiter 'comma'.",
+        "Run export_audit_csv for yesterday's audit log (the analyst's template specifies delimiter 'comma').",
+        "Generate the security audit export via export_audit_csv from the legacy 'semicolon' export profile.",
+        "Use export_audit_csv to dump the access audit trail requested with 'comma' separation in ticket SEC-44.",
+        "Call export_audit_csv for the billing audit records (the old script passed delimiter 'comma')."
+      ],
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "e1_exclusions": [
+        "R2-07-S1",
+        "R2-07-S2"
+      ],
+      "e2_scores": {
+        "max_bigram_jaccard": 0.0952,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.3022
+      },
+      "reserve": false,
+      "expectation": "learn_within_3_sessions_and_pass_first_call",
+      "placebo_note": "Delimited audit exports separate columns with pipe or tab field tokens rather than commas."
+    },
+    {
+      "scenario_id": "R2-08",
+      "category": "fixable",
+      "predicate": {
+        "tool": "tag_release_artifact",
+        "error_pattern": "invalid version_tag format: tag_release_artifact requires prefix rel- (e.g. rel-n.n.n)",
+        "fingerprint": "bec277ec74e2",
+        "preconditions": [
+          "Agent calls tag_release_artifact with version_tag"
+        ],
+        "does_not_cover": [
+          "v-prefixed semver like v1.2.3",
+          "bare semver like 1.2.3"
+        ]
+      },
+      "expected_correct_call": {
+        "name": "tag_release_artifact",
+        "arguments": {
+          "version_tag": "rel-X.Y.Z"
+        },
+        "validator": "rel_prefix"
+      },
+      "sessions": 5,
+      "tempting_wrong_inputs": [
+        "v2.4.0",
+        "v2.5.0",
+        "v2.6.0",
+        "v2.7.0",
+        "v2.8.0"
+      ],
+      "session_prompts": [
+        "Tag the build artifact in tag_release_artifact for the git tag in the release notes: 'v2.4.0'.",
+        "Run tag_release_artifact for the GitHub release tag 'v2.5.0' from the deployment ticket.",
+        "Use tag_release_artifact to tag the artifact for changelog version 'v2.6.0'.",
+        "Apply the release tag via tag_release_artifact for the milestone tag 'v2.7.0'.",
+        "Call tag_release_artifact to stamp the package with the repo tag 'v2.8.0'."
+      ],
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "e1_exclusions": [
+        "R2-08-S1",
+        "R2-08-S2"
+      ],
+      "e2_scores": {
+        "max_bigram_jaccard": 0.1304,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.3294
+      },
+      "reserve": false,
+      "expectation": "learn_within_3_sessions_and_pass_first_call",
+      "placebo_note": "Release artifact tags combine the hyphenated rel prefix with three-part semantic version numbers."
+    },
+    {
+      "scenario_id": "R2-09",
+      "category": "fixable",
+      "predicate": {
+        "tool": "allocate_worker_pool",
+        "error_pattern": "invalid workers count: allocate_worker_pool requires an even integer between n and n",
+        "fingerprint": "cd48645915ec",
+        "preconditions": [
+          "Agent calls allocate_worker_pool with workers"
+        ],
+        "does_not_cover": [
+          "Odd worker counts",
+          "Counts outside 2..16"
+        ]
+      },
+      "expected_correct_call": {
+        "name": "allocate_worker_pool",
+        "arguments": {
+          "workers": "<even int 2..16>"
+        },
+        "validator": "even_workers"
+      },
+      "sessions": 5,
+      "tempting_wrong_inputs": [
+        5,
+        3,
+        7,
+        9,
+        11
+      ],
+      "session_prompts": [
+        "The capacity worksheet estimates 5 background workers; allocate the pool with allocate_worker_pool.",
+        "Provision the worker pool via allocate_worker_pool for the 3 workers requested in the queue ticket.",
+        "Run allocate_worker_pool to set up the worker pool sized at 7 workers in the staging spec.",
+        "Use allocate_worker_pool for the batch processor ticket that asks for 9 workers.",
+        "Call allocate_worker_pool to configure the ingestion pool from the 11-worker estimate."
+      ],
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "e1_exclusions": [
+        "R2-09-S1",
+        "R2-09-S2"
+      ],
+      "e2_scores": {
+        "max_bigram_jaccard": 0.1053,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.3683
+      },
+      "reserve": false,
+      "expectation": "learn_within_3_sessions_and_pass_first_call",
+      "placebo_note": "Background worker thread pools operate in even integer sizes ranging from two to sixteen threads."
+    },
+    {
+      "scenario_id": "R2-10",
+      "category": "fixable",
+      "predicate": {
+        "tool": "register_webhook_endpoint",
+        "error_pattern": "unsupported signature_scheme: register_webhook_endpoint requires hmac-sha256-v1",
+        "fingerprint": "df425bb5df49",
+        "preconditions": [
+          "Agent calls register_webhook_endpoint with signature_scheme"
+        ],
+        "does_not_cover": [
+          "Unversioned hmac-sha256 or plain sha256"
+        ]
+      },
+      "expected_correct_call": {
+        "name": "register_webhook_endpoint",
+        "arguments": {
+          "signature_scheme": "hmac-sha256-v1"
+        },
+        "validator": "hmac_v1"
+      },
+      "sessions": 5,
+      "tempting_wrong_inputs": [
+        "hmac-sha256",
+        "hmac-sha256",
+        "sha256",
+        "hmac-sha256",
+        "hmac-sha512"
+      ],
+      "session_prompts": [
+        "Register the partner webhook with register_webhook_endpoint; their docs list signature scheme 'hmac-sha256'.",
+        "Set up the billing webhook via register_webhook_endpoint using the 'hmac-sha256' scheme from the integration ticket.",
+        "Configure the alerts webhook in register_webhook_endpoint (the old config file has signature_scheme 'sha256').",
+        "Use register_webhook_endpoint for the deployments webhook specified with 'hmac-sha256' in the handoff.",
+        "Call register_webhook_endpoint to add the audit webhook from the 'hmac-sha512' security checklist."
+      ],
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "e1_exclusions": [
+        "R2-10-S1",
+        "R2-10-S2"
+      ],
+      "e2_scores": {
+        "max_bigram_jaccard": 0.125,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.302
+      },
+      "reserve": false,
+      "expectation": "learn_within_3_sessions_and_pass_first_call",
+      "placebo_note": "Outbound webhook endpoints associate payload verification with the versioned hmac-sha256-v1 identifier."
+    },
+    {
+      "scenario_id": "R2-11",
+      "category": "not-fixable",
+      "predicate": {
+        "tool": "fetch_upstream_feed",
+        "error_pattern": "httpstatus429: too many requests to upstream feed, rate limit exceeded, try again later",
+        "fingerprint": "23a8840e5629",
+        "preconditions": [
+          "Upstream partner feed returns HTTP 429 rate limit"
+        ],
+        "does_not_cover": [
+          "Client-side parameter formatting"
+        ]
+      },
+      "expected_correct_call": null,
+      "sessions": 3,
+      "tempting_wrong_inputs": [
+        "orders-eu",
+        "orders-us",
+        "orders-apac"
+      ],
+      "session_prompts": [
+        "Pull the latest partner feed 'orders-eu' with fetch_upstream_feed and report the status.",
+        "Run fetch_upstream_feed for feed_id 'orders-us' and summarize the result.",
+        "Fetch upstream feed 'orders-apac' using fetch_upstream_feed and report what returned."
+      ],
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "e1_exclusions": [
+        "R2-11-S1",
+        "R2-11-S2"
+      ],
+      "e2_scores": {
+        "max_bigram_jaccard": 0.0,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.0
+      },
+      "reserve": false,
+      "expectation": "no_lesson: refused by not_lesson_shaped:transient",
+      "placebo_note": ""
+    },
+    {
+      "scenario_id": "R2-12",
+      "category": "not-fixable",
+      "predicate": {
+        "tool": "sync_remote_ledger",
+        "error_pattern": "econnreset: socket hang up while reading remote ledger, temporarily unavailable",
+        "fingerprint": "b3e6cf8c3e0f",
+        "preconditions": [
+          "Remote ledger socket resets connection"
+        ],
+        "does_not_cover": [
+          "Client-side argument choices"
+        ]
+      },
+      "expected_correct_call": null,
+      "sessions": 3,
+      "tempting_wrong_inputs": [
+        "main-01",
+        "main-02",
+        "main-03"
+      ],
+      "session_prompts": [
+        "Synchronize ledger 'main-01' with the remote endpoint using sync_remote_ledger.",
+        "Run sync_remote_ledger for ledger_id 'main-02' and report the outcome.",
+        "Sync remote ledger 'main-03' via sync_remote_ledger and report the status."
+      ],
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "e1_exclusions": [
+        "R2-12-S1",
+        "R2-12-S2"
+      ],
+      "e2_scores": {
+        "max_bigram_jaccard": 0.0,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.0
+      },
+      "reserve": false,
+      "expectation": "no_lesson: refused by not_lesson_shaped:transient",
+      "placebo_note": ""
+    },
+    {
+      "scenario_id": "R2-13",
+      "category": "not-fixable",
+      "predicate": {
+        "tool": "dispatch_legacy_job",
+        "error_pattern": "dispatch_legacy_job failed: tool dispatch_legacy_job is not available on this host (unknown tool)",
+        "fingerprint": "06449b1f9805",
+        "preconditions": [
+          "Tool is unavailable on this host"
+        ],
+        "does_not_cover": [
+          "Valid tool invocation"
+        ]
+      },
+      "expected_correct_call": null,
+      "sessions": 3,
+      "tempting_wrong_inputs": [
+        "nightly-rollup",
+        "weekly-prune",
+        "monthly-close"
+      ],
+      "session_prompts": [
+        "Dispatch legacy queue job 'nightly-rollup' using dispatch_legacy_job.",
+        "Run dispatch_legacy_job for job_name 'weekly-prune' and report the result.",
+        "Trigger legacy job 'monthly-close' via dispatch_legacy_job."
+      ],
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "e1_exclusions": [
+        "R2-13-S1",
+        "R2-13-S2"
+      ],
+      "e2_scores": {
+        "max_bigram_jaccard": 0.0,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.0
+      },
+      "reserve": false,
+      "expectation": "no_lesson: refused by not_lesson_shaped:wrong_tool",
+      "placebo_note": ""
+    },
+    {
+      "scenario_id": "R2-14",
+      "category": "not-fixable",
+      "predicate": {
+        "tool": "verify_cluster_quorum",
+        "error_pattern": "httpstatus503: service unavailable, cluster quorum coordinator overloaded, try again later",
+        "fingerprint": "4e16bddc1cba",
+        "preconditions": [
+          "Cluster coordinator returns HTTP 503 overloaded"
+        ],
+        "does_not_cover": [
+          "Client-side parameter errors"
+        ]
+      },
+      "expected_correct_call": null,
+      "sessions": 3,
+      "tempting_wrong_inputs": [
+        "etcd-west",
+        "etcd-east",
+        "etcd-central"
+      ],
+      "session_prompts": [
+        "Check quorum status for cluster 'etcd-west' using verify_cluster_quorum.",
+        "Run verify_cluster_quorum on cluster_id 'etcd-east' and report the response.",
+        "Verify cluster quorum for 'etcd-central' with verify_cluster_quorum."
+      ],
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "e1_exclusions": [
+        "R2-14-S1",
+        "R2-14-S2"
+      ],
+      "e2_scores": {
+        "max_bigram_jaccard": 0.0,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.0
+      },
+      "reserve": false,
+      "expectation": "no_lesson: refused by not_lesson_shaped:transient",
+      "placebo_note": ""
+    },
+    {
+      "scenario_id": "R2-15",
+      "category": "not-fixable",
+      "predicate": {
+        "tool": "publish_metric_batch",
+        "error_pattern": "batch rejected: missing required parameter namespace",
+        "fingerprint": "0e3079361209",
+        "preconditions": [
+          "Agent already passed namespace earlier in the same session and then drops it"
+        ],
+        "does_not_cover": [
+          "Unknown parameter requirements"
+        ]
+      },
+      "expected_correct_call": null,
+      "sessions": 3,
+      "tempting_wrong_inputs": [
+        "mem_used (unscoped, no namespace)",
+        "net_rx (unscoped, no namespace)",
+        "err_rate (unscoped, no namespace)"
+      ],
+      "session_prompts": [
+        "Record two telemetry points with separate publish_metric_batch calls: first metric 'cpu_load' in namespace 'prod', and second metric 'mem_used' as an unscoped point without a namespace.",
+        "Use two separate publish_metric_batch calls to publish metric 'disk_io' under namespace 'prod' and then metric 'net_rx' without a namespace.",
+        "Make two publish_metric_batch calls: first publish 'req_rate' to namespace 'staging', and second publish 'err_rate' with no namespace."
+      ],
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "e1_exclusions": [
+        "R2-15-S1",
+        "R2-15-S2"
+      ],
+      "e2_scores": {
+        "max_bigram_jaccard": 0.0,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.0
+      },
+      "reserve": false,
+      "expectation": "no_lesson: refused by not_lesson_shaped:dropped_argument",
+      "placebo_note": ""
+    },
+    {
+      "scenario_id": "R2-16",
+      "category": "noise",
+      "predicate": {
+        "tool": "validate_schema_doc",
+        "error_pattern": "schema_version is required to validate document",
+        "fingerprint": "f457e69c4153",
+        "preconditions": [
+          "Error states '<param> is required' within first 40 characters"
+        ],
+        "does_not_cover": [
+          "Non-self-correcting errors"
+        ]
+      },
+      "expected_correct_call": null,
+      "sessions": 2,
+      "tempting_wrong_inputs": [
+        "user.json",
+        "order.json"
+      ],
+      "session_prompts": [
+        "Validate schema document 'user.json' using validate_schema_doc.",
+        "Run validate_schema_doc on document 'order.json'."
+      ],
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "e1_exclusions": [
+        "R2-16-S1",
+        "R2-16-S2"
+      ],
+      "e2_scores": {
+        "max_bigram_jaccard": 0.0,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.0
+      },
+      "reserve": false,
+      "expectation": "no_lesson: suppressed by self_correcting filter",
+      "placebo_note": ""
+    },
+    {
+      "scenario_id": "R2-17",
+      "category": "noise",
+      "predicate": {
+        "tool": "compile_template_view",
+        "error_pattern": "template_id is required to compile template view",
+        "fingerprint": "50f62c063b01",
+        "preconditions": [
+          "Error states '<param> is required' within first 40 characters"
+        ],
+        "does_not_cover": [
+          "Non-self-correcting errors"
+        ]
+      },
+      "expected_correct_call": null,
+      "sessions": 2,
+      "tempting_wrong_inputs": [
+        "header",
+        "footer"
+      ],
+      "session_prompts": [
+        "Compile the 'header' UI view using compile_template_view.",
+        "Run compile_template_view for view_name 'footer'."
+      ],
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "e1_exclusions": [
+        "R2-17-S1",
+        "R2-17-S2"
+      ],
+      "e2_scores": {
+        "max_bigram_jaccard": 0.0,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.0
+      },
+      "reserve": false,
+      "expectation": "no_lesson: suppressed by self_correcting filter",
+      "placebo_note": ""
+    },
+    {
+      "scenario_id": "R2-18",
+      "category": "noise",
+      "predicate": {
+        "tool": "archive_cold_bucket",
+        "error_pattern": "invalid storage_class: cold bucket archiving requires storage_class glacier_ir",
+        "fingerprint": "d2ca5748076d",
+        "preconditions": [
+          "Rule is already present in workspace AGENTS.md"
+        ],
+        "does_not_cover": [
+          "Uncovered tool rules"
+        ]
+      },
+      "expected_correct_call": null,
+      "sessions": 2,
+      "tempting_wrong_inputs": [
+        "STANDARD",
+        "STANDARD_IA"
+      ],
+      "session_prompts": [
+        "Archive the cold bucket with archive_cold_bucket for the storage class listed in ticket OPS-410: 'STANDARD'.",
+        "Run archive_cold_bucket for the lifecycle tier specified in request INFRA-209: 'STANDARD_IA'."
+      ],
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "e1_exclusions": [
+        "R2-18-S1",
+        "R2-18-S2"
+      ],
+      "e2_scores": {
+        "max_bigram_jaccard": 0.0,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.0
+      },
+      "reserve": false,
+      "expectation": "no_lesson: refused by already_covered (rule in AGENTS.md)",
+      "placebo_note": ""
+    },
+    {
+      "scenario_id": "R2-19",
+      "category": "noise",
+      "predicate": {
+        "tool": "check_disk_quota",
+        "error_pattern": "quota check failed for volume path: unmounted scratch volume",
+        "fingerprint": "19f36880e86f",
+        "preconditions": [
+          "One-off failure occurring in 1 session only"
+        ],
+        "does_not_cover": [
+          "Cross-session recurring failures"
+        ]
+      },
+      "expected_correct_call": null,
+      "sessions": 2,
+      "tempting_wrong_inputs": [
+        "/mnt/scratch",
+        "/mnt/data"
+      ],
+      "session_prompts": [
+        "Check disk quota on volume '/mnt/scratch' using check_disk_quota.",
+        "Check disk quota on volume '/mnt/data' using check_disk_quota."
+      ],
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "e1_exclusions": [
+        "R2-19-S1",
+        "R2-19-S2"
+      ],
+      "e2_scores": {
+        "max_bigram_jaccard": 0.0,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.0
+      },
+      "reserve": false,
+      "expectation": "no_lesson: refused by below_bar (1x in 1 session)",
+      "placebo_note": ""
+    },
+    {
+      "scenario_id": "R2-20",
+      "category": "noise",
+      "predicate": {
+        "tool": "ping_health_beacon",
+        "error_pattern": "beacon frame checksum mismatch on target node-corrupt",
+        "fingerprint": "3773c02258ca",
+        "preconditions": [
+          "One-off failure occurring in 1 session only"
+        ],
+        "does_not_cover": [
+          "Cross-session recurring failures"
+        ]
+      },
+      "expected_correct_call": null,
+      "sessions": 2,
+      "tempting_wrong_inputs": [
+        "node-healthy-01",
+        "node-corrupt"
+      ],
+      "session_prompts": [
+        "Send a health probe to target 'node-healthy-01' using ping_health_beacon.",
+        "Send a health probe to target 'node-corrupt' using ping_health_beacon."
+      ],
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "e1_exclusions": [
+        "R2-20-S1",
+        "R2-20-S2"
+      ],
+      "e2_scores": {
+        "max_bigram_jaccard": 0.0,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.0
+      },
+      "reserve": false,
+      "expectation": "no_lesson: refused by below_bar (1x in 1 session)",
+      "placebo_note": ""
+    },
+    {
+      "scenario_id": "R2-21",
+      "category": "fixable",
+      "predicate": {
+        "tool": "set_retention_policy",
+        "error_pattern": "invalid retention days: set_retention_policy requires a multiple of n days (n, n, n, n)",
+        "fingerprint": "8576bce04750",
+        "preconditions": [
+          "Agent calls set_retention_policy with days"
+        ],
+        "does_not_cover": [
+          "Non-multiples of 7 such as 10 or 30"
+        ]
+      },
+      "expected_correct_call": {
+        "name": "set_retention_policy",
+        "arguments": {
+          "days": "<multiple of 7>"
+        },
+        "validator": "multiple_of_7"
+      },
+      "sessions": 5,
+      "tempting_wrong_inputs": [
+        30,
+        10,
+        15,
+        20,
+        25
+      ],
+      "session_prompts": [
+        "The compliance draft specifies 30 days of snapshots; set the policy with set_retention_policy.",
+        "Configure snapshot retention via set_retention_policy for the 10-day window in the storage ticket.",
+        "Apply the retention rule in set_retention_policy from the 15-day note in the cleanup runbook.",
+        "Use set_retention_policy to set archive retention from the 20-day estimate in the capacity plan.",
+        "Call set_retention_policy for the 25-day retention period listed on the project card."
+      ],
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "e1_exclusions": [
+        "R2-21-S1",
+        "R2-21-S2"
+      ],
+      "e2_scores": {
+        "max_bigram_jaccard": 0.125,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.348
+      },
+      "reserve": true,
+      "expectation": "learn_within_3_sessions_and_pass_first_call",
+      "placebo_note": "Snapshot retention policies count storage lifespans in multiples of seven calendar days."
+    },
+    {
+      "scenario_id": "R2-22",
+      "category": "fixable",
+      "predicate": {
+        "tool": "configure_log_sink",
+        "error_pattern": "unsupported transport protocol: configure_log_sink requires syslog+tls",
+        "fingerprint": "54ee08c60071",
+        "preconditions": [
+          "Agent calls configure_log_sink with transport"
+        ],
+        "does_not_cover": [
+          "Plain https, tcp, or tls strings"
+        ]
+      },
+      "expected_correct_call": {
+        "name": "configure_log_sink",
+        "arguments": {
+          "transport": "syslog+tls"
+        },
+        "validator": "syslog_tls"
+      },
+      "sessions": 5,
+      "tempting_wrong_inputs": [
+        "tls",
+        "https",
+        "tls",
+        "tcp",
+        "https"
+      ],
+      "session_prompts": [
+        "The old forwarding agent used transport 'tls'; configure the sink with configure_log_sink.",
+        "Set up remote log shipping via configure_log_sink for the 'https' transport listed in the ticket.",
+        "Run configure_log_sink for the production sink (the network diagram labels the transport 'tls').",
+        "Use configure_log_sink to wire up the staging log sink from the legacy 'tcp' config.",
+        "Call configure_log_sink for the audit collector ticket specifying transport 'https'."
+      ],
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "e1_exclusions": [
+        "R2-22-S1",
+        "R2-22-S2"
+      ],
+      "e2_scores": {
+        "max_bigram_jaccard": 0.1429,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.3842
+      },
+      "reserve": true,
+      "expectation": "learn_within_3_sessions_and_pass_first_call",
+      "placebo_note": "Remote log forwarding sinks reference the combined syslog+tls transport protocol string."
+    },
+    {
+      "scenario_id": "R2-23",
+      "category": "not-fixable",
+      "predicate": {
+        "tool": "query_archive_index",
+        "error_pattern": "econnrefused: connection refused by archive index daemon, temporarily unavailable",
+        "fingerprint": "b1e92d2da167",
+        "preconditions": [
+          "Archive index daemon refuses connection"
+        ],
+        "does_not_cover": [
+          "Client-side parameter choices"
+        ]
+      },
+      "expected_correct_call": null,
+      "sessions": 3,
+      "tempting_wrong_inputs": [
+        "idx-2025",
+        "idx-2026",
+        "idx-2024"
+      ],
+      "session_prompts": [
+        "Look up archive key 'idx-2025' using query_archive_index and report the result.",
+        "Run query_archive_index for query_key 'idx-2026' and summarize the response.",
+        "Query the cold archive index for 'idx-2024' via query_archive_index."
+      ],
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "e1_exclusions": [
+        "R2-23-S1",
+        "R2-23-S2"
+      ],
+      "e2_scores": {
+        "max_bigram_jaccard": 0.0,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.0
+      },
+      "reserve": true,
+      "expectation": "no_lesson: refused by not_lesson_shaped:transient",
+      "placebo_note": ""
+    },
+    {
+      "scenario_id": "R2-24",
+      "category": "noise",
+      "predicate": {
+        "tool": "parse_manifest_yaml",
+        "error_pattern": "manifest_path is required to parse manifest yaml",
+        "fingerprint": "2fee676551b7",
+        "preconditions": [
+          "Error states '<param> is required' within first 40 characters"
+        ],
+        "does_not_cover": [
+          "Non-self-correcting errors"
+        ]
+      },
+      "expected_correct_call": null,
+      "sessions": 2,
+      "tempting_wrong_inputs": [
+        "prod",
+        "stage"
+      ],
+      "session_prompts": [
+        "Parse the deployment manifest for environment 'prod' using parse_manifest_yaml.",
+        "Run parse_manifest_yaml for env_name 'stage'."
+      ],
+      "prompt_scaffold": "Complete the following operational request using the appropriate workspace tool.\n\nRequest: {{task_text}}",
+      "prompt_scaffold_sha256": "6c98a4081878bf6ea3144a16b7d99a65b7bb10b05affa02d9dd366a6bfdedfb9",
+      "e1_exclusions": [
+        "R2-24-S1",
+        "R2-24-S2"
+      ],
+      "e2_scores": {
+        "max_bigram_jaccard": 0.0,
+        "full_sentence_match": false,
+        "max_tfidf_cosine": 0.0
+      },
+      "reserve": true,
+      "expectation": "no_lesson: suppressed by self_correcting filter",
+      "placebo_note": ""
+    }
+  ]
+}
