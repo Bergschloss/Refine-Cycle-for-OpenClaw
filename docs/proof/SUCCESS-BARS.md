@@ -1,0 +1,34 @@
+# Refine Cycle for OpenClaw — Success Bars (one-page summary)
+
+Companion to `docs/proof/PROTOCOL.md`. Every threshold is fixed before trial #1; no outcome is assumed. Verbatim README promises; raw fields are RAW-FORMAT.md format 1 fields, counting each session by its **last** line per `(agentId, sessionId)`.
+
+## Master table: hypothesis → promise → metric → threshold → verdict if missed
+
+| # | Hypothesis | README promise | Primary metric | Threshold | How computed (raw fields) | Verdict if missed |
+|---|---|---|---|---|---|---|
+| H1 | Notices repeats across sessions | "The same failure in two sessions, or five times, is a pattern." | Cross-session repeat recall (R1 replay; with-arguments arm primary, without-arguments arm a stated limit — floor, not estimate) | ≥ 80% (with-args arm) | Last line per `(agentId, sessionId)`; fingerprint in ≥2 sessions or ≥5 occurrences; surfaced when `outcome` is not a pre-repeat refusal | Reported concern; not a falsifier (limit arm) |
+| H2 | Leaves one-offs / noise / covered-alone | "Nothing reaches the model until a failure repeats, and network hiccups or rules your own instructions already cover are skipped." | Noise-scenario false-lesson rate (R2) | 0 | Fraction of noise last-line sessions with non-null `lesson` or `proposedLesson`; Clopper–Pearson one-sided 95% upper bound (rule of three: 3/N at 0 events) | FALSIFIED |
+| H3 | Writes a short, useful lesson | "Write the smallest useful lesson. One short sentence…" | (a) usefulness rate (blind panel); (b) wrong/harmful count | ≥ 80% `useful`; 0 `wrong`/`harmful` | Four-category rubric (useful / restates / wrong / harmful), blind to arm and source (§5); Wilson 95% CI on useful rate | ≥1 wrong/harmful → FALSIFIED; useful <80% → NOT SUPPORTED |
+| H3-L | Lesson is short | "One short sentence" | Length compliance | 100% ≤ 200 chars | `len(lesson.text) ≤ 200`; hard cap `maxLessonChars = 200` (USAGE.md), deterministic not judged | NOT SUPPORTED (0-over-cap required) |
+| H4 | Lesson changes behaviour | "Your agent keeps repeating the same mistake. This makes it stop." (phase 0: 20% → 90%) | (a) R2 fixable-scenario recall; (b) R3 paired risk difference, lesson vs nothing | ≥ 80% correct within 3 sessions; exact McNemar p<0.05 (Holm), paired RD 95% CI lower ≥ +0.05 | First tool call (name + arguments) vs locked expected call (§4); discordant pairs per item from host transcript, never agent prose | NOT SUPPORTED |
+| H5 | Audit tells the truth | "Later sessions show whether the failure stopped, and `/refine audit` tells you which lessons work" (verdict rules DESIGN.md; `working` needs ≥3 quiet sessions and ≥3 days, calendar-day floored) | Audit–ledger agreement | 100% | Recompute each verdict from raw `effects.shown[]`, `effects.recurrence[]`, `effects.unplaced[]`; compare with `ledger` (`/refine audit`) at days 1, 3, 5; observe `too early → working` exactly when `MIN_QUIET_SESSIONS=3` and `ageDays≥3` | FALSIFIED (any disagreement) |
+| H6 | User stays in control | ≤3 model calls/day; `/refine delete <id>` → never learned again; never edits `AGENTS.md`/`SOUL.md`/skills/memory; no conversation filter | (a) withdrawn-lesson re-learn rate; (b) daily budget cap; (c) protected-file integrity | 0 relearned; `budget.callsToday ≤ 3` every UTC day; hashes unchanged | `lesson_status` lines; `modelCalls[]`; `budget_busy` under concurrency; file hashes pre/post | FALSIFIED (relearned, cap exceeded, file changed) |
+| H7 | Never breaks the agent | "If something inside the plugin fails, your agent carries on as if it were not installed." | Uncaught exceptions; fail-open; no learning during fault | 0 exceptions; `storeErrorText` on every faulted pass | `error` field with `storeErrorText`; null `lesson`/`proposedLesson`; host turn completes | FALSIFIED (crash, lost turn, lesson learned during fault) |
+| H8 | One message per lesson | "When it learns a lesson, it tells you in one line in your chat: `♾️ Refine Cycle — new lesson learned (412/4400)`." | Notices per `lessonId` | exactly 1; 0 missed for activated lessons | Notice log: `announce()` fires once per pass that activated lessons (`lessonNotice`) | NOT SUPPORTED |
+| H9 | Installs by the README | "Needs OpenClaw 2026.9.5 or newer (tested on 2026.9.6)" + 4 steps | Install-step pass rate (R5) | 100% as written | Fresh Linux + OpenClaw Tray (WSL): git install, `allowConversationAccess`, `gateway restart`, `/refine status`; Update button vs local git release; lesson message in chat/Telegram | NOT SUPPORTED (gateway crash → FALSIFIED) |
+| R3-M | Mechanism: content, not mere injection | (placebo arm; phase 0 placebo 3/40 ≈ nothing 8/40) | Paired risk difference, lesson vs same-length useless note | exact McNemar p<0.05 (Holm), positive RD | Discordant pairs; Agresti–Wald 95% CI for paired RD | PARTIAL (if H4 primary passes but this fails) |
+
+## Falsification branches — decision order and verdict strings (verbatim, Hermes-PROTOCOL §9.3/§9.4)
+
+| Order | Branch | Fires when… | Verdict |
+|---|---|---|---|
+| 1 | Harm | ≥1 lesson judged `harmful`; R3 lesson worse than nothing (negative RD significant, or paired 95% CI upper bound ≤ 0); a withdrawn lesson relearned (≥1 re-proposal/activation); audit ≠ ledger on any lesson at any read; a faulted pass crashes the host, loses a turn, or learns/injects a lesson; daily budget cap exceeded; install crashes the gateway | `FALSIFIED` |
+| 2 | Primary not significant | R2 recall or R3 primary contrast not significant at Holm α = 0.05 | `NOT SUPPORTED` |
+| 3 | Below effect floor | Primary significant but paired RD 95% CI lower bound < +0.05 (meaningful-effect floor) | `NOT SUPPORTED` |
+| 4 | Mechanism fails | Primary significant with CI lower ≥ +0.05, but lesson-vs-placebo not significant | `PARTIAL` |
+| 5 | All bars clear | S1–S9 all met and both R3 contrasts significant with meaningful effects | `SUPPORTED` |
+| 6 | Gate-0 fails | <80 completed trials/arm, <100 unique crossed items, a route deviation, blinding audit fails, or misfire rate >10% | `UNDERPOWERED` (no scientific verdict) |
+
+Verdict licensing (verbatim interpretations): `SUPPORTED` = the gain is attributable to the lessons' actionable content on the pre-specified route; `PARTIAL` = outperforms nothing but an equally topical non-directive memory matches it; `NOT SUPPORTED` = no evidence of improvement at a meaningful magnitude; `FALSIFIED` = lessons degrade performance; `UNDERPOWERED` = validity requirements unmet, do not interpret as evidence of absence. Sensitivity analyses run only after the verdict is printed and cannot overturn it. Better to report no verdict (`UNDERPOWERED`) than to over-read noise.
+
+**Frozen artifacts (SHA-256 recorded before trial #1):** `PROTOCOL.md` · `analysis_decider.py` · scenarios manifest · grader rubric + prompt · R3 assignment manifest. No edit after trial #1; any change voids pre-registration and is reported as a deviation.
