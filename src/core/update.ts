@@ -82,9 +82,12 @@ export function availableText(version: string): string {
   return `${BRAND} — update available: ${version}`;
 }
 
-/** For a channel without buttons: the command to type, as Hermes' tap line. */
+/**
+ * For a channel without buttons: the command to type, as Hermes' tap line. In code
+ * formatting, so it can be copied whole: Telegram links only `/refine` of it.
+ */
 export function actionLine(): string {
-  return `${UPDATE_COMMAND} — updates the plugin; no restart needed.`;
+  return `\`${UPDATE_COMMAND}\` — updates the plugin; no restart needed.`;
 }
 
 export function updatedText(version: string): string {

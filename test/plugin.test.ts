@@ -21,7 +21,7 @@ function fakeApi(
   loadAdapter?: (id: string) => Promise<{ sendText?: (ctx: Record<string, unknown>) => Promise<unknown> } | undefined>,
 ) {
   const hooks = new Map<string, { handler: Handler; timeoutMs?: number }>();
-  const commands = new Map<string, (ctx: { args?: string; agentId?: string; sessionKey?: string }) => unknown>();
+  const commands = new Map<string, (ctx: { args?: string; agentId?: string; sessionKey?: string; [key: string]: unknown }) => unknown>();
   const logs: string[] = [];
   const api: PluginApi = {
     id: "refine-cycle",
@@ -451,7 +451,7 @@ test("a new lesson is told in one line, once, in the chat the user is talking fr
   agentEnd({}, telegramTurn("s1"));
   await settle();
   assert.equal(sent.length, 1);
-  assert.deepEqual(channels, ["telegram"]);
+  assert.deepEqual([...new Set(channels)], ["telegram"]);
   assert.equal(sent[0].to, "4242");
   assert.equal(sent[0].accountId, "default");
   assert.ok(sent[0].cfg, "the host config goes with the send");
@@ -518,7 +518,7 @@ test("no message with the setting off, or on a channel that takes none", async (
     hooks.get("agent_end")!.handler({}, { ...telegramTurn("s1"), channel: "webchat" });
     await settle();
     assert.equal(sent.length, 0);
-    assert.ok(logs.some((line) => line.includes("cannot take a message")));
+    assert.ok(logs.some((line) => line.includes("no chat to tell") && line.includes("webchat")));
   }
 });
 
@@ -647,7 +647,7 @@ test("a chat pass the model is slow on answers at once and sends the result to t
     // The chat the agent is talked to from, as the lesson message uses it.
     new FileStore(path.join(setup.stateDir, "plugin-data", "refine-cycle")).write("chats/main.json", { channel: "telegram", to: "4242" });
     const text = (await setup.commands.get("refine")!({ args: "session s1", agentId: "main" }) as { text: string }).text;
-    assert.equal(text, "Pass over session s1 started; the result follows in this chat when the model has answered.");
+    assert.equal(text, "Pass over session s1 started; the result follows in your telegram chat when the model has answered.");
     for (let i = 0; i < 50 && !called; i++) await settle();
     answer({ text: lessonJson(setup.fp, setup.lessonText) });
     await settle();
@@ -777,6 +777,8 @@ interface HostFake {
   runs: string[][];
   /** Exit code of `git ls-remote`: non-zero is a check without network. */
   gitCode?: number;
+  /** When set, `plugins update <id>` waits for it: a slow update. */
+  slow?: Promise<unknown>;
 }
 
 function updateSetup(host: HostFake, adapter?: Record<string, unknown>, pluginConfig: Record<string, unknown> = {}) {
@@ -798,6 +800,7 @@ function updateSetup(host: HostFake, adapter?: Record<string, unknown>, pluginCo
     }
     if (args[1] === "update" && args.includes("--dry-run")) return { stdout: host.dryRun ?? "", stderr: "", code: 0 };
     if (args[1] === "update") {
+      await host.slow;
       if ("code" in host.update) return { stdout: "", stderr: host.update.stderr, code: host.update.code };
       const from = host.installed;
       if (from === host.update.to) return { stdout: `refine-cycle already at ${from}.\n`, stderr: "", code: 0 };
@@ -911,7 +914,7 @@ test("a channel without buttons gets the command to type instead", async () => {
     presentationCapabilities: { buttons: false },
   });
   await setup.turn("s1");
-  assert.deepEqual(texts, ["♾️ Refine Cycle — update available: 0.2.0\n/refine update — updates the plugin; no restart needed."]);
+  assert.deepEqual(texts, ["♾️ Refine Cycle — update available: 0.2.0\n`/refine update` — updates the plugin; no restart needed."]);
   assert.equal(payloads.length, 0, "no buttons where the channel says it has none");
 });
 
@@ -948,7 +951,7 @@ test("/refine status starts a due update check, and the next status shows a newe
   assert.doesNotMatch((await refine({ args: "status", agentId: "main" }) as { text: string }).text, /is available/);
   for (let i = 0; i < 10; i++) await settle();
   const text = (await refine({ args: "status", agentId: "main" }) as { text: string }).text;
-  assert.match(text, /warnings:\n  ⚠ Refine Cycle 0\.2\.0 is available \(installed 0\.1\.0\): \/refine update/);
+  assert.match(text, /warnings:\n  ⚠ Refine Cycle 0\.2\.0 is available \(installed 0\.1\.0\): `\/refine update`/);
   assert.equal(setup.sent.length, 0, "status itself sends nothing");
 });
 
@@ -1087,4 +1090,135 @@ test("with rawLog on, the live plugin writes the same raw lines to raw/<date>.js
   assert.equal(session.lesson.id, id);
   assert.equal(session.budget.callsToday, 1);
   assert.deepEqual(status, { kind: "lesson_status", format: 1, at: status.at, lessonId: id, agentId: "main", status: "deleted" });
+});
+
+
+// -- F1: messages go to a chat that can take them; F2: the Update button in status --
+
+test("a webchat or heartbeat turn after a Telegram turn leaves the remembered chat as it is, and its lesson goes to Telegram", async () => {
+  const stateDir = tempDir();
+  const error = "cron expression '* * *' has 3 fields, expected 5";
+  const failing = () => {
+    const t = new Transcript().user("schedule it");
+    for (let i = 0; i < 5; i++) t.call("cron_add", { schedule: "* * *" }, { error });
+    return t;
+  };
+  writeAgentDb(stateDir, { chatty: new Transcript().user("hi"), idle: new Transcript().user("status?"), s1: failing() });
+  const sent: Array<Record<string, unknown>> = [];
+  // As on 2026.9.6: Telegram has an outbound adapter, webchat (the web UI, gateway chat.send, the heartbeat) has none.
+  const loadAdapter = async (id: string) => (id === "telegram" ? { sendText: async (ctx: Record<string, unknown>) => void sent.push(ctx) } : undefined);
+  const reply = async () => ({ text: lessonJson(fingerprint("cron_add", error), "When calling cron_add, write the schedule as five cron fields, e.g. 0 3 * * *.") });
+  const { hooks } = fakeApi(stateDir, reply, true, undefined, { backfillSessions: 0 }, loadAdapter);
+  const agentEnd = hooks.get("agent_end")!.handler;
+  const chats = path.join(stateDir, "plugin-data", "refine-cycle", "chats", "main.json");
+  agentEnd({}, telegramTurn("chatty"));
+  await settle();
+  const remembered = fs.readFileSync(chats, "utf8");
+  assert.match(remembered, /"telegram"/);
+  // The heartbeat's turn, every 30 minutes, as R5 logged it: channel webchat, the session key as its chat.
+  agentEnd({}, { sessionId: "idle", agentId: "main", channel: "webchat", chatId: "agent:main:main" });
+  await settle();
+  assert.equal(fs.readFileSync(chats, "utf8"), remembered, "a turn a plugin cannot answer does not replace the chat");
+  // A lesson learned in a webchat turn is told in the remembered Telegram chat.
+  agentEnd({}, { sessionId: "s1", agentId: "main", channel: "webchat", chatId: "agent:main:r4v2-c4-tool" });
+  await settle();
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].to, "4242");
+  assert.match(String(sent[0].text), /new lesson learned/);
+  assert.equal(fs.readFileSync(chats, "utf8"), remembered);
+});
+
+const telegramCommand = { channel: "telegram", to: "telegram:4242", accountId: "default" };
+
+test("/refine update from Telegram, slow, sends 'updated to' to that chat even when another chat is remembered", async () => {
+  const saved = timing.chatWaitMs;
+  timing.chatWaitMs = 20;
+  try {
+    let finish: () => void = () => {};
+    const texts: Array<Record<string, unknown>> = [];
+    const setup = updateSetup(gitHost({ slow: new Promise<void>((resolve) => (finish = resolve)) }), {
+      sendText: async (ctx: Record<string, unknown>) => void texts.push(ctx),
+    });
+    setup.store.write("chats/main.json", { channel: "telegram", to: "1111", accountId: "other" });
+    const refine = setup.commands.get("refine")!;
+    const text = (await refine({ args: "update", agentId: "main", isAuthorizedSender: true, ...telegramCommand }) as { text: string }).text;
+    assert.equal(text, "Updating Refine Cycle; the result follows in this chat.");
+    finish();
+    for (let i = 0; i < 20 && texts.length === 0; i++) await settle();
+    assert.deepEqual(texts.map((m) => [m.to, m.accountId, m.text]), [["telegram:4242", "default", "♾️ Refine Cycle updated to 0.2.0."]]);
+  } finally {
+    timing.chatWaitMs = saved;
+  }
+});
+
+test("a slow /refine update from webchat, which a plugin cannot answer, goes to the remembered chat and says so", async () => {
+  const saved = timing.chatWaitMs;
+  timing.chatWaitMs = 20;
+  try {
+    let finish: () => void = () => {};
+    const texts: Array<Record<string, unknown>> = [];
+    const setup = updateSetup(gitHost({ slow: new Promise<void>((resolve) => (finish = resolve)) }), {
+      sendText: async (ctx: Record<string, unknown>) => void texts.push(ctx),
+    });
+    setup.store.write("chats/main.json", { channel: "telegram", to: "1111" });
+    const text = (await setup.commands.get("refine")!({ args: "update", agentId: "main", channel: "webchat", to: "agent:main:main" }) as { text: string }).text;
+    assert.equal(text, "Updating Refine Cycle; the result follows in your telegram chat.");
+    finish();
+    for (let i = 0; i < 20 && texts.length === 0; i++) await settle();
+    assert.deepEqual(texts.map((m) => m.to), ["1111"]);
+  } finally {
+    timing.chatWaitMs = saved;
+  }
+});
+
+test("the late results of /refine session and /refine run go to the chat the command came from", async () => {
+  const saved = timing.chatWaitMs;
+  timing.chatWaitMs = 20;
+  try {
+    const answers: Array<(value: { text: string }) => void> = [];
+    const setup = passSetup(() => new Promise((resolve) => answers.push(resolve)));
+    new FileStore(path.join(setup.stateDir, "plugin-data", "refine-cycle")).write("chats/main.json", { channel: "telegram", to: "1111" });
+    const refine = setup.commands.get("refine")!;
+    const session = (await refine({ args: "session s1", agentId: "main", ...telegramCommand }) as { text: string }).text;
+    assert.equal(session, "Pass over session s1 started; the result follows in this chat when the model has answered.");
+    for (let i = 0; i < 50 && answers.length < 1; i++) await settle();
+    // An unreadable reply: it pauses nothing, so s2 still gets its own call.
+    answers[0]({ text: "not json" });
+    const run = (await refine({ args: "run", agentId: "main", sessionId: "s2", ...telegramCommand, to: "telegram:5555" }) as { text: string }).text;
+    assert.match(run, /started; the result follows in this chat/);
+    for (let i = 0; i < 50 && answers.length < 2; i++) await settle();
+    answers[1]({ text: lessonJson(setup.fp, setup.lessonText) });
+    for (let i = 0; i < 20 && setup.sent.length < 2; i++) await settle();
+    const late = setup.sent.filter((m) => /pass over session/.test(String(m.text)));
+    assert.deepEqual(late.map((m) => [m.to, /session (s\d)/.exec(String(m.text))?.[1]]), [["telegram:4242", "s1"], ["telegram:5555", "s2"]]);
+    assert.ok(!setup.sent.some((m) => m.to === "1111" && /pass over/.test(String(m.text))), "not the remembered chat");
+  } finally {
+    timing.chatWaitMs = saved;
+  }
+});
+
+test("/refine status offers the Update button in a chat with buttons, and the command as copyable text elsewhere", async () => {
+  const withButtons = updateSetup(gitHost(), { sendText: async () => undefined, sendPayload: async () => undefined });
+  const refine = withButtons.commands.get("refine")!;
+  // The first status starts the check; the next shows what it found.
+  await refine({ args: "status", agentId: "main", ...telegramCommand });
+  for (let i = 0; i < 10; i++) await settle();
+  const offered = await refine({ args: "status", agentId: "main", ...telegramCommand }) as { text: string; presentation?: unknown };
+  assert.match(offered.text, /is available \(installed 0\.1\.0\): `\/refine update`/);
+  assert.deepEqual(offered.presentation, {
+    blocks: [{ type: "buttons", buttons: [{ label: "Update", action: { type: "command", command: "/refine update" } }] }],
+  });
+
+  const noButtons = updateSetup(gitHost(), { sendText: async () => undefined, sendPayload: async () => undefined, presentationCapabilities: { buttons: false } });
+  const plain = noButtons.commands.get("refine")!;
+  await plain({ args: "status", agentId: "main", ...telegramCommand });
+  for (let i = 0; i < 10; i++) await settle();
+  const text = await plain({ args: "status", agentId: "main", ...telegramCommand }) as { text: string; presentation?: unknown };
+  assert.match(text.text, /`\/refine update`/);
+  assert.equal(text.presentation, undefined);
+  // No update known: no button, even where the channel has them.
+  const current = updateSetup(gitHost({ tags: "a\trefs/tags/v0.1.0\n" }), { sendText: async () => undefined, sendPayload: async () => undefined });
+  await current.commands.get("refine")!({ args: "status", agentId: "main", ...telegramCommand });
+  for (let i = 0; i < 10; i++) await settle();
+  assert.equal((await current.commands.get("refine")!({ args: "status", agentId: "main", ...telegramCommand }) as { presentation?: unknown }).presentation, undefined);
 });

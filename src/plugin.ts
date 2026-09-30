@@ -63,6 +63,17 @@ interface OutboundAdapter {
   presentationCapabilities?: { supported?: boolean; buttons?: boolean };
 }
 
+/** The part of the host's ReplyPayload a command answers with (2026.9.6 PluginCommandResult). */
+interface CommandReply {
+  text: string;
+  presentation?: Presentation;
+}
+
+type Presentation = { blocks: Array<{ type: "buttons"; buttons: Array<{ label: string; action: { type: "command"; command: string } }> }> };
+
+/** The Update button: it runs `/refine update` in the chat it is pressed in. */
+const UPDATE_BUTTON: Presentation = { blocks: [{ type: "buttons", buttons: [{ label: "Update", action: { type: "command", command: UPDATE_COMMAND } }] }] };
+
 interface CommandContext {
   args?: string;
   /** False when the sender is not on the channel's allowlist (the host refuses them unless a command opts out). */
@@ -72,6 +83,19 @@ interface CommandContext {
   /** The host's agent for the command's session; absent when the command has no session. */
   agentId?: string;
   sessionKey?: string;
+  /**
+   * The chat the command came from (2026.9.6 PluginCommandContext): the channel, and `to`,
+   * the host's own routing target for the reply (Telegram: `telegram:<chatId>`, which its
+   * outbound adapter reads as the chat id), with the channel account.
+   */
+  channel?: string;
+  to?: string;
+  accountId?: string;
+}
+
+/** The chat a command came from, when its context names one. */
+function commandChat(ctx: CommandContext | undefined): Chat | null {
+  return ctx?.channel && ctx.to ? { channel: ctx.channel, to: ctx.to, ...(ctx.accountId ? { accountId: ctx.accountId } : {}) } : null;
 }
 
 /** The agent a chat command belongs to: the host's, else the one its session key names (`agent:<id>:…`). */
@@ -135,7 +159,7 @@ export interface PluginApi {
     name: string;
     description: string;
     acceptsArgs?: boolean;
-    handler: (ctx: CommandContext) => { text: string } | Promise<{ text: string }>;
+    handler: (ctx: CommandContext) => CommandReply | Promise<CommandReply>;
   }): void;
   registerCli?(
     registrar: (ctx: { program: CliCommand; workspaceDir?: string }) => void,
@@ -377,25 +401,59 @@ export default function register(api: PluginApi): void {
 
   let queue: Promise<unknown> = Promise.resolve();
   const queued = new Set<string>();
+  /** The channel's outbound adapter; none on a channel without one, or when the host's lookup fails. */
+  const adapterFor = async (channel: string): Promise<OutboundAdapter | undefined> => {
+    try {
+      return await api.runtime?.channel?.outbound?.loadAdapter?.(channel);
+    } catch {
+      return undefined;
+    }
+  };
+  /** Can a plugin send to this chat? The web UI, gateway `chat.send` and the heartbeat's channel cannot. */
+  const reachable = async (chat: Chat | null): Promise<boolean> => {
+    if (!chat) return false;
+    const adapter = await adapterFor(chat.channel);
+    return !!(adapter?.sendText || adapter?.sendPayload);
+  };
+
   /**
-   * The chat the user is talking from: the current turn's, else the last one this agent
-   * was talked to from (a cron or CLI turn has none), kept in the store so a restart
-   * does not forget it. Written only when it changes.
+   * The chat the user is talking from: the current turn's, when a plugin can send to it,
+   * else the last such chat this agent was talked to from, kept in the store so a restart
+   * does not forget it. A turn with no chat (a cron job, the command line) or one a plugin
+   * cannot reach (webchat, the heartbeat) leaves it as it is: that is what lost every
+   * message in R5, when the heartbeat's webchat turn replaced the Telegram chat.
+   * Written only when it changes.
    */
-  const currentChat = (agentId: string, turn: Chat | null): Chat | null => {
+  const currentChat = async (agentId: string, turn: Chat | null): Promise<Chat | null> => {
     const path = `chats/${agentId}.json`;
-    const known = store.read<Chat>(path);
-    if (!turn) return known && known.channel && known.to ? known : null;
+    const stored = store.read<Chat>(path);
+    const known = stored && stored.channel && stored.to ? stored : null;
+    if (!turn || !(await reachable(turn))) return known;
     if (!known || known.channel !== turn.channel || known.to !== turn.to || known.accountId !== turn.accountId) {
       store.write(path, turn);
     }
     return turn;
   };
 
+  /**
+   * Where a chat command's late result goes: the chat the command came from, else (no chat
+   * in its context, or one a plugin cannot reach) the chat the agent is talked to from.
+   */
+  const replyChat = async (agentId: string, from: Chat | null): Promise<Chat | null> =>
+    (await reachable(from)) ? from : currentChat(agentId, null);
+
+  /** "In this chat", or where the late result will go instead. */
+  const followsIn = (target: Chat | null, from: Chat | null): string =>
+    target && from && target.channel === from.channel && target.to === from.to
+      ? "in this chat"
+      : target
+        ? `in your ${target.channel} chat`
+        : "in the gateway log (no chat a plugin can reach is known yet)";
+
   /** Send one message to a chat; false (and a log line) when there is no chat or the channel takes none. */
   const say = async (chat: Chat | null, text: string, what: string): Promise<boolean> => {
     if (!chat) {
-      log(`${what}: no chat to tell (the agent has not been talked to from a channel)`);
+      log(`${what}: no chat to tell (the agent has not yet been talked to from a channel a plugin can send to; webchat and the heartbeat cannot take one)`);
       return false;
     }
     try {
@@ -441,7 +499,7 @@ export default function register(api: PluginApi): void {
 
   /** One learning pass over one session, then the lesson message for whatever it activated. */
   const learn = async (agentId: string, sessionId: string, workspaceDir: string | undefined, turnChat: Chat | null, options: PassOptions = {}) => {
-    const chat = currentChat(agentId, turnChat);
+    const chat = await currentChat(agentId, turnChat);
     const before = new Set(activeLessons(store, agentId).map((lesson) => lesson.id));
     const shown = injected.get(sessionId) ?? [];
     injected.delete(sessionId);
@@ -469,7 +527,7 @@ export default function register(api: PluginApi): void {
       } catch (error) {
         warn(`learning skipped for ${sessionId}: ${String(error)}`);
       }
-      afterTurn(currentChat(agentId, turnChat));
+      afterTurn(await currentChat(agentId, turnChat).catch(() => null));
     });
   };
 
@@ -576,7 +634,7 @@ export default function register(api: PluginApi): void {
           to: chat.to,
           text,
           accountId: chat.accountId ?? null,
-          payload: { text, presentation: { blocks: [{ type: "buttons", buttons: [{ label: "Update", action: { type: "command", command: UPDATE_COMMAND } }] }] } },
+          payload: { text, presentation: UPDATE_BUTTON },
         });
         sent = true;
         log(`update ${latest}: told the user on ${chat.channel}, with the Update button`);
@@ -685,6 +743,8 @@ export default function register(api: PluginApi): void {
     sessionId?: string;
     /** From the host: is the sender on the channel's allowlist. */
     authorized?: boolean;
+    /** The chat the command came from, when the host names one. */
+    chat?: Chat | null;
     json?: boolean;
   }
 
@@ -725,16 +785,34 @@ export default function register(api: PluginApi): void {
     return [
       ...modelWarning,
       ...(state?.ok && state.latest && state.installed && isNewer(state.latest, state.installed)
-        ? [`Refine Cycle ${state.latest} is available (installed ${state.installed}): ${UPDATE_COMMAND}`]
+        ? [`Refine Cycle ${state.latest} is available (installed ${state.installed}): \`${UPDATE_COMMAND}\``]
         : []),
     ];
+  };
+
+  /** Is a newer release known? Then a chat `status` offers the Update button. */
+  const updateKnown = (): boolean => {
+    const state = store.read<UpdateState>(UPDATE_STATE);
+    return !!(state?.ok && state.latest && state.installed && isNewer(state.latest, state.installed));
+  };
+
+  /**
+   * Does the chat render buttons? The same test as the update notice: a channel that says it
+   * has none, or has no payload send at all, gets the command as text. Telegram makes only
+   * `/refine` of `/refine update` a link (a bot command has no space), so there the button
+   * is the only way to update with one tap.
+   */
+  const hasButtons = async (chat: Chat | null | undefined): Promise<boolean> => {
+    if (!chat) return false;
+    const adapter = await adapterFor(chat.channel);
+    return !!adapter?.sendPayload && adapter.presentationCapabilities?.buttons !== false && adapter.presentationCapabilities?.supported !== false;
   };
 
   /**
    * One place for chat and command line. `ok` is false when the command did not do what
    * was asked (no such lesson, a busy store, bad usage), so the command line can exit 1.
    */
-  const control = async (args: string, scope: Scope = {}): Promise<{ text: string; ok: boolean }> => {
+  const control = async (args: string, scope: Scope = {}): Promise<{ text: string; ok: boolean; presentation?: Presentation }> => {
     const [verb = "list", id = ""] = args.trim().split(/\s+/).filter(Boolean);
     const { agentId } = scope;
     if (storeError) return { text: storeErrorText(store.root, storeError), ok: false };
@@ -805,7 +883,11 @@ export default function register(api: PluginApi): void {
         hostWarnings: updateWarnings(),
         recovery: lastRecovery,
       }, (agent) => depsFor(agent));
-      return { text: scope.json ? JSON.stringify(s, null, 2) : describeStatus(s, agentId !== undefined), ok: true };
+      if (scope.json) return { text: JSON.stringify(s, null, 2), ok: true };
+      const text = describeStatus(s, agentId !== undefined);
+      // In a chat with buttons, the update the status names is one tap away.
+      if (agentId !== undefined && updateKnown() && (await hasButtons(scope.chat))) return { text, ok: true, presentation: UPDATE_BUTTON };
+      return { text, ok: true };
     }
     if (verb === "run" || verb === "session" || verb === "dry-run") {
       return passCommand(args, scope);
@@ -823,9 +905,9 @@ export default function register(api: PluginApi): void {
       const first = await Promise.race([update, late]);
       clearTimeout(timer);
       if (first) return first;
-      const owner = agentId;
-      void update.then((result) => say(currentChat(owner, null), result.text, "update"));
-      return { text: "Updating Refine Cycle; the result follows in this chat.", ok: true };
+      const target = await replyChat(agentId, scope.chat ?? null);
+      void update.then((result) => say(target, result.text, "update"));
+      return { text: `Updating Refine Cycle; the result follows ${followsIn(target, scope.chat ?? null)}.`, ok: true };
     }
     return { text: USAGE, ok: false };
   };
@@ -888,11 +970,12 @@ export default function register(api: PluginApi): void {
     clearTimeout(timer);
     if (first && "failed" in first) return { text: `The pass failed: ${first.failed}`, ok: false };
     if (first) return { text: answer(first), ok: true };
+    const target = await replyChat(owner, scope.chat ?? null);
     void pass.then(
-      (decision) => say(currentChat(owner, null), answer(decision), `pass over ${sessionId}`),
-      (error: unknown) => say(currentChat(owner, null), `The pass over session ${sessionId} failed: ${String(error)}`, `pass over ${sessionId}`),
+      (decision) => say(target, answer(decision), `pass over ${sessionId}`),
+      (error: unknown) => say(target, `The pass over session ${sessionId} failed: ${String(error)}`, `pass over ${sessionId}`),
     );
-    return { text: `${dryRun ? "Dry run" : "Pass"} over session ${sessionId} started; the result follows in this chat when the model has answered.`, ok: true };
+    return { text: `${dryRun ? "Dry run" : "Pass"} over session ${sessionId} started; the result follows ${followsIn(target, scope.chat ?? null)} when the model has answered.`, ok: true };
   };
 
   api.registerCommand?.({
@@ -905,13 +988,13 @@ export default function register(api: PluginApi): void {
       if (!agentId && !storeError) {
         return { text: "Refine Cycle cannot tell which agent this chat belongs to. Use `openclaw refine-cycle` on the command line." };
       }
-      return {
-        text: (await control(ctx?.args ?? "", {
-          agentId: agentId ?? DEFAULT_AGENT,
-          ...(ctx?.sessionId ? { sessionId: ctx.sessionId } : {}),
-          ...(ctx?.isAuthorizedSender !== undefined ? { authorized: ctx.isAuthorizedSender } : {}),
-        })).text,
-      };
+      const result = await control(ctx?.args ?? "", {
+        agentId: agentId ?? DEFAULT_AGENT,
+        ...(ctx?.sessionId ? { sessionId: ctx.sessionId } : {}),
+        ...(ctx?.isAuthorizedSender !== undefined ? { authorized: ctx.isAuthorizedSender } : {}),
+        chat: commandChat(ctx),
+      });
+      return { text: result.text, ...(result.presentation ? { presentation: result.presentation } : {}) };
     },
   });
 
