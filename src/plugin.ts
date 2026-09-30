@@ -29,7 +29,7 @@ import { replay } from "./replay.ts";
 import { readSettings } from "./settings.ts";
 import { agentNotices, lessonNotice, lessonSentence, storeErrorText, tidyNotice, tidySentence } from "./core/notice.ts";
 import {
-  actionLine, autoFailedText, autoUpdatedText, availableText, checkDue, failedText, failureReason, hostUpdateLine, isNewer, latestTag, parseVersion, toAnnounce, toInstall,
+  actionLine, autoFailedText, autoUpdatedText, availableText, restartNeededText, checkDue, failedText, failureReason, hostUpdateLine, isNewer, latestTag, parseVersion, toAnnounce, toInstall,
   UPDATE_COMMAND, updatedText, upToDateText, type UpdateState,
 } from "./core/update.ts";
 import { FileStore, StoreError } from "./store.ts";
@@ -178,11 +178,13 @@ const PLUGIN_DIR = "refine-cycle";
 /** How long a chat command waits for its pass before it answers "started" and sends the result later. Tests shorten it. */
 /**
  * `quietMs`: how long the gateway must be quiet (no run, no turn) before an automatic
- * update, which reloads plugins and would break a conversation in progress. `staleRunMs`: a run
- * not seen to end in this long (a crash before `agent_end`) no longer holds that update.
+ * update, which reloads plugins and would break a conversation in progress. `lostRunMs`: a run
+ * not seen to end in this long (one that failed before `agent_end`) no longer holds that update;
+ * 0 means the host's own agent timeout plus five minutes. `restartPollMs`: after `/refine update`,
+ * how often the restart looks again for a moment with no run in progress.
  * Tests shorten them.
  */
-export const timing = { chatWaitMs: 10_000, quietMs: 10 * 60_000, staleRunMs: 2 * 60 * 60_000 };
+export const timing = { chatWaitMs: 10_000, quietMs: 10 * 60_000, lostRunMs: 0, restartPollMs: 5_000 };
 /**
  * When a started gateway warms the error normalizer up: the first Unicode-aware match
  * costs V8 ~200 ms once per process (measured on 2026.9.6, Node 26), and it should not
@@ -345,16 +347,17 @@ export default function register(api: PluginApi): void {
    * to this run; removed only when it ends with a reply. Never throws.
    */
   const handNotices = (ctx: HookContext | undefined): string | null => {
-    const key = runKey(ctx);
-    if (!key || BACKGROUND_TRIGGERS.has(ctx?.trigger ?? "")) return null;
+    const mine = runIds(ctx);
+    if (mine.length === 0 || BACKGROUND_TRIGGERS.has(ctx?.trigger ?? "")) return null;
     try {
       const path = noticesPath(ctx?.agentId || DEFAULT_AGENT);
       const box = store.read<NoticeBox>(path);
       if (!box?.notices?.length) return null;
       // Already with another run that is still going: that run passes them on, not this one too.
-      if (box.handedTo && box.handedTo.runKey !== key && runsInProgress() > 0 && running.has(box.handedTo.runKey)) return null;
+      const holder = box.handedTo ? handedRun(box.handedTo) : [];
+      if (holder.length && !holder.some((id) => mine.includes(id)) && runsInProgress().some((run) => run.ids.some((id) => holder.includes(id)))) return null;
       const ids = box.notices.map(noticeId);
-      store.write(path, { ...box, handedTo: { runKey: key, at: new Date().toISOString(), ids } });
+      store.write(path, { ...box, handedTo: { runKey: mine[0], runIds: mine, at: new Date().toISOString(), ids } });
       return agentNotices(box.notices.map((notice) => notice.sentence));
     } catch (error) {
       warn(`notices not handed to the agent: ${String(error)}`);
@@ -364,12 +367,13 @@ export default function register(api: PluginApi): void {
 
   /** A run ended: the notices it was handed are done if it replied; otherwise the next run gets them. */
   const settleNotices = (ctx: HookContext, replied: boolean) => {
-    const key = runKey(ctx);
-    if (!key) return;
+    const mine = runIds(ctx);
+    if (mine.length === 0) return;
     try {
       const path = noticesPath(ctx.agentId || DEFAULT_AGENT);
       const box = store.read<NoticeBox>(path);
-      if (!box?.handedTo || box.handedTo.runKey !== key) return;
+      // The same run when any of its ids match: the two hooks need not carry the same fields.
+      if (!box?.handedTo || !handedRun(box.handedTo).some((id) => mine.includes(id))) return;
       // Exactly the notices this run was handed go; one that arrived while it ran stays.
       const handed = new Set(box.handedTo.ids ?? []);
       const left = replied ? box.notices.filter((notice) => !handed.has(noticeId(notice))) : box.notices;
@@ -384,8 +388,7 @@ export default function register(api: PluginApi): void {
   api.on(
     "before_prompt_build",
     (_event, ctx) => {
-      const key = runKey(ctx);
-      if (key) runStarted(key);
+      runStarted(ctx);
       if (storeError || !injectionAllowed) return undefined;
       try {
         const block = settings.injectEnabled ? formatBlock(activeLessons(store, ctx?.agentId || DEFAULT_AGENT)) : null;
@@ -549,14 +552,14 @@ export default function register(api: PluginApi): void {
    */
   interface NoticeBox {
     notices: Array<{ what: string; sentence: string; at: string }>;
-    handedTo?: { runKey: string; at: string; ids?: string[] };
+    handedTo?: { runKey: string; runIds?: string[]; at: string; ids?: string[] };
   }
   /** One notice, as the hand-over names it: what it is about and when it was stored. */
   const noticeId = (notice: { what: string; at: string }) => `${notice.what}@${notice.at}`;
   const noticesPath = (agentId: string) => `notices/${agentId}.json`;
   const MAX_NOTICES = 10;
-  /** The run a hook context belongs to: the host's run id, else its session. */
-  const runKey = (ctx: HookContext | undefined): string | null => ctx?.runId || ctx?.sessionId || null;
+  /** The ids of the run a notice was handed to (`runKey` alone in records from before `runIds`). */
+  const handedRun = (handed: NonNullable<NoticeBox["handedTo"]>): string[] => handed.runIds ?? [handed.runKey];
 
   /**
    * Give a notice to the agent for the user, for a chat a plugin cannot send to (webchat,
@@ -844,31 +847,75 @@ export default function register(api: PluginApi): void {
     (result.ok ? log : warn)(`automatic update to ${latest}: ${result.text}`);
     if (result.ok && !result.to) return; // the host found nothing newer after all: nothing to say
     const to = result.to ?? latest;
-    const [text, sentence] = result.ok
-      ? [autoUpdatedText(to), `Refine Cycle updated itself to ${to}.`]
-      : [autoFailedText(latest, result.reason ?? "no reason given"), `Refine Cycle could not update itself to ${latest}: ${result.reason ?? "no reason given"}.`];
-    const told = await notify(agentId, chat, text, sentence, `update ${latest}`);
-    const now = store.read<UpdateState>(UPDATE_STATE) ?? state;
-    if (told) store.write(UPDATE_STATE, { ...now, announced: [...now.announced, latest].slice(-20) });
+    if (!result.ok) {
+      const reason = result.reason ?? "no reason given";
+      const told = await notify(agentId, chat, autoFailedText(latest, reason), `Refine Cycle could not update itself to ${latest}: ${reason}.`, `update ${latest}`);
+      markAnnounced(latest, told);
+      return;
+    }
+    // Updated: the hot reload alone is not enough (the Codex harness), so a full restart
+    // finishes it, here in the same quiet window; without a service, the user is asked to.
+    const canRestart = await serviceLoaded();
+    const told = canRestart
+      ? await notify(agentId, chat, autoUpdatedText(to), `Refine Cycle updated itself to ${to}.`, `update ${latest}`)
+      : await notify(agentId, chat, restartNeededText(to), `Refine Cycle updated itself to ${to}; OpenClaw needs a restart to finish it.`, `update ${latest}`);
+    markAnnounced(latest, told);
+    if (!canRestart) return;
+    const restart = await restartGateway(true);
+    if (!restart.ok) {
+      warn(`restart after the update failed: ${restart.reason}`);
+      await notify(agentId, chat, restartNeededText(to), `Refine Cycle updated itself to ${to}; OpenClaw needs a restart to finish it.`, `restart ${to}`);
+    }
+  };
+
+  const markAnnounced = (version: string, told: boolean) => {
+    if (!told) return;
+    const now = store.read<UpdateState>(UPDATE_STATE);
+    if (now) store.write(UPDATE_STATE, { ...now, announced: [...now.announced, version].slice(-20) });
   };
 
   /**
-   * Agent runs in progress (a prompt was built, the run has not ended), by run, with when
-   * each was last seen. A run that never reaches `agent_end` (a crash) would otherwise hold
-   * the automatic update forever: one not seen for `timing.staleRunMs` no longer counts,
-   * and the set never grows past MAX_RUNS_TRACKED.
+   * Agent runs in progress: a prompt was built and the run has not ended. Keyed by session,
+   * with the run's other ids, because the two hooks need not carry the same fields (each has
+   * only what its caller had), and `agent_end` clears every entry that shares any id with it.
+   * A run that never reaches `agent_end` (one that failed in the host before it, like the
+   * Codex handoff error on 2026-09-30) stops counting after the host's own agent timeout
+   * plus a margin (`lostRunMs`), and the map never grows past MAX_RUNS_TRACKED.
    */
-  const running = new Map<string, number>();
+  interface RunSeen {
+    since: number;
+    ids: string[];
+  }
+  const running = new Map<string, RunSeen>();
   const MAX_RUNS_TRACKED = 200;
-  const runStarted = (key: string) => {
-    running.delete(key);
-    running.set(key, Date.now());
+  const runIds = (ctx: HookContext | undefined): string[] =>
+    [ctx?.sessionId, ctx?.sessionKey, ctx?.runId].filter((id): id is string => typeof id === "string" && id.length > 0);
+  const runStarted = (ctx: HookContext | undefined) => {
+    const ids = runIds(ctx);
+    if (ids.length === 0) return;
+    running.delete(ids[0]);
+    running.set(ids[0], { since: Date.now(), ids });
     while (running.size > MAX_RUNS_TRACKED) running.delete(running.keys().next().value!);
   };
-  const runsInProgress = (): number => {
-    const cutoff = Date.now() - timing.staleRunMs;
-    for (const [key, seen] of running) if (seen < cutoff) running.delete(key);
-    return running.size;
+  const runEnded = (ctx: HookContext | undefined) => {
+    const ids = new Set(runIds(ctx));
+    for (const [key, seen] of running) if (seen.ids.some((id) => ids.has(id))) running.delete(key);
+  };
+  /** The host's agent timeout (`agents.defaults.timeoutSeconds`, 600 s by default in 2026.9.6) and five minutes. */
+  const lostRunMs = (): number => {
+    if (timing.lostRunMs > 0) return timing.lostRunMs;
+    const seconds = (api.config?.agents?.defaults as { timeoutSeconds?: unknown } | undefined)?.timeoutSeconds;
+    return (typeof seconds === "number" && seconds > 0 ? seconds : 600) * 1000 + 5 * 60_000;
+  };
+  const runsInProgress = (): RunSeen[] => {
+    const cutoff = Date.now() - lostRunMs();
+    for (const [key, seen] of running) {
+      if (seen.since < cutoff) {
+        running.delete(key);
+        log(`run ${key} was counted as in progress for over ${Math.round(lostRunMs() / 60_000)} min without ending: treated as lost`);
+      }
+    }
+    return [...running.values()];
   };
   let quietTimer: ReturnType<typeof setTimeout> | undefined;
   let quietJob: (() => Promise<void>) | undefined;
@@ -878,11 +925,13 @@ export default function register(api: PluginApi): void {
    * no turn started or ended in that time. Every turn postpones it; a newer job replaces an
    * older one. Started outside the host's work scope, and the timer does not hold the
    * process open. The host exposes no idle signal to a plugin (2026.9.6), so this is the
-   * plugin's own count of the runs its hooks saw.
+   * plugin's own count of the runs its hooks saw. True when a job was not already waiting.
    */
-  const whenQuiet = (job: () => Promise<void>) => {
+  const whenQuiet = (job: () => Promise<void>): boolean => {
+    const fresh = !quietJob;
     quietJob = job;
     armQuiet();
+    return fresh;
   };
   const armQuiet = () => {
     if (!quietJob) return;
@@ -890,7 +939,12 @@ export default function register(api: PluginApi): void {
     quietTimer = runOutsideHostWorkScope(() =>
       setTimeout(() => {
         quietTimer = undefined;
-        if (runsInProgress() > 0) return armQuiet();
+        const busy = runsInProgress();
+        if (busy.length > 0) {
+          const now = Date.now();
+          log(`automatic update waits: ${busy.length} run(s) still in progress: ${busy.map((run) => `${run.ids.join("/")} (${Math.round((now - run.since) / 60_000)} min)`).join(", ")}`);
+          return armQuiet();
+        }
         const job = quietJob;
         quietJob = undefined;
         void job?.().catch((error: unknown) => warn(`automatic update skipped: ${String(error)}`));
@@ -910,13 +964,59 @@ export default function register(api: PluginApi): void {
         const state = await checkForUpdate(new Date());
         if (!settings.autoUpdate) return await announceUpdate(agentId, state, chat);
         if (!toInstall(withRunning(state))) return;
-        log(`update ${toInstall(withRunning(state))}: installed once the gateway has been quiet for ${Math.round(timing.quietMs / 60_000)} min`);
         // The newest state and chat when it fires, not the ones of this turn.
-        whenQuiet(async () => installByItself(agentId, store.read<UpdateState>(UPDATE_STATE), await currentChat(agentId, null)));
+        const armed = whenQuiet(async () => installByItself(agentId, store.read<UpdateState>(UPDATE_STATE), await currentChat(agentId, null)));
+        if (armed) log(`update ${toInstall(withRunning(state))}: installed once the gateway has been quiet for ${Math.round(timing.quietMs / 60_000)} min`);
       } catch (error) {
         warn(`update check skipped: ${String(error)}`);
       }
     });
+  };
+
+  /**
+   * A full gateway restart after an update, as a user would run it: `openclaw gateway
+   * restart --safe`, which the host runs only once its admitted work has drained. Needed
+   * because on 2026.9.6 the hot reload that `plugins update` does leaves the Codex harness
+   * failing every turn ("Codex session policy handoff failed … reconnect before retrying")
+   * until a restart (live, 2026-09-30, after both an automatic update and an install).
+   * Only a gateway installed as a service can be restarted this way (`gateway status
+   * --json`: `service.loaded`); otherwise `ok` is false and the user is told to restart.
+   */
+  const serviceLoaded = async (): Promise<boolean> => {
+    try {
+      const status = await hostCli(["gateway", "status", "--json"], 60_000);
+      const start = status.stdout.indexOf("{");
+      const data = start >= 0 ? (JSON.parse(status.stdout.slice(start)) as { service?: { loaded?: boolean } }) : undefined;
+      return data?.service?.loaded === true;
+    } catch {
+      return false;
+    }
+  };
+  const restartGateway = async (serviceKnown = false): Promise<{ ok: boolean; reason?: string }> => {
+    try {
+      if (!serviceKnown && !(await serviceLoaded())) return { ok: false, reason: "OpenClaw is not running as a service, so it cannot restart itself" };
+      log("restarting OpenClaw to finish the update (gateway restart --safe)");
+      // On success this process is stopped by the restart, and the call never returns.
+      const result = await hostCli(["gateway", "restart", "--safe", "--json"], 300_000);
+      return result.code === 0 ? { ok: true } : { ok: false, reason: failureReason(result.stdout, result.stderr) };
+    } catch (error) {
+      return { ok: false, reason: String(error).replace(/^Error: /, "").slice(0, 200) };
+    }
+  };
+
+  /** Restart once no run is in progress: a restart mid-run would cut that conversation off. */
+  const restartWhenIdle = (then: (result: { ok: boolean; reason?: string }) => void) => {
+    const tick = () => {
+      if (runsInProgress().length > 0) {
+        const timer = setTimeout(tick, timing.restartPollMs);
+        timer.unref?.();
+        return;
+      }
+      void restartGateway().then(then);
+    };
+    // First the answer that says so reaches the chat.
+    const timer = runOutsideHostWorkScope(() => setTimeout(tick, timing.restartPollMs));
+    timer.unref?.();
   };
 
   let updating = false;
@@ -926,8 +1026,24 @@ export default function register(api: PluginApi): void {
    * update <id>`. With a running gateway the host applies it without a restart. A failure
    * leaves the installed version in place (the host rolls back) and is said in one line.
    */
-  const runUpdate = async (): Promise<UpdateOutcome> => {
+  const runUpdate = async (fromChat: boolean): Promise<UpdateOutcome> => {
     const result = await hostUpdate();
+    if (result.ok && result.to) {
+      // The hot reload alone leaves the Codex harness broken (2026.9.6): a full restart
+      // finishes the update, or the user is told to restart.
+      if (!(await serviceLoaded())) {
+        result.text = restartNeededText(result.to);
+      } else if (fromChat) {
+        result.text = `${result.text} OpenClaw restarts to finish it once no conversation is running.`;
+        restartWhenIdle((restart) => {
+          if (!restart.ok) warn(`restart after /refine update failed: ${restart.reason}`);
+        });
+      } else {
+        // The command line is its own process: the gateway's drain (--safe) is the wait.
+        const restart = await restartGateway();
+        result.text = restart.ok ? `${result.text} OpenClaw was restarted to finish it.` : `${restartNeededText(result.to)} (${restart.reason})`;
+      }
+    }
     // The log keeps the answer too: a chat that takes no message from a plugin still has it there.
     (result.ok ? log : warn)(`/refine update: ${result.text}`);
     return result;
@@ -978,8 +1094,7 @@ export default function register(api: PluginApi): void {
     runOutsideHostWorkScope(() => schedule(() => learn(agentId, sessionId, workspaceFor(agentId), null, options)));
   api.on("agent_end", (event, ctx) => {
     if (!ctx) return;
-    const key = runKey(ctx);
-    if (key) running.delete(key);
+    runEnded(ctx);
     // Every turn that ends postpones an automatic update by the whole quiet period.
     armQuiet();
     if (storeError) return;
@@ -1195,10 +1310,10 @@ export default function register(api: PluginApi): void {
     }
     if (verb === "model") return modelCommand(args.trim().split(/\s+/).slice(1).join(" "), scope);
     if (verb === "update") {
-      if (agentId === undefined) return runUpdate();
+      if (agentId === undefined) return runUpdate(false);
       // The host already refuses senders off the allowlist; this holds if a host lets one through.
       if (scope.authorized === false) return { text: "Only an authorized sender may update Refine Cycle.", ok: false };
-      const update = runUpdate();
+      const update = runUpdate(true);
       let timer: ReturnType<typeof setTimeout> | undefined;
       const late = new Promise<null>((resolve) => {
         timer = setTimeout(() => resolve(null), timing.chatWaitMs);

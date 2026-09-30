@@ -784,6 +784,8 @@ interface HostFake {
   gitCode?: number;
   /** When set, `plugins update <id>` waits for it: a slow update. */
   slow?: Promise<unknown>;
+  /** OpenClaw runs as a service the host can restart (`gateway status --json`: service.loaded). */
+  service?: boolean;
 }
 
 function updateSetup(host: HostFake, adapter?: Record<string, unknown>, pluginConfig: Record<string, unknown> = {}) {
@@ -799,6 +801,8 @@ function updateSetup(host: HostFake, adapter?: Record<string, unknown>, pluginCo
       return host.gitCode ? { stdout: "", stderr: "fatal: unable to access: Could not resolve host: github.com\n", code: host.gitCode } : { stdout: host.tags, stderr: "", code: 0 };
     }
     const args = argv.slice(2);
+    if (args[0] === "gateway" && args[1] === "status") return { stdout: JSON.stringify({ service: { loaded: host.service === true } }), stderr: "", code: 0 };
+    if (args[0] === "gateway" && args[1] === "restart") return host.service ? { stdout: "{}", stderr: "", code: 0 } : { stdout: "", stderr: "Gateway service not loaded.", code: 1 };
     if (args[1] === "inspect") {
       const install = host.source === "git" ? { source: "git", version: host.installed, gitUrl: "file:///repo", gitCommit: `c-${host.installed}` } : host.source === "clawhub" ? { source: "clawhub", version: host.installed } : undefined;
       return { stdout: `[plugins] noise\n${JSON.stringify({ plugin: { version: host.installed, source: "/x/dist/plugin.js" }, ...(install ? { install } : {}) })}`, stderr: "", code: 0 };
@@ -847,7 +851,7 @@ function updateSetup(host: HostFake, adapter?: Record<string, unknown>, pluginCo
 }
 
 const gitHost = (over: Partial<HostFake> = {}): HostFake => ({
-  source: "git", installed: "0.1.0", tags: "a\trefs/tags/v0.1.0\nb\trefs/tags/v0.2.0\n", update: { to: "0.2.0" }, runs: [], ...over,
+  source: "git", installed: "0.1.0", tags: "a\trefs/tags/v0.1.0\nb\trefs/tags/v0.2.0\n", update: { to: "0.2.0" }, runs: [], service: true, ...over,
 });
 
 test("a newer release is announced once, with an Update button that runs /refine update", async () => {
@@ -937,7 +941,7 @@ test("/refine update updates through the host and says to which version; up to d
   const setup = updateSetup(gitHost());
   const refine = setup.commands.get("refine")!;
   assert.equal((await refine({ args: "update", agentId: "main", isAuthorizedSender: false }) as { text: string }).text, "Only an authorized sender may update Refine Cycle.");
-  assert.equal((await refine({ args: "update", agentId: "main", isAuthorizedSender: true }) as { text: string }).text, "♾️ Refine Cycle updated to 0.2.0.");
+  assert.equal((await refine({ args: "update", agentId: "main", isAuthorizedSender: true }) as { text: string }).text, "♾️ Refine Cycle updated to 0.2.0. OpenClaw restarts to finish it once no conversation is running.");
   assert.ok(setup.host.runs.some((argv) => argv.slice(2).join(" ") === "plugins update refine-cycle"), "the host's own update, same entry point");
   setup.host.update = { to: "0.2.0" };
   const again = (await refine({ args: "update", agentId: "main" }) as { text: string }).text;
@@ -1160,7 +1164,7 @@ test("/refine update from Telegram, slow, sends 'updated to' to that chat even w
     assert.equal(text, "Updating Refine Cycle; the result follows in this chat.");
     finish();
     for (let i = 0; i < 20 && texts.length === 0; i++) await settle();
-    assert.deepEqual(texts.map((m) => [m.to, m.accountId, m.text]), [["telegram:4242", "default", "♾️ Refine Cycle updated to 0.2.0."]]);
+    assert.deepEqual(texts.map((m) => [m.to, m.accountId, m.text]), [["telegram:4242", "default", "♾️ Refine Cycle updated to 0.2.0. OpenClaw restarts to finish it once no conversation is running."]]);
   } finally {
     timing.chatWaitMs = saved;
   }
@@ -1571,10 +1575,10 @@ test("L4: the tidy never switches off again a lesson the user enabled", async ()
 
 // -- Review round 1 --
 
-test("a run that crashed before agent_end stops holding the automatic update after staleRunMs", async () => {
+test("a run that crashed before agent_end stops holding the automatic update after lostRunMs", async () => {
   const saved = { ...timing };
   timing.quietMs = 30;
-  timing.staleRunMs = 120;
+  timing.lostRunMs = 120;
   try {
     const setup = updateSetup(gitHost(), { sendText: async (ctx: Record<string, unknown>) => void setup.sent.push(ctx) }, { autoUpdate: true });
     const updates = () => setup.host.runs.filter((argv) => argv.slice(2).join(" ") === "plugins update refine-cycle").length;
@@ -1588,7 +1592,7 @@ test("a run that crashed before agent_end stops holding the automatic update aft
     await pause(80);
     assert.equal(updates(), 0, "held while the lost run still counts");
     await pause(200);
-    assert.equal(updates(), 1, "a run not seen for staleRunMs no longer holds it");
+    assert.equal(updates(), 1, "a run not seen for lostRunMs no longer holds it");
   } finally {
     Object.assign(timing, saved);
   }
@@ -1608,4 +1612,114 @@ test("a notice stored while a run has the others, even in the same millisecond, 
   hooks.get("agent_end")!.handler({ success: true }, run);
   const left = store.read<{ notices: Array<{ sentence: string }> }>("notices/main.json")!;
   assert.deepEqual(left.notices.map((notice) => notice.sentence), ["Second."]);
+});
+
+
+// -- Quiet update, live on d09c719: the update never fired; a hot reload breaks the Codex harness --
+
+test("the two hooks of one run need not carry the same ids: an agent_end without the runId still ends the run", async () => {
+  const saved = { ...timing };
+  timing.quietMs = 40;
+  try {
+    const setup = updateSetup(gitHost({ service: true }), { sendText: async (ctx: Record<string, unknown>) => void setup.sent.push(ctx) }, { autoUpdate: true });
+    const updates = () => setup.host.runs.filter((argv) => argv.slice(2).join(" ") === "plugins update refine-cycle").length;
+    const pause = async (ms: number) => {
+      await new Promise((resolve) => setTimeout(resolve, ms));
+      for (let i = 0; i < 10; i++) await settle();
+    };
+    setup.end({ sessionId: "s0", agentId: "main", channel: "telegram", chatId: "4242" });
+    await pause(10);
+    // The prompt of a run carries the host's runId; its agent_end only the session.
+    setup.prompt({ sessionId: "s1", sessionKey: "agent:main:main", runId: "r-1", agentId: "main", trigger: "user" });
+    setup.end({ sessionId: "s1", agentId: "main" });
+    await pause(200);
+    assert.equal(updates(), 1, "the run ended: nothing holds the update");
+  } finally {
+    Object.assign(timing, saved);
+  }
+});
+
+test("after an automatic update OpenClaw is restarted in the same quiet window, when it is a service", async () => {
+  const setup = updateSetup(gitHost({ service: true }), { sendText: async (ctx: Record<string, unknown>) => void setup.sent.push(ctx) }, { autoUpdate: true });
+  await setup.turn("s1");
+  const steps = setup.host.runs.map((argv) => argv.slice(2).join(" ")).filter((step) => /^(plugins update refine-cycle|gateway )/.test(step));
+  assert.deepEqual(steps, ["plugins update refine-cycle", "gateway status --json", "gateway restart --safe --json"]);
+  assert.deepEqual(setup.sent.map((m) => m.text), ["♾️ Refine Cycle — updated to 0.2.0."], "said before the restart stops this process");
+});
+
+test("without a service to restart, an automatic update tells the user to restart OpenClaw, once", async () => {
+  const setup = updateSetup(gitHost({ service: false }), { sendText: async (ctx: Record<string, unknown>) => void setup.sent.push(ctx) }, { autoUpdate: true });
+  await setup.turn("s1");
+  assert.ok(!setup.host.runs.some((argv) => argv.slice(2).join(" ").startsWith("gateway restart")));
+  assert.deepEqual(setup.sent.map((m) => m.text), ["♾️ Refine Cycle — updated to 0.2.0; restart OpenClaw to finish."]);
+});
+
+test("/refine update restarts OpenClaw once no run is in progress, or asks for a restart without a service", async () => {
+  const saved = { ...timing };
+  timing.restartPollMs = 20;
+  try {
+    const service = updateSetup(gitHost({ service: true }));
+    const refine = service.commands.get("refine")!;
+    service.prompt({ sessionId: "busy", agentId: "main", runId: "r-busy", trigger: "user" });
+    const text = ((await refine({ args: "update", agentId: "main", isAuthorizedSender: true })) as { text: string }).text;
+    assert.equal(text, "♾️ Refine Cycle updated to 0.2.0. OpenClaw restarts to finish it once no conversation is running.");
+    const restarts = () => service.host.runs.filter((argv) => argv.slice(2).join(" ") === "gateway restart --safe --json").length;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    assert.equal(restarts(), 0, "not while a run is in progress");
+    service.end({ sessionId: "busy", agentId: "main", runId: "r-busy" });
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    for (let i = 0; i < 10; i++) await settle();
+    assert.equal(restarts(), 1);
+
+    const plain = updateSetup(gitHost({ service: false }));
+    const answer = ((await plain.commands.get("refine")!({ args: "update", agentId: "main", isAuthorizedSender: true })) as { text: string }).text;
+    assert.equal(answer, "♾️ Refine Cycle — updated to 0.2.0; restart OpenClaw to finish.");
+  } finally {
+    Object.assign(timing, saved);
+  }
+});
+
+
+test("openclaw refine-cycle enable exits 1 when it did not enable: a deleted lesson, an active one, no such lesson", async () => {
+  const stateDir = tempDir();
+  seedJudged(stateDir, "gone", "did not help", 30);
+  seedJudged(stateDir, "off", "did not help", 30);
+  const store = new FileStore(path.join(stateDir, "plugin-data", "refine-cycle"));
+  store.open();
+  setStatus(store, "gone", "deleted", new Date());
+  setStatus(store, "off", "disabled", new Date());
+  const actions = new Map<string, (...args: unknown[]) => unknown>();
+  const program = {
+    command(spec: string) {
+      const name = spec.split(" ")[0];
+      const node = { command: (sub: string) => program.command(sub), description: () => node, option: () => node, action: (handler: (...args: unknown[]) => unknown) => (actions.set(name, handler), node) };
+      return node;
+    },
+  };
+  register({
+    id: "refine-cycle",
+    config: { plugins: { entries: { "refine-cycle": { hooks: { allowConversationAccess: true } } } } },
+    runtime: { state: { resolveStateDir: () => stateDir } },
+    logger: {},
+    on: () => {},
+    registerCli: (registrar) => registrar({ program: program as never }),
+  });
+  const log = console.log;
+  const exitCode = process.exitCode;
+  const run = async (id: string) => {
+    const printed: string[] = [];
+    console.log = (line: unknown) => void printed.push(String(line));
+    process.exitCode = 0;
+    try {
+      await actions.get("enable")!(id);
+      return { text: printed.join("\n"), code: process.exitCode };
+    } finally {
+      console.log = log;
+      process.exitCode = exitCode;
+    }
+  };
+  assert.deepEqual(await run("gone"), { text: "Lesson gone was deleted; a deleted lesson stays deleted.", code: 1 });
+  assert.deepEqual(await run("nope"), { text: "No lesson nope.", code: 1 });
+  assert.deepEqual(await run("off"), { text: "Lesson off enabled. The tidy will not switch it off again.", code: 0 });
+  assert.deepEqual(await run("off"), { text: "Lesson off is active; only a disabled lesson can be enabled.", code: 1 });
 });

@@ -96,6 +96,14 @@ export function updatedText(version: string): string {
   return `${BRAND} updated to ${version}.`;
 }
 
+/**
+ * After an update on a gateway that is not a service the host can restart: the hot reload
+ * alone leaves the Codex harness broken on 2026.9.6 until a full restart, so the user is told.
+ */
+export function restartNeededText(version: string): string {
+  return `${BRAND} — updated to ${version}; restart OpenClaw to finish.`;
+}
+
 /** After an update the plugin ran by itself (`autoUpdate`). */
 export function autoUpdatedText(version: string): string {
   return `${BRAND} — updated to ${version}.`;
