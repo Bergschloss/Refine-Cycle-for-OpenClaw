@@ -31,7 +31,7 @@ export function callsToday(store, now) {
     return store.read(budgetPath(now))?.calls?.length ?? 0;
 }
 /** Spend one call before making it, and mark its failure proposed. A refusal when the day is spent or its record cannot be trusted. */
-function reserveCall(store, now, max, sessionId, agentId, fingerprint) {
+function reserveCall(store, now, max, sessionId, agentId, fingerprint, passMs) {
     let release;
     try {
         release = store.lock("budget", 0);
@@ -42,7 +42,7 @@ function reserveCall(store, now, max, sessionId, agentId, fingerprint) {
         throw error;
     }
     try {
-        const refusal = reserveLocked(store, now, max, sessionId, fingerprint);
+        const refusal = reserveLocked(store, now, max, sessionId, agentId, fingerprint, passMs);
         // Written under the same lock, right after the budget: a call spent is a failure
         // proposed, and the queue never offers it again as a failure nobody has seen.
         if (!refusal)
@@ -94,7 +94,26 @@ function reserveExtraCall(store, now, max, sessionId, fingerprint) {
         release();
     }
 }
-function reserveLocked(store, now, max, sessionId, fingerprint) {
+/**
+ * The session whose pass is still waiting on the model for this failure, if any: a call
+ * reserved today for the same agent and fingerprint whose record still says `pending`.
+ * A pending record older than a whole pass can take (two model calls and a margin) is a
+ * pass a crash cut short, not one in flight, and holds nothing.
+ */
+function inFlight(store, calls, now, agentId, fingerprint, passMs) {
+    for (const call of calls) {
+        if (call.fingerprint !== fingerprint || call.purpose === "shorten")
+            continue;
+        const record = store.read(candidatePath(call.sessionId));
+        if (record?.outcome !== "pending" || record.fingerprint !== fingerprint || (record.agentId ?? DEFAULT_AGENT) !== agentId)
+            continue;
+        const age = now.getTime() - Date.parse(record.at);
+        if (age >= 0 && age < passMs)
+            return call.sessionId;
+    }
+    return null;
+}
+function reserveLocked(store, now, max, sessionId, agentId, fingerprint, passMs) {
     const relative = budgetPath(now);
     const day = store.read(relative);
     if (!day && store.exists(relative))
@@ -103,6 +122,11 @@ function reserveLocked(store, now, max, sessionId, fingerprint) {
     // One call per session, even if a crash lost the session's own record of it.
     if (calls.some((call) => call.sessionId === sessionId))
         return { rule: "already_called" };
+    // Two passes ending moments apart would otherwise both send the same failure: the
+    // second waits for the first's answer instead of paying for the same one (R4 live).
+    const holder = inFlight(store, calls, now, agentId, fingerprint, passMs);
+    if (holder)
+        return { rule: "in_flight", detail: holder };
     if (calls.length >= max)
         return { rule: "budget_spent", detail: `${calls.length}/${max} calls today` };
     store.write(relative, {
@@ -945,7 +969,9 @@ async function processSessionCore(deps, sessionId, agentId, options = {}) {
         last.refusal = { rule: "model_unavailable" };
         return finish({ ...base, evaluated, outcome: "model_unavailable" });
     }
-    const budget = reserveCall(store, now, settings.maxModelCallsPerDay, sessionId, agentId, chosen.pattern.fingerprint);
+    // A pass makes at most two model calls (the lesson and one shortening), each bounded by the timeout.
+    const passMs = 2 * settings.proposalTimeoutMs + 60_000;
+    const budget = reserveCall(store, now, settings.maxModelCallsPerDay, sessionId, agentId, chosen.pattern.fingerprint, passMs);
     if (budget) {
         last.refusal = budget;
         return finish({ ...base, evaluated, outcome: "all_refused", called: budget.rule === "already_called" });
@@ -1211,6 +1237,7 @@ const RULE_WORDS = {
     budget_busy: "another process held the budget",
     budget_unreadable: "the budget record could not be read",
     already_called: "this session already had its model call",
+    in_flight: "another session's pass was already asking the model about it",
     model_unavailable: "no model call available",
     "after_model:restatement": "the lesson repeated your instructions",
     "after_model:duplicate": "the lesson was already known",

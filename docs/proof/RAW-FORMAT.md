@@ -129,7 +129,9 @@ The rules: `below_bar`, `self_corrected`, `not_lesson_shaped:transient`,
 `not_lesson_shaped:wrong_tool`, `not_lesson_shaped:dropped_argument`, `covered_by_lesson`,
 `lesson_not_shown`, `withdrawn_by_user`, `lesson_pending`, `paused_after_nothing`,
 `already_covered`, and after the recurrence checks, on the chosen failure only:
-`model_unavailable`, `budget_spent`, `budget_busy`, `budget_unreadable`, `already_called`.
+`model_unavailable`, `budget_spent`, `budget_busy`, `budget_unreadable`, `already_called`,
+`in_flight` (another session's pass was waiting on the model for the same failure; `detail`
+is that session's id; from 2026-09-30).
 Their meaning in words is in `describeReport` (`src/pipeline.ts`, `RULE_WORDS`).
 
 **`outcome`**: `no_failures`, `all_refused`, `learning_disabled`, `history_unreadable`,

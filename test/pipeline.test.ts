@@ -667,6 +667,71 @@ test("a session the budget says was already called is recorded as called", async
   assert.equal(llm.calls.length, 0);
 });
 
+/** A model that answers only when the test lets it: two passes can overlap on it. */
+class GatedLlm implements Llm {
+  calls = 0;
+  private gates: Array<{ open: (reply: string) => void; fail: (error: Error) => void }> = [];
+  async complete(): Promise<string> {
+    this.calls++;
+    return new Promise<string>((open, fail) => this.gates.push({ open, fail }));
+  }
+  async started(n: number): Promise<void> {
+    while (this.calls < n) await new Promise((resolve) => setImmediate(resolve));
+  }
+  answer(reply: string) {
+    this.gates.shift()!.open(reply);
+  }
+  error() {
+    this.gates.shift()!.fail(new Error("provider timed out"));
+  }
+}
+
+test("two concurrent passes over one failure spend one model call: the second is refused before the model", { timeout: 10_000 }, async () => {
+  const history = new FakeHistory().add("s1", failing()).add("s2", failing());
+  const llm = new GatedLlm();
+  const d = deps(history, llm);
+  // Two sessions of the same agent, ending moments apart, against one store (as two gateway passes do).
+  const first = processSession(d, "s1", "main");
+  await llm.started(1);
+  const second = await processSession(d, "s2", "main");
+  assert.equal(second.outcome, "all_refused");
+  assert.equal(second.evaluated[second.evaluated.length - 1].refusal?.rule, "in_flight");
+  assert.equal(second.called, false, "the second session keeps its call for another failure");
+  llm.answer(lessonReply());
+  assert.equal((await first).outcome, "lesson");
+  assert.equal(llm.calls, 1);
+  const budget = JSON.parse(fs.readFileSync(path.join(d.store.root, "budget", "2026-09-24.json"), "utf8"));
+  assert.equal(budget.calls.length, 1);
+  assert.match(describeReport(report(d.store)), /in_flight/);
+});
+
+test("a first call that failed leaves the failure eligible for the next session", { timeout: 10_000 }, async () => {
+  const history = new FakeHistory().add("s1", failing()).add("s2", failing());
+  const llm = new GatedLlm();
+  const d = deps(history, llm);
+  const first = processSession(d, "s1", "main");
+  await llm.started(1);
+  llm.error();
+  assert.equal((await first).outcome, "model_error");
+  const second = processSession(d, "s2", "main");
+  await llm.started(2);
+  llm.answer(lessonReply());
+  assert.equal((await second).outcome, "lesson");
+  assert.equal(llm.calls, 2);
+});
+
+test("a pass a crash cut short does not hold its failure as in flight", { timeout: 10_000 }, async () => {
+  const history = new FakeHistory().add("s1", failing()).add("s2", failing());
+  const llm = new ScriptedLlm(lessonReply());
+  const d = deps(history, llm);
+  // s1 reserved its call hours ago and never finished: the process died under the model call.
+  d.store.write("budget/2026-09-24.json", { day: "2026-09-24", calls: [{ sessionId: "s1", fingerprint: FP, at: "2026-09-24T06:00:00.000Z" }] });
+  d.store.write("candidates/s1.json", { sessionId: "s1", agentId: "main", at: "2026-09-24T06:00:00.000Z", outcome: "pending", called: true, evaluated: [], fingerprint: FP });
+  const decision = await processSession(d, "s2", "main");
+  assert.equal(decision.outcome, "lesson");
+  assert.equal(llm.calls.length, 1);
+});
+
 test("the deferred sweep applies only the ending agent's lessons, and not while learning is off", async () => {
   const history = new FakeHistory().add("s1", failing(5)).add("m1", new Transcript().user("hi"));
   const d = deps(history, new ScriptedLlm(lessonReply()), { backfillSessions: 0 });
