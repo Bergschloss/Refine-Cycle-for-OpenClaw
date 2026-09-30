@@ -292,8 +292,11 @@ test("a host whose model call throws synchronously leaves no timer and no unhand
       { proposalTimeoutMs: 50 },
     );
     hooks.get("agent_end")!.handler({}, { sessionId: "s1", agentId: "main" });
+    // Wait for the pass to record its outcome; a slow CI runner needs more than a fixed 200 ms.
+    const file = path.join(stateDir, "plugin-data", "refine-cycle", "candidates", "s1.json");
+    for (let waited = 0; !fs.existsSync(file) && waited < 5000; waited += 50) await new Promise((resolve) => setTimeout(resolve, 50));
     await new Promise((resolve) => setTimeout(resolve, 200));
-    const candidate = JSON.parse(fs.readFileSync(path.join(stateDir, "plugin-data", "refine-cycle", "candidates", "s1.json"), "utf8"));
+    const candidate = JSON.parse(fs.readFileSync(file, "utf8"));
     assert.equal(candidate.outcome, "model_error");
     assert.match(candidate.reply, /cannot override the target agent/);
     assert.deepEqual(unhandled, []);
