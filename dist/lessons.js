@@ -96,16 +96,25 @@ function activateLocked(store, lesson, now) {
     store.write(journalPath(journalId), { ...record, state: "applied" });
     return active;
 }
-export function setStatus(store, id, status, now, waitMs = 5_000) {
+/**
+ * Disable or delete a lesson. `reason` is given only when the plugin itself disables it
+ * (the tidy); it is journaled with the intent and kept on the lesson as `disabledBy`.
+ */
+export function setStatus(store, id, status, now, waitMs = 5_000, reason) {
     const release = store.lock("lessons", waitMs);
     try {
-        return setStatusLocked(store, id, status, now);
+        return setStatusLocked(store, id, status, now, reason);
     }
     finally {
         release();
     }
 }
-function setStatusLocked(store, id, status, now) {
+/** The lesson with its new status; `disabledBy` only on a disable the plugin made. */
+function withStatus(lesson, status, now, reason) {
+    const { disabledBy: _previous, ...rest } = lesson;
+    return { ...rest, status, changedAt: now.toISOString(), ...(status === "disabled" && reason ? { disabledBy: reason } : {}) };
+}
+function setStatusLocked(store, id, status, now, reason) {
     const lesson = readLesson(store, id);
     if (!lesson)
         return undefined;
@@ -121,9 +130,10 @@ function setStatusLocked(store, id, status, now) {
         state: "intent",
         at: now.toISOString(),
         previousStatus: lesson.status,
+        ...(reason ? { reason } : {}),
     };
     store.write(journalPath(journalId), record);
-    const changed = { ...lesson, status, changedAt: now.toISOString() };
+    const changed = withStatus(lesson, status, now, reason);
     store.write(lessonPath(id), changed);
     store.write(journalPath(journalId), { ...record, state: "applied" });
     return changed;
@@ -206,7 +216,7 @@ function recoverLocked(store, now) {
             // A later change (a delete after a crashed disable) wins; a tombstone stays one.
             const changedLater = Date.parse(current.changedAt) > Date.parse(record.at);
             if (current.status !== status && current.status !== "deleted" && !changedLater) {
-                store.write(lessonPath(record.lessonId), { ...current, status, changedAt: now.toISOString() });
+                store.write(lessonPath(record.lessonId), withStatus(current, status, now, record.reason));
             }
         }
         store.write(journalPath(record.id), { ...record, state: "applied" });

@@ -42,6 +42,8 @@ export interface AuditInput extends LedgerCounts {
   ageDays: number;
   /** A session of this agent ended after the lesson became active: there was a chance to see the failure again. */
   windowOpen: boolean;
+  /** Why the plugin disabled it itself (the tidy), when it did. */
+  disabledBy?: string;
 }
 
 /** Hermes: `unused` and the `too early` split wait 14 days. */
@@ -57,7 +59,7 @@ export const MIN_QUIET_SESSIONS = 3;
 /** First rule that matches wins, in the Hermes order. */
 export function verdict(input: AuditInput): { verdict: Verdict; why: string } {
   if (input.status === "deleted") return { verdict: "rolled back", why: "you deleted it" };
-  if (input.status === "disabled") return { verdict: "disabled", why: "you disabled it" };
+  if (input.status === "disabled") return { verdict: "disabled", why: input.disabledBy ? `disabled by ${input.disabledBy}` : "you disabled it" };
   if (!input.windowOpen) return { verdict: "no recurrence window", why: "no session of this agent has ended since it was learned" };
   if (input.cameBack > 0) {
     return { verdict: "did not help", why: `its failure came back after it was shown, in ${input.cameBack} of ${input.shown} session(s)` };

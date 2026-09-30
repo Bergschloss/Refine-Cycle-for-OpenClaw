@@ -119,7 +119,17 @@
       "checkForUpdates": {
         "type": "boolean",
         "default": true,
-        "description": "Once a day, look for a newer release and send one message about it, with an Update button, to the chat you talk from."
+        "description": "Once a day, look for a newer release. With autoUpdate on it is installed; otherwise one message about it, with an Update button, goes to the chat you talk from."
+      },
+      "autoUpdate": {
+        "type": "boolean",
+        "default": true,
+        "description": "Install a newer release the daily check finds by itself, through OpenClaw's own plugins update (no restart), once per version, and say so in one line. Off: the message with the Update button instead."
+      },
+      "autoTidy": {
+        "type": "boolean",
+        "default": true,
+        "description": "When the lessons block is over maxInjectedChars, switch off (never delete) lessons the audit judges useless, 'did not help' first, then 'unused', oldest first, until it fits, and say so in one line. Off: only the warning."
       },
       "model": {
         "type": "string",

@@ -22,6 +22,8 @@ export const DEFAULTS = {
     historyDbPath: "",
     notifyOnLesson: true,
     checkForUpdates: true,
+    autoUpdate: true,
+    autoTidy: true,
     model: "",
     rawLog: false,
 };

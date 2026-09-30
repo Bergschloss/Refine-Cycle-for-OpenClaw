@@ -39,6 +39,10 @@ export interface Settings {
   notifyOnLesson: boolean;
   /** Once a day, look for a newer release and tell the user once, with an Update button. */
   checkForUpdates: boolean;
+  /** Install a newer release found by that check by itself (the host's own update, no restart), once per version; off: the notice with the button. */
+  autoUpdate: boolean;
+  /** Over the soft limit, switch off lessons the audit judges useless (`did not help`, then `unused`) until the block fits. */
+  autoTidy: boolean;
   /**
    * The model lessons are written with (`provider/model`); empty for the default agent's.
    * OpenClaw sends it only with `plugins.entries.refine-cycle.llm.allowModelOverride: true`.
@@ -67,6 +71,8 @@ export const DEFAULTS: Settings = {
   historyDbPath: "",
   notifyOnLesson: true,
   checkForUpdates: true,
+  autoUpdate: true,
+  autoTidy: true,
   model: "",
   rawLog: false,
 };

@@ -24,12 +24,12 @@ import { sqliteHistory, agentDatabasePath } from "./host/history.ts";
 import { warmUpNormalizer } from "./core/fingerprint.ts";
 import { readSources } from "./host/sources.ts";
 import { activeLessons, allLessons, DEFAULT_AGENT, lessonAgent, recover, setStatus } from "./lessons.ts";
-import { audit, callsToday, describeAudit, describePass, ensureLedger, describeReport, describeStatus, knownAgents, processSession, RAW_FORMAT, recordExposure, report, status, type Decision, type Deps, type Llm, type PassOptions, type RawLessonStatusLine } from "./pipeline.ts";
+import { audit, callsToday, describeAudit, describePass, ensureLedger, describeReport, describeStatus, knownAgents, processSession, RAW_FORMAT, recordExposure, report, status, tidy, type Decision, type Deps, type Llm, type PassOptions, type RawLessonStatusLine } from "./pipeline.ts";
 import { replay } from "./replay.ts";
 import { readSettings } from "./settings.ts";
-import { lessonNotice, storeErrorText } from "./core/notice.ts";
+import { agentNotice, lessonNotice, lessonSentence, storeErrorText, tidyNotice, tidySentence } from "./core/notice.ts";
 import {
-  actionLine, availableText, checkDue, failedText, failureReason, hostUpdateLine, isNewer, latestTag, toAnnounce,
+  actionLine, autoFailedText, autoUpdatedText, availableText, checkDue, failedText, failureReason, hostUpdateLine, isNewer, latestTag, toAnnounce, toInstall,
   UPDATE_COMMAND, updatedText, upToDateText, type UpdateState,
 } from "./core/update.ts";
 import { FileStore, StoreError } from "./store.ts";
@@ -46,7 +46,12 @@ interface HookContext {
   channel?: string;
   accountId?: string;
   chatId?: string;
+  /** What started the run (2026.9.6 PluginHookAgentContext): user, heartbeat, cron, manual, memory, overflow. */
+  trigger?: string;
 }
+
+/** Runs no person started: their session is not where the user reads a reply. */
+const BACKGROUND_TRIGGERS: ReadonlySet<string> = new Set(["heartbeat", "cron", "memory", "overflow"]);
 
 /** Where to reach the user: a channel, its chat id, and the channel account. */
 interface Chat {
@@ -150,6 +155,12 @@ export interface PluginApi {
     agent?: { resolveAgentWorkspaceDir?: (cfg: unknown, agentId: string) => string };
     system?: {
       runCommandWithTimeout?: (argv: string[], options: { timeoutMs?: number; maxOutputBytes?: number }) => Promise<{ stdout: string; stderr: string; code: number | null }>;
+      /**
+       * Queue a line for a session's next agent turn (2026.9.6 `enqueueSystemEventFromSdk`):
+       * the host prepends it as `System: …` when that session next replies. In process memory
+       * only; false when the host dropped it (empty, a duplicate, a replaced store).
+       */
+      enqueueSystemEvent?: (text: string, options: { sessionKey: string; agentId?: string; contextKey?: string | null }) => boolean;
     };
     channel?: { outbound?: { loadAdapter?: (id: string) => Promise<OutboundAdapter | undefined> } };
   };
@@ -476,10 +487,53 @@ export default function register(api: PluginApi): void {
    * from. Once per run that activated lessons (the caller compares the active lessons
    * before and after); a send that fails is logged, not retried.
    */
-  const announce = async (agentId: string, lessonIds: string[], chat: Chat | null) => {
+  const announce = async (agentId: string, lessonIds: string[], chat: Chat | null, sessionKey: string | null) => {
     if (!settings.notifyOnLesson || lessonIds.length === 0) return;
-    const block = formatBlock(activeLessons(store, agentId));
-    await say(chat, lessonNotice(block?.text.length ?? 0, settings.maxInjectedChars), `lesson ${lessonIds.join(", ")}`);
+    const used = formatBlock(activeLessons(store, agentId))?.text.length ?? 0;
+    await notify(agentId, chat, sessionKey, lessonNotice(used, settings.maxInjectedChars), lessonSentence(used, settings.maxInjectedChars), `lesson ${lessonIds.join(", ")}`);
+  };
+
+  /**
+   * The session the user last talked in, per agent: a turn a person started (not the
+   * heartbeat, a cron job, memory or overflow), kept in the store so a restart does not
+   * forget it. A notice with no chat to send to goes there, through the agent.
+   */
+  const currentSession = (agentId: string, turn: { sessionKey?: string; trigger?: string } | null): string | null => {
+    const path = `chats/${agentId}.session.json`;
+    const known = store.read<{ sessionKey?: string }>(path)?.sessionKey || null;
+    if (!turn?.sessionKey || BACKGROUND_TRIGGERS.has(turn.trigger ?? "")) return known;
+    if (known !== turn.sessionKey) store.write(path, { sessionKey: turn.sessionKey });
+    return turn.sessionKey;
+  };
+
+  /**
+   * Give a notice to the agent for the user: a system event on their session, which the
+   * host puts in front of the agent's next reply there (webchat, the Tray). The only way to
+   * reach a chat a plugin cannot send to; false when the host has no such call or drops it.
+   */
+  const tellThroughAgent = (agentId: string, sessionKey: string | null, sentence: string, what: string): boolean => {
+    const enqueueEvent = api.runtime?.system?.enqueueSystemEvent;
+    if (!sessionKey || !enqueueEvent) {
+      log(`${what}: no chat to tell and ${sessionKey ? "the host offers no system events" : "no session the user talked in is known yet"}`);
+      return false;
+    }
+    try {
+      const queued = enqueueEvent(agentNotice(sentence), { sessionKey, agentId, contextKey: `refine-cycle:${what}` });
+      log(`${what}: ${queued ? "given to the agent for its next reply" : "the host did not queue the notice (a duplicate, or its session store changed)"} in ${sessionKey}`);
+      return queued;
+    } catch (error) {
+      warn(`${what}: could not give the notice to the agent: ${String(error)}`);
+      return false;
+    }
+  };
+
+  /**
+   * One notice, once: straight to a chat a plugin can send to, else through the agent into
+   * the session the user talks in. Never both. True when it was sent or queued.
+   */
+  const notify = async (agentId: string, chat: Chat | null, sessionKey: string | null, text: string, sentence: string, what: string): Promise<boolean> => {
+    if (await reachable(chat)) return say(chat, text, what);
+    return tellThroughAgent(agentId, sessionKey, sentence, what);
   };
 
   /** Run `job` after everything queued before it: one learning pass at a time in this process. */
@@ -497,9 +551,53 @@ export default function register(api: PluginApi): void {
       return false;
     });
 
-  /** One learning pass over one session, then the lesson message for whatever it activated. */
-  const learn = async (agentId: string, sessionId: string, workspaceDir: string | undefined, turnChat: Chat | null, options: PassOptions = {}) => {
+  /** Whether the last tidy found nothing it may switch off: said once, not on every turn. */
+  let tidyStuck = false;
+
+  /**
+   * Over the soft limit, the tidy (`autoTidy`): switch off lessons the audit judges useless
+   * until the block fits, then one line about it. With nothing it may switch off, or with
+   * the setting off, only the warning.
+   */
+  const tidyUp = async (agentId: string, chat: Chat | null, sessionKey: string | null) => {
+    if (!settings.autoTidy) return;
+    const result = tidy(store, agentId, new Date(), settings.maxInjectedChars);
+    if (!result) {
+      tidyStuck = false;
+      return;
+    }
+    if (result.busy) log("tidy: the lesson store is busy; tried again after the next turn");
+    if (result.disabled.length === 0) {
+      if (!tidyStuck) warn(`tidy: the lessons block is ${result.before} characters, over the soft limit of ${result.limit}, and no lesson is judged 'did not help' or 'unused'; nothing was switched off`);
+      tidyStuck = true;
+      return;
+    }
+    tidyStuck = false;
+    log(`tidy: switched off ${result.disabled.map((d) => `${d.id} (${d.verdict})`).join(", ")}; lessons ${result.before} -> ${result.after}/${result.limit}`);
+    for (const { id, verdict: why } of result.disabled) {
+      if (!settings.rawLog) break;
+      try {
+        const line: RawLessonStatusLine = { kind: "lesson_status", format: RAW_FORMAT, at: new Date().toISOString(), lessonId: id, agentId, status: "disabled", by: `tidy: ${why}` };
+        writeRaw(line);
+      } catch (error) {
+        warn(`raw record for ${id} not written: ${String(error)}`);
+      }
+    }
+    const verdicts = result.disabled.map((d) => d.verdict);
+    await notify(agentId, chat, sessionKey, tidyNotice(verdicts, result.after, result.limit), tidySentence(verdicts, result.after, result.limit), "tidy");
+  };
+
+  /** One learning pass over one session, then the tidy and the lesson message for whatever it activated. */
+  const learn = async (
+    agentId: string,
+    sessionId: string,
+    workspaceDir: string | undefined,
+    turnChat: Chat | null,
+    options: PassOptions = {},
+    turn: { sessionKey?: string; trigger?: string } | null = null,
+  ) => {
     const chat = await currentChat(agentId, turnChat);
+    const sessionKey = currentSession(agentId, turn);
     const before = new Set(activeLessons(store, agentId).map((lesson) => lesson.id));
     const shown = injected.get(sessionId) ?? [];
     injected.delete(sessionId);
@@ -508,7 +606,14 @@ export default function register(api: PluginApi): void {
     if (decision.outcome !== "no_failures") log(`session ${sessionId}: ${decision.outcome}`);
     // Every lesson that became active during this run, whichever way it got there
     // (this session, a deferred one, a recovered activation).
-    await announce(agentId, activeLessons(store, agentId).filter((lesson) => !before.has(lesson.id)).map((lesson) => lesson.id), chat);
+    const learned = activeLessons(store, agentId).filter((lesson) => !before.has(lesson.id)).map((lesson) => lesson.id);
+    // A lesson just learned is not the tidy's: until a later session ends, its verdict is `no recurrence window`.
+    try {
+      await tidyUp(agentId, chat, sessionKey);
+    } catch (error) {
+      warn(`tidy skipped: ${String(error)}`);
+    }
+    await announce(agentId, learned, chat, sessionKey);
     return decision;
   };
 
@@ -520,14 +625,23 @@ export default function register(api: PluginApi): void {
     const workspaceDir = ctx.workspaceDir;
     if (workspaceDir) workspaces.set(agentId, workspaceDir);
     const turnChat: Chat | null = ctx.channel && ctx.chatId ? { channel: ctx.channel, to: ctx.chatId, ...(ctx.accountId ? { accountId: ctx.accountId } : {}) } : null;
+    const turn = { ...(ctx.sessionKey ? { sessionKey: ctx.sessionKey } : {}), ...(ctx.trigger ? { trigger: ctx.trigger } : {}) };
     void schedule(async () => {
       queued.delete(sessionId);
       try {
-        await learn(agentId, sessionId, workspaceDir, turnChat);
+        await learn(agentId, sessionId, workspaceDir, turnChat, {}, turn);
       } catch (error) {
         warn(`learning skipped for ${sessionId}: ${String(error)}`);
       }
-      afterTurn(await currentChat(agentId, turnChat).catch(() => null));
+      let chat: Chat | null = null;
+      let sessionKey: string | null = null;
+      try {
+        chat = await currentChat(agentId, turnChat);
+        sessionKey = currentSession(agentId, turn);
+      } catch {
+        // no chat known: the update check still runs, its message waits
+      }
+      afterTurn(agentId, chat, sessionKey);
     });
   };
 
@@ -596,15 +710,21 @@ export default function register(api: PluginApi): void {
         if (dry.code !== 0) throw new Error(`plugins update --dry-run: ${failureReason(dry.stdout, dry.stderr)}`);
         const output = `${dry.stdout}\n${dry.stderr}`;
         const would = hostUpdateLine(output, api.id, "would");
-        // Neither "would update" nor "already at": the host changed its wording, and reading
-        // it as "no newer version" would switch the announcement off without a word.
-        if (!would && !/already at|up to date/i.test(output)) throw new Error("plugins update --dry-run: could not read the host's answer");
+        // 2026.9.6 says "<id> is up to date (<version>)." in a dry run and "<id> already at
+        // <version>." in a real one (update-attempt, buildDryRunPluginUpdateOutcome). An install
+        // pinned to an exact version says "<id> is pinned to <spec> …": the host will not move
+        // it, so there is nothing this plugin can install; the log keeps the host's words.
+        const pinned = output.split("\n").find((line) => line.includes(`${api.id} is pinned to `));
+        if (pinned) log(`update check: ${pinned.trim()}`);
+        // Neither of these: the host changed its wording, and reading it as "no newer version"
+        // would switch the announcement off without a word.
+        if (!would && !pinned && !/already at|up to date/i.test(output)) throw new Error("plugins update --dry-run: could not read the host's answer");
         latest = would?.to ?? info.version;
       }
       const next: UpdateState = { ...state, checkedAt: now.toISOString(), ok: true, source: info.source, installed: info.version, latest };
       delete next.error;
       store.write(UPDATE_STATE, next);
-      log(`update check: ${info.source} install ${info.version}, latest ${latest ?? "(nothing to compare: loaded from a path)"}`);
+      log(`update check: ${info.source} install ${info.version}, latest ${latest ?? (info.source === "git" ? "(no release tags yet)" : "(nothing to compare: loaded from a path)")}`);
       return next;
     } catch (error) {
       const next: UpdateState = { ...state, checkedAt: now.toISOString(), ok: false, error: String(error).slice(0, 300) };
@@ -616,16 +736,21 @@ export default function register(api: PluginApi): void {
     }
   };
 
-  /** One message per new version, in the chat the user talks from, with an Update button where the channel has buttons. */
-  const announceUpdate = async (state: UpdateState | undefined, chat: Chat | null): Promise<void> => {
+  /**
+   * One message per new version, in the chat the user talks from, with an Update button
+   * where the channel has buttons; with no chat a plugin can send to, through the agent.
+   * Marked announced only once it was sent or queued.
+   */
+  const announceUpdate = async (agentId: string, state: UpdateState | undefined, chat: Chat | null, sessionKey: string | null): Promise<void> => {
     const latest = toAnnounce(state);
     if (!latest || !state) return;
-    if (!chat) {
-      log(`update ${latest}: no chat to tell yet`);
-      return;
-    }
     const text = availableText(latest);
     let sent = false;
+    if (!chat || !(await reachable(chat))) {
+      sent = tellThroughAgent(agentId, sessionKey, `Refine Cycle ${latest} is available; sending /refine update installs it.`, `update ${latest}`);
+      if (sent) store.write(UPDATE_STATE, { ...state, announced: [...state.announced, latest].slice(-20) });
+      return;
+    }
     try {
       const adapter = await api.runtime?.channel?.outbound?.loadAdapter?.(chat.channel);
       if (adapter?.sendPayload && adapter.presentationCapabilities?.buttons !== false && adapter.presentationCapabilities?.supported !== false) {
@@ -647,12 +772,35 @@ export default function register(api: PluginApi): void {
     if (sent) store.write(UPDATE_STATE, { ...state, announced: [...state.announced, latest].slice(-20) });
   };
 
-  /** After a turn: the daily check, off the learning queue, then the message if there is a new version. */
-  const afterTurn = (chat: Chat | null) => {
+  /**
+   * `autoUpdate`: install the newer release the check found, with the host's own update
+   * (no restart), once per version whatever the result, then one line about it. The version
+   * is recorded as tried before the update starts, so a crash under it never loops.
+   */
+  const installByItself = async (agentId: string, state: UpdateState | undefined, chat: Chat | null, sessionKey: string | null): Promise<void> => {
+    const latest = toInstall(state);
+    if (!latest || !state) return;
+    store.write(UPDATE_STATE, { ...state, attempted: [...(state.attempted ?? []), latest].slice(-20) });
+    const result = await hostUpdate();
+    (result.ok ? log : warn)(`automatic update to ${latest}: ${result.text}`);
+    if (result.ok && !result.to) return; // the host found nothing newer after all: nothing to say
+    const to = result.to ?? latest;
+    const [text, sentence] = result.ok
+      ? [autoUpdatedText(to), `Refine Cycle updated itself to ${to}.`]
+      : [autoFailedText(latest, result.reason ?? "no reason given"), `Refine Cycle could not update itself to ${latest}: ${result.reason ?? "no reason given"}.`];
+    const told = await notify(agentId, chat, sessionKey, text, sentence, `update ${latest}`);
+    const now = store.read<UpdateState>(UPDATE_STATE) ?? state;
+    if (told) store.write(UPDATE_STATE, { ...now, announced: [...now.announced, latest].slice(-20) });
+  };
+
+  /** After a turn: the daily check, off the learning queue, then the update itself or the message about it. */
+  const afterTurn = (agentId: string, chat: Chat | null, sessionKey: string | null) => {
     if (!settings.checkForUpdates || storeError) return;
     void runOutsideHostWorkScope(async () => {
       try {
-        await announceUpdate(await checkForUpdate(new Date()), chat);
+        const state = await checkForUpdate(new Date());
+        if (settings.autoUpdate) await installByItself(agentId, state, chat, sessionKey);
+        else await announceUpdate(agentId, state, chat, sessionKey);
       } catch (error) {
         warn(`update check skipped: ${String(error)}`);
       }
@@ -666,26 +814,32 @@ export default function register(api: PluginApi): void {
    * update <id>`. With a running gateway the host applies it without a restart. A failure
    * leaves the installed version in place (the host rolls back) and is said in one line.
    */
-  const runUpdate = async (): Promise<{ text: string; ok: boolean }> => {
+  const runUpdate = async (): Promise<UpdateOutcome> => {
     const result = await hostUpdate();
     // The log keeps the answer too: a chat that takes no message from a plugin still has it there.
     (result.ok ? log : warn)(`/refine update: ${result.text}`);
     return result;
   };
 
-  const hostUpdate = async (): Promise<{ text: string; ok: boolean }> => {
-    if (updating) return { text: failedText("An update is already running."), ok: false };
+  /** What the host's update did: `to` when it moved to another version, `reason` when it failed. */
+  interface UpdateOutcome {
+    text: string;
+    ok: boolean;
+    to?: string;
+    reason?: string;
+  }
+
+  const hostUpdate = async (): Promise<UpdateOutcome> => {
+    const failed = (reason: string): UpdateOutcome => ({ text: failedText(reason), ok: false, reason });
+    if (updating) return failed("An update is already running.");
     updating = true;
     try {
       const before = await installInfo();
       if (before.source === "path") {
-        return {
-          text: failedText(`It is loaded from a path (${before.path ?? "a directory"}), not installed, so OpenClaw cannot update it; update that directory instead.`),
-          ok: false,
-        };
+        return failed(`It is loaded from a path (${before.path ?? "a directory"}), not installed, so OpenClaw cannot update it; update that directory instead.`);
       }
       const result = await hostCli(["plugins", "update", api.id], 300_000);
-      if (result.code !== 0) return { text: failedText(failureReason(result.stdout, result.stderr)), ok: false };
+      if (result.code !== 0) return failed(failureReason(result.stdout, result.stderr));
       const output = `${result.stdout}\n${result.stderr}`;
       // The host says "<id> already at <version>." when there is nothing newer (2026.9.6).
       if (output.includes(`${api.id} already at `)) return { text: upToDateText(), ok: true };
@@ -696,9 +850,9 @@ export default function register(api: PluginApi): void {
       const to = after?.version ?? line?.to ?? "the latest version";
       const state = store.read<UpdateState>(UPDATE_STATE);
       if (state) store.write(UPDATE_STATE, { ...state, installed: to });
-      return { text: updatedText(to), ok: true };
+      return { text: updatedText(to), ok: true, to };
     } catch (error) {
-      return { text: failedText(String(error).replace(/^Error: /, "").slice(0, 200)), ok: false };
+      return failed(String(error).replace(/^Error: /, "").slice(0, 200));
     } finally {
       updating = false;
     }

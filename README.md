@@ -30,7 +30,9 @@
 - It does not filter your conversation. The evidence for a lesson goes to your model the way your agent would send it.
 - If something inside the plugin fails, your agent carries on as if it were not installed.
 
-When it learns a lesson, it tells you in one line in your chat: `♾️ Refine Cycle — new lesson learned (412/4400)`. The numbers show how much room your lessons take in the agent's prompt. When a new version is out, it tells you once, with an **Update** button.
+When it learns a lesson, it tells you in one line in your chat: `♾️ Refine Cycle — new lesson learned (412/4400)`. The numbers show how much room your lessons take in the agent's prompt. In the web UI and the Tray, where a plugin cannot post, your agent passes it on in its next reply.
+
+It looks after itself: a new version installs itself (`autoUpdate: false` to be asked instead), and past the soft limit it switches off lessons that did not help (`autoTidy: false` to only be warned). Either way it tells you once.
 
 ## How it works
 

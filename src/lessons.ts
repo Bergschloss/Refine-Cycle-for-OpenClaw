@@ -27,6 +27,8 @@ export interface Lesson {
   reason: string;
   /** The agent whose failures produced it; it is shown to that agent only. Absent on lessons from 0.1.0: "main". */
   agentId?: string;
+  /** Why the plugin itself disabled it, e.g. `tidy: did not help`. Absent when the user did, or it is not disabled. */
+  disabledBy?: string;
 }
 
 export const DEFAULT_AGENT = "main";
@@ -49,6 +51,8 @@ interface JournalRecord {
   /** For `activate`: the lesson as it will be written, so recovery can finish the job. */
   lesson?: Lesson;
   previousStatus?: LessonStatus;
+  /** For a disable the plugin made itself (the tidy): why, kept on the lesson as `disabledBy`. */
+  reason?: string;
 }
 
 /** Scoped by agent: the same failure and text for two agents are two lessons. */
@@ -140,22 +144,33 @@ function activateLocked(store: FileStore, lesson: Omit<Lesson, "status" | "chang
   return active;
 }
 
+/**
+ * Disable or delete a lesson. `reason` is given only when the plugin itself disables it
+ * (the tidy); it is journaled with the intent and kept on the lesson as `disabledBy`.
+ */
 export function setStatus(
   store: FileStore,
   id: string,
   status: "disabled" | "deleted",
   now: Date,
   waitMs = 5_000,
+  reason?: string,
 ): Lesson | undefined {
   const release = store.lock("lessons", waitMs);
   try {
-    return setStatusLocked(store, id, status, now);
+    return setStatusLocked(store, id, status, now, reason);
   } finally {
     release();
   }
 }
 
-function setStatusLocked(store: FileStore, id: string, status: "disabled" | "deleted", now: Date): Lesson | undefined {
+/** The lesson with its new status; `disabledBy` only on a disable the plugin made. */
+function withStatus(lesson: Lesson, status: LessonStatus, now: Date, reason?: string): Lesson {
+  const { disabledBy: _previous, ...rest } = lesson;
+  return { ...rest, status, changedAt: now.toISOString(), ...(status === "disabled" && reason ? { disabledBy: reason } : {}) };
+}
+
+function setStatusLocked(store: FileStore, id: string, status: "disabled" | "deleted", now: Date, reason?: string): Lesson | undefined {
   const lesson = readLesson(store, id);
   if (!lesson) return undefined;
   // A tombstone stays a tombstone, and a repeated command changes nothing.
@@ -169,9 +184,10 @@ function setStatusLocked(store: FileStore, id: string, status: "disabled" | "del
     state: "intent",
     at: now.toISOString(),
     previousStatus: lesson.status,
+    ...(reason ? { reason } : {}),
   };
   store.write(journalPath(journalId), record);
-  const changed: Lesson = { ...lesson, status, changedAt: now.toISOString() };
+  const changed = withStatus(lesson, status, now, reason);
   store.write(lessonPath(id), changed);
   store.write(journalPath(journalId), { ...record, state: "applied" });
   return changed;
@@ -253,7 +269,7 @@ function recoverLocked(store: FileStore, now: Date): { finished: number; abandon
       // A later change (a delete after a crashed disable) wins; a tombstone stays one.
       const changedLater = Date.parse(current.changedAt) > Date.parse(record.at);
       if (current.status !== status && current.status !== "deleted" && !changedLater) {
-        store.write(lessonPath(record.lessonId), { ...current, status, changedAt: now.toISOString() });
+        store.write(lessonPath(record.lessonId), withStatus(current, status, now, record.reason));
       }
     }
     store.write(journalPath(record.id), { ...record, state: "applied" });

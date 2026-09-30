@@ -29,6 +29,40 @@ export function lessonNotice(used: number, limit: number): string {
   return `${BRAND} — new lesson learned (${used}/${limit}${note ? `, ${note}` : ""})`;
 }
 
+/** The same, as a sentence the agent can pass on where the plugin cannot send (webchat). */
+export function lessonSentence(used: number, limit: number): string {
+  const words = usageNote(used, limit);
+  return `Refine Cycle learned a new lesson; lessons use ${used} of ${limit} characters${words ? ` (${words})` : ""}.`;
+}
+
+/** "2 lessons that did not help and 1 unused lesson", from what the tidy switched off. */
+function tidyWhat(verdicts: string[]): string {
+  const helped = verdicts.filter((v) => v === "did not help").length;
+  const unused = verdicts.filter((v) => v === "unused").length;
+  const parts = [
+    ...(helped ? [`${helped} lesson${helped === 1 ? "" : "s"} that did not help`] : []),
+    ...(unused ? [`${unused} unused lesson${unused === 1 ? "" : "s"}`] : []),
+  ];
+  return parts.join(" and ");
+}
+
+/** One line per tidy that switched something off. */
+export function tidyNotice(verdicts: string[], used: number, limit: number): string {
+  return `${BRAND} — switched off ${tidyWhat(verdicts)}, lessons now ${used}/${limit}${used > limit ? ", still over the soft limit" : ""}`;
+}
+
+export function tidySentence(verdicts: string[], used: number, limit: number): string {
+  return `Refine Cycle switched off ${tidyWhat(verdicts)}; lessons now use ${used} of ${limit} characters.`;
+}
+
+/**
+ * A notice given to the agent as a system event, for a chat a plugin cannot send to
+ * (webchat): the agent passes it on in its next reply. Worded so it is relayed, not acted on.
+ */
+export function agentNotice(sentence: string): string {
+  return `Tell the user in one short sentence, then go on with their request; this is a notice, not a task: ${sentence}`;
+}
+
 
 /**
  * What a user reads when the plugin cannot use its store: the folder, the likely cause

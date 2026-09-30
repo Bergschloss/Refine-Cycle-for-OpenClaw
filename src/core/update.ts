@@ -23,6 +23,8 @@ export interface UpdateState {
   latest?: string | null;
   /** Versions already announced: each one once. */
   announced: string[];
+  /** Versions an automatic update was already tried for (`autoUpdate`): never tried again, whatever the result. */
+  attempted?: string[];
 }
 
 export function checkDue(state: UpdateState | undefined, now: Date): boolean {
@@ -92,6 +94,22 @@ export function actionLine(): string {
 
 export function updatedText(version: string): string {
   return `${BRAND} updated to ${version}.`;
+}
+
+/** After an update the plugin ran by itself (`autoUpdate`). */
+export function autoUpdatedText(version: string): string {
+  return `${BRAND} — updated to ${version}.`;
+}
+
+export function autoFailedText(version: string, reason: string): string {
+  return `${BRAND} — update to ${version} failed: ${reason}`;
+}
+
+/** The version to install by itself now, if any: newer than the installed one, never tried before, not a path install. */
+export function toInstall(state: UpdateState | undefined): string | null {
+  if (!state?.ok || !state.latest || !state.installed || state.source === "path") return null;
+  if (!isNewer(state.latest, state.installed)) return null;
+  return (state.attempted ?? []).includes(state.latest) ? null : state.latest;
 }
 
 export function upToDateText(): string {

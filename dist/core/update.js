@@ -75,6 +75,21 @@ export function actionLine() {
 export function updatedText(version) {
     return `${BRAND} updated to ${version}.`;
 }
+/** After an update the plugin ran by itself (`autoUpdate`). */
+export function autoUpdatedText(version) {
+    return `${BRAND} — updated to ${version}.`;
+}
+export function autoFailedText(version, reason) {
+    return `${BRAND} — update to ${version} failed: ${reason}`;
+}
+/** The version to install by itself now, if any: newer than the installed one, never tried before, not a path install. */
+export function toInstall(state) {
+    if (!state?.ok || !state.latest || !state.installed || state.source === "path")
+        return null;
+    if (!isNewer(state.latest, state.installed))
+        return null;
+    return (state.attempted ?? []).includes(state.latest) ? null : state.latest;
+}
 export function upToDateText() {
     return `${BRAND} is up to date.`;
 }

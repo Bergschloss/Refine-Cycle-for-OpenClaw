@@ -2,10 +2,11 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { audit, queueLength, describeAudit, describeReport, describeStatus, ensureLedger, ledgerCounts, processSession, recordExposure, report, status, type Deps, type Llm } from "../src/pipeline.ts";
+import { audit, queueLength, describeAudit, describeReport, describeStatus, ensureLedger, ledgerCounts, processSession, recordExposure, report, status, tidy, type Deps, type Llm } from "../src/pipeline.ts";
 import { DEFAULTS, type Settings } from "../src/settings.ts";
 import { FileStore } from "../src/store.ts";
-import { activate, activeLessons, allLessons, setStatus } from "../src/lessons.ts";
+import { activate, activeLessons, allLessons, recover, setStatus } from "../src/lessons.ts";
+import { formatBlock } from "../src/core/injection.ts";
 import { fingerprint } from "../src/core/fingerprint.ts";
 import type { Source } from "../src/core/covered.ts";
 import { SYSTEM_PROMPT } from "../src/core/proposal.ts";
@@ -1317,4 +1318,111 @@ test("a crash between writing the fold and removing the summaries counts nothing
   assert.equal(decision.evaluated[0].sessions, 2);
   assert.equal(decision.evaluated[0].count, 2);
   assert.equal(report(d.store).sessions, 2);
+});
+
+// -- G3: over the soft limit the plugin tidies itself --
+
+const NOW = new Date("2026-09-24T10:00:00Z");
+
+/** A lesson with the ledger that gives it `verdict`, created `daysOld` days before NOW. */
+function lessonWith(store: FileStore, id: string, verdict: "did not help" | "unused" | "working" | "too early", daysOld: number): void {
+  const createdAt = new Date(NOW.getTime() - daysOld * 86_400_000).toISOString();
+  activate(store, {
+    id, text: `When calling tool_${id}, pass the ${id} argument it needs, spelled out in full every time it is used.`, fingerprint: `fp${id}`, tool: `tool_${id}`,
+    createdAt, sourceSessionId: "s", evidence: { sessionIds: ["s"], eventIds: [] }, reason: "", agentId: "main",
+  }, new Date(createdAt));
+  const folded = verdict === "did not help" ? { shown: 3, cameBack: 1, recurrences: 1, unplaced: 0 }
+    : verdict === "working" ? { shown: 5, cameBack: 0, recurrences: 0, unplaced: 0 }
+    : verdict === "too early" ? { shown: 1, cameBack: 0, recurrences: 0, unplaced: 0 }
+    : { shown: 0, cameBack: 0, recurrences: 0, unplaced: 0 };
+  store.write(`ledger/${id}.json`, { lessonId: id, sessions: {}, folded, updatedAt: createdAt });
+}
+
+function tidyStore(): FileStore {
+  const store = new FileStore(tempDir());
+  store.open();
+  // A session of the agent ended after every lesson: each had its chance to be seen (the recurrence window).
+  store.write("candidates/later.json", { sessionId: "later", agentId: "main", at: NOW.toISOString(), outcome: "no_failures", called: false, evaluated: [] });
+  return store;
+}
+
+const blockSize = (store: FileStore, ids: string[]) =>
+  formatBlock(allLessons(store).filter((lesson) => ids.includes(lesson.id)).sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id)))!.text.length;
+
+test("over the limit the tidy switches off 'did not help' oldest first, then 'unused', and stops once the block fits", () => {
+  const store = tidyStore();
+  lessonWith(store, "helpnewer", "did not help", 20);
+  lessonWith(store, "helpolder", "did not help", 40);
+  lessonWith(store, "unusedold", "unused", 60);
+  lessonWith(store, "works", "working", 50);
+  lessonWith(store, "early", "too early", 5);
+  assert.deepEqual(audit(store, NOW).map((row) => [row.id, row.verdict]).sort(), [
+    ["early", "too early"], ["helpnewer", "did not help"], ["helpolder", "did not help"], ["unusedold", "unused"], ["works", "working"],
+  ].sort());
+  // Room for everything but the two that did not help: those two go, the unused one stays.
+  const limit = blockSize(store, ["unusedold", "works", "early"]);
+  const result = tidy(store, "main", NOW, limit)!;
+  assert.deepEqual(result.disabled, [{ id: "helpolder", verdict: "did not help" }, { id: "helpnewer", verdict: "did not help" }]);
+  assert.equal(result.after, limit);
+  assert.deepEqual(activeLessons(store, "main").map((lesson) => lesson.id).sort(), ["early", "unusedold", "works"]);
+  // Disabled, not deleted, with the reason on the lesson, in the audit and in the report.
+  const helpolder = allLessons(store).find((lesson) => lesson.id === "helpolder")!;
+  assert.equal(helpolder.status, "disabled");
+  assert.equal(helpolder.disabledBy, "tidy: did not help");
+  assert.equal(audit(store, NOW).find((row) => row.id === "helpolder")!.why, "disabled by tidy: did not help");
+  assert.match(describeReport(report(store)), /2 disabled \(2 by tidy: did not help\)/);
+  // Under the limit: nothing more to do.
+  assert.equal(tidy(store, "main", NOW, limit), null);
+});
+
+test("the tidy never switches off 'working' or 'too early' lessons, and with nothing it may, it only reports", () => {
+  const store = tidyStore();
+  lessonWith(store, "helps", "did not help", 30);
+  lessonWith(store, "unused", "unused", 30);
+  lessonWith(store, "works", "working", 30);
+  lessonWith(store, "early", "too early", 5);
+  const result = tidy(store, "main", NOW, 10)!;
+  assert.deepEqual(result.disabled.map((d) => d.id), ["helps", "unused"]);
+  assert.ok(result.after > 10, "still over: what is left may not be touched");
+  assert.deepEqual(activeLessons(store, "main").map((lesson) => lesson.id).sort(), ["early", "works"]);
+  const again = tidy(store, "main", NOW, 10)!;
+  assert.deepEqual(again.disabled, []);
+  assert.equal(again.before, again.after);
+});
+
+test("a crash in the middle of a tidy is finished by the journal, with the tidy's reason", () => {
+  const root = tempDir();
+  const setup = new FileStore(root);
+  setup.open();
+  setup.write("candidates/later.json", { sessionId: "later", agentId: "main", at: NOW.toISOString(), outcome: "no_failures", called: false, evaluated: [] });
+  lessonWith(setup, "helps", "did not help", 30);
+  lessonWith(setup, "works", "working", 30);
+  let crashed = false;
+  const crashing = new FileStore(root, {
+    beforeWrite: (relative) => {
+      // After the journal's intent, before the lesson file: the process dies.
+      if (!crashed && relative === "lessons/helps.json") {
+        crashed = true;
+        throw new Error("crash before the lesson write");
+      }
+    },
+  });
+  crashing.open();
+  assert.throws(() => tidy(crashing, "main", NOW, 10), /crash before the lesson write/);
+  const store = new FileStore(root);
+  store.open();
+  assert.equal(allLessons(store).find((lesson) => lesson.id === "helps")!.status, "active", "the crash left it half done");
+  assert.equal(recover(store, NOW).finished, 1);
+  const helps = allLessons(store).find((lesson) => lesson.id === "helps")!;
+  assert.equal(helps.status, "disabled");
+  assert.equal(helps.disabledBy, "tidy: did not help");
+  assert.equal(allLessons(store).find((lesson) => lesson.id === "works")!.status, "active");
+});
+
+test("a lesson the user disables carries no tidy reason, even one the tidy had switched off before", () => {
+  const store = tidyStore();
+  lessonWith(store, "mine", "working", 30);
+  setStatus(store, "mine", "disabled", NOW);
+  assert.equal(allLessons(store)[0].disabledBy, undefined);
+  assert.equal(audit(store, NOW)[0].why, "you disabled it");
 });

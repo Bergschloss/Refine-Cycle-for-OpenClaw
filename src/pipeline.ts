@@ -15,7 +15,7 @@ import { buildShortenMessage, buildUserMessage, parseProposal, parseShortened, S
 import { formatBlock, type Block } from "./core/injection.ts";
 import { BRAND, usageNote } from "./core/notice.ts";
 import { AGE_GATE_DAYS, MIN_QUIET_SESSIONS, RECURRENCE_HORIZON_DAYS, REMOVAL_CANDIDATES, verdict, type LedgerCounts, type Verdict } from "./core/audit.ts";
-import { activate, activeLessons, allLessons, DEFAULT_AGENT, journalState, lessonAgent, LessonExistsError, lessonId, recover, type Lesson } from "./lessons.ts";
+import { activate, activeLessons, allLessons, DEFAULT_AGENT, journalState, lessonAgent, LessonExistsError, lessonId, recover, setStatus, type Lesson } from "./lessons.ts";
 import { safeName, StoreError, type FileStore } from "./store.ts";
 import type { Settings } from "./settings.ts";
 
@@ -587,7 +587,7 @@ export function judgeLessons(store: FileStore, now: Date, agentId?: string): Aud
     const counts = ledgerCounts(store, lesson.id);
     const windowOpen = counts.shown > 0 || decisions.some((d) => (d.agentId || DEFAULT_AGENT) === owner && d.at > lesson.createdAt);
     const ageDays = Math.max(0, Math.floor((now.getTime() - Date.parse(lesson.createdAt)) / 86_400_000));
-    const judged = verdict({ ...counts, status: lesson.status, ageDays, windowOpen });
+    const judged = verdict({ ...counts, status: lesson.status, ageDays, windowOpen, ...(lesson.disabledBy ? { disabledBy: lesson.disabledBy } : {}) });
     rows.push({ id: lesson.id, agentId: owner, text: lesson.text, status: lesson.status, ageDays, counts, ...judged });
   }
   return rows.sort((a, b) => a.agentId.localeCompare(b.agentId) || a.ageDays - b.ageDays || a.id.localeCompare(b.id));
@@ -608,6 +608,53 @@ export function audit(store: FileStore, now: Date, agentId?: string): AuditRow[]
     }
   }
   return rows;
+}
+
+// -- The tidy ---------------------------------------------------------------------
+
+/** What the tidy may switch off, in this order (owner decision, 2026-09-30); nothing else is ever touched. */
+export const TIDY_ORDER: readonly Verdict[] = ["did not help", "unused"];
+
+export interface TidyResult {
+  /** The lessons block, in characters, before and after, against the soft limit. */
+  before: number;
+  after: number;
+  limit: number;
+  /** Switched off, in order, with the verdict that allowed it. */
+  disabled: Array<{ id: string; verdict: Verdict }>;
+  /** The lesson lock was held by another process: nothing more was switched off this time. */
+  busy?: boolean;
+}
+
+/**
+ * Over the soft limit, switch off (disable, never delete) the lessons the audit already
+ * judges useless, until the block fits: `did not help` oldest first, then `unused` oldest
+ * first. `working`, `too early`, `no recurrence window` and every other verdict are never
+ * touched. Each disable goes through the lesson journal with its reason (`tidy: <verdict>`),
+ * so a crash is finished by `recover()`, and a disabled lesson is not relearned. The lock is
+ * never waited for: the gateway thread does not block (`waitMs` 0). Null when under the limit.
+ */
+export function tidy(store: FileStore, agentId: string, now: Date, limit: number, waitMs = 0): TidyResult | null {
+  const size = () => formatBlock(activeLessons(store, agentId))?.text.length ?? 0;
+  const before = size();
+  if (before <= limit) return null;
+  const created = new Map(allLessons(store).map((lesson) => [lesson.id, lesson.createdAt]));
+  const rows = judgeLessons(store, now, agentId).filter((row) => row.status === "active");
+  const oldestFirst = (a: AuditRow, b: AuditRow) => (created.get(a.id) ?? "").localeCompare(created.get(b.id) ?? "") || a.id.localeCompare(b.id);
+  const eligible = TIDY_ORDER.flatMap((wanted) => rows.filter((row) => row.verdict === wanted).sort(oldestFirst));
+  const result: TidyResult = { before, after: before, limit, disabled: [] };
+  for (const row of eligible) {
+    if (result.after <= limit) break;
+    try {
+      setStatus(store, row.id, "disabled", now, waitMs, `tidy: ${row.verdict}`);
+    } catch (error) {
+      if (error instanceof StoreError) return { ...result, busy: true };
+      throw error;
+    }
+    result.disabled.push({ id: row.id, verdict: row.verdict });
+    result.after = size();
+  }
+  return result;
 }
 
 /** The audit for people, in the shape of the Hermes one: a row per lesson, then the removal candidates. */
@@ -1041,6 +1088,8 @@ export interface RawLessonStatusLine {
   lessonId: string;
   agentId: string;
   status: "disabled" | "deleted";
+  /** Only when the plugin did it itself: `tidy: did not help`, `tidy: unused`. Absent: the user did. */
+  by?: string;
 }
 
 function iso(ms: number | undefined): string | null {
@@ -1412,6 +1461,8 @@ export interface Report {
   /** Of those, calls spent on a failure from the queue: one that never reached the model in its own sessions. */
   queuedCalls: number;
   lessons: { active: number; disabled: number; deleted: number; draft: number };
+  /** Of the disabled lessons, those the tidy switched off, by reason (`tidy: did not help`, `tidy: unused`). */
+  disabledBy?: Record<string, number>;
   restatementsCaught: number;
   /** Today's model calls against the daily cap, when the caller asks for them (not in a replay). */
   budget?: { callsToday: number; limit: number };
@@ -1445,7 +1496,12 @@ export function report(store: FileStore, agentId?: string, budget?: { now: Date;
     }
   }
   const lessons = { active: 0, disabled: 0, deleted: 0, draft: 0 };
-  for (const lesson of allLessons(store)) if (agentId === undefined || lessonAgent(lesson) === agentId) lessons[lesson.status]++;
+  const disabledBy: Record<string, number> = {};
+  for (const lesson of allLessons(store)) {
+    if (agentId !== undefined && lessonAgent(lesson) !== agentId) continue;
+    lessons[lesson.status]++;
+    if (lesson.status === "disabled" && lesson.disabledBy) disabledBy[lesson.disabledBy] = (disabledBy[lesson.disabledBy] ?? 0) + 1;
+  }
   const sessions = [...summaries.values()].filter((summary) => agentId === undefined || agentOf(summary.sessionId) === agentId);
   let read = sessions.length;
   let withFailures = sessions.filter((summary) => summary.patterns.length > 0).length;
@@ -1467,6 +1523,7 @@ export function report(store: FileStore, agentId?: string, budget?: { now: Date;
     modelCalls: decisions.filter((d) => d.called).length,
     queuedCalls: decisions.filter((d) => d.called && d.queued).length,
     lessons,
+    ...(Object.keys(disabledBy).length ? { disabledBy } : {}),
     restatementsCaught: restatements,
     ...(budget ? { budget: { callsToday: callsToday(store, budget.now), limit: budget.limit } } : {}),
   };
@@ -1496,7 +1553,7 @@ const RULE_WORDS: Record<string, string> = {
   "not_lesson_shaped:dropped_argument": "an argument already used was left out",
   covered_by_lesson: "an active lesson covers it",
   lesson_not_shown: "an active lesson is about it, but lessons are not shown (injectEnabled is off)",
-  withdrawn_by_user: "you disabled or deleted its lesson",
+  withdrawn_by_user: "its lesson was disabled or deleted (by you, or by the tidy)",
   lesson_pending: "its lesson waits to be saved",
   paused_after_nothing: "the model found nothing to learn in the last 7 days and it has not come back since",
   already_covered: "your instructions or skills already say it",
@@ -1524,7 +1581,8 @@ export function describeReport(r: Report): string {
       .map(([key, n]) => `  ${n} × ${words[key] ?? key}${words[key] ? ` (${key})` : ""}`);
   const decided = Object.values(r.outcomes).reduce((sum, n) => sum + n, 0);
   const others = [
-    r.lessons.disabled && `${r.lessons.disabled} disabled`,
+    r.lessons.disabled &&
+      `${r.lessons.disabled} disabled${Object.keys(r.disabledBy ?? {}).length ? ` (${Object.entries(r.disabledBy!).map(([why, n]) => `${n} by ${why}`).join(", ")})` : ""}`,
     r.lessons.deleted && `${r.lessons.deleted} deleted`,
     r.lessons.draft && `${r.lessons.draft} draft`,
   ].filter(Boolean);

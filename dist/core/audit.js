@@ -28,7 +28,7 @@ export function verdict(input) {
     if (input.status === "deleted")
         return { verdict: "rolled back", why: "you deleted it" };
     if (input.status === "disabled")
-        return { verdict: "disabled", why: "you disabled it" };
+        return { verdict: "disabled", why: input.disabledBy ? `disabled by ${input.disabledBy}` : "you disabled it" };
     if (!input.windowOpen)
         return { verdict: "no recurrence window", why: "no session of this agent has ended since it was learned" };
     if (input.cameBack > 0) {
