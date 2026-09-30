@@ -10,7 +10,12 @@
 
 **Cross-session by design.** An agent can put a mistake right in one conversation and make it again in the next: the same wrong date format, the same missing flag, the same command that never works on your machine. Refine Cycle remembers across conversations, so you stop explaining the same thing twice.
 
-**Measured:** on its own the agent got the call right **20%** of the time → **90%** with the plugin's lesson.
+| On 120 new tasks | First call right |
+|---|---:|
+| The agent on its own | **9** of 120 |
+| With a lesson Refine Cycle learned by itself | **109** of 120 |
+
+[How it was tested →](#what-the-testing-shows)
 
 [**Install on your OpenClaw →**](#install)
 
@@ -42,7 +47,7 @@ Every rule, command and setting: [docs/USAGE.md](docs/USAGE.md).
 
 ## What the testing shows
 
-In a 120-session test on OpenClaw 2026.9.6, the agent got the first tool call right in 36 of 40 sessions with the lesson and in 8 of 40 without it. A note of the same length that said nothing useful scored 3 of 40, so the gain comes from what the lesson says. Method and raw data: [docs/MEASUREMENT-2026-09-25.md](docs/MEASUREMENT-2026-09-25.md).
+The test was written down and frozen before it ran, on OpenClaw 2026.9.6 with GPT-6 Luna. First the plugin learned from 20 scripted scenarios: in each of the 10 where a lesson was possible, it learned one, and two graders from different model families rated all 10 useful. Then the agent got 120 tasks it had not seen. It made the right first call in 109 with that lesson and in 9 with nothing. A note of the same length that stated the right format as a plain fact, without telling the agent to use it, scored 79. The tasks use test tools built to provoke one mistake each: this shows that a learned lesson changes what the agent does, not how often a real install finds one. Protocol, deviations and grading: [docs/proof/](docs/proof/).
 
 ## Install
 

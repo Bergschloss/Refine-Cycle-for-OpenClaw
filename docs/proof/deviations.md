@@ -120,3 +120,22 @@ raw files.
   instead, together with each grader's own rate.
 
 **Harmless or breach.** A breach of A1. It is reported as a stated limit next to §11 T5.
+
+## DEV-7 — R3's placebo notes state the correct format (found 2026-09-30, after the run)
+
+**What happened.**
+- §6 defines arm C as a same-length note "that says nothing useful": topical vocabulary with no
+  directive. The scramble screen only asks whether a note tells the agent what to DO.
+- The frozen `r3-assignment-manifest.json` placebo notes pass that screen but state the accepted
+  value as a fact, for example "Log archive rotation pipelines rely on modern streaming
+  compression codecs such as zstd and lz4."
+- R3 result (target-tool scoring, DEV-4): lesson 109/120, nothing 9/120, placebo 79/120.
+
+**Consequence.**
+- Arm C is not a content-free control. Lesson vs placebo (C2) measures a directive lesson against
+  the same fact stated neutrally, not against a note with nothing useful in it.
+- The claim "the gain comes from what the lesson says" cannot rest on C2. Lesson vs nothing (C1)
+  is unaffected.
+
+**Harmless or breach.** A breach of §6's arm definition, found after the run and not corrected in
+the data. It is reported as is; the README states what the note contained.
