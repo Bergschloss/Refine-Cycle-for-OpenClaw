@@ -416,7 +416,8 @@ test("a busy lesson lock never blocks: the lesson is deferred and applied on the
   const release = d.store.lock("lessons");
   const started = Date.now();
   const first = await processSession(d, "s1", "main");
-  assert.ok(Date.now() - started < 1_000, "did not wait for the lock");
+  // Waiting would take the lock's 5 s; the pass itself can take over a second on a slow CI runner.
+  assert.ok(Date.now() - started < 3_000, "did not wait for the lock");
   assert.equal(first.outcome, "apply_deferred");
   assert.equal(activeLessons(d.store).length, 0);
   release();
