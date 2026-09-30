@@ -10,10 +10,10 @@
 
 **Cross-session by design.** An agent can put a mistake right in one conversation and make it again in the next: the same wrong date format, the same missing flag, the same command that never works on your machine. Refine Cycle remembers across conversations, so you stop explaining the same thing twice.
 
-| | Right on the first try |
+| | Gets it right the first time |
 |---|---:|
-| No plugin | **8%** |
-| With the plugin | **91%** |
+| Without Refine Cycle | **8%** |
+| With Refine Cycle | **91%** |
 
 [**Install on your OpenClaw →**](#install)
 
