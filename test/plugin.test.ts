@@ -6,9 +6,12 @@ import { DatabaseSync } from "node:sqlite";
 import { AsyncLocalStorage } from "node:async_hooks";
 import register, { timing, type PluginApi } from "../src/plugin.ts";
 import { FileStore } from "../src/store.ts";
-import { activate } from "../src/lessons.ts";
+import { activate, setStatus } from "../src/lessons.ts";
 import { fingerprint } from "../src/core/fingerprint.ts";
 import { tempDir, Transcript } from "./helpers.ts";
+
+// An automatic update waits for a quiet gateway; here a few milliseconds, not ten minutes.
+timing.quietMs = 5;
 
 type Handler = (event: unknown, ctx: Record<string, unknown>) => unknown;
 
@@ -19,8 +22,6 @@ function fakeApi(
   injection?: boolean,
   pluginConfig: Record<string, unknown> = {},
   loadAdapter?: (id: string) => Promise<{ sendText?: (ctx: Record<string, unknown>) => Promise<unknown> } | undefined>,
-  /** When given, the host offers system events (2026.9.6) and every one queued lands here. */
-  events?: Array<Record<string, unknown>>,
 ) {
   const hooks = new Map<string, { handler: Handler; timeoutMs?: number }>();
   const commands = new Map<string, (ctx: { args?: string; agentId?: string; sessionKey?: string; [key: string]: unknown }) => unknown>();
@@ -37,7 +38,6 @@ function fakeApi(
       state: { resolveStateDir: () => stateDir },
       llm: complete ? { complete } : {},
       ...(loadAdapter ? { channel: { outbound: { loadAdapter } } } : {}),
-      ...(events ? { system: { enqueueSystemEvent: (text: string, options: Record<string, unknown>) => (events.push({ text, ...options }), true) } } : {}),
     },
     on: (hook, handler, options) => hooks.set(hook, { handler: handler as Handler, timeoutMs: options?.timeoutMs }),
     registerCommand: (command) => commands.set(command.name, command.handler),
@@ -132,6 +132,8 @@ test("end to end on a real SQLite file: failures in two sessions become a lesson
 
   const injected = hooks.get("before_prompt_build")!.handler({}, { sessionId: "s3" }) as { prependContext: string };
   assert.match(injected.prependContext, /five cron fields/);
+  // No chat was known, so the lesson notice came with it, for the agent to pass on (once: s3 is still running).
+  assert.match(injected.prependContext, /\[Refine Cycle notice\].*learned a new lesson/);
   const listed = (await commands.get("refine")!({ args: "list", agentId: "main" }) as { text: string }).text;
   const id = listed.split(" ")[0];
   assert.match((await commands.get("refine")!({ args: `disable ${id}`, agentId: "main" }) as { text: string }).text, /disabled/);
@@ -411,7 +413,7 @@ test("the command line lists every agent's lessons with their agent, reports JSO
   }
 });
 
-function learningSetup(pluginConfig: Record<string, unknown> = {}, send?: (ctx: Record<string, unknown>) => Promise<unknown>, events?: Array<Record<string, unknown>>) {
+function learningSetup(pluginConfig: Record<string, unknown> = {}, send?: (ctx: Record<string, unknown>) => Promise<unknown>) {
   const stateDir = tempDir();
   const error = "cron expression '* * *' has 3 fields, expected 5";
   const failing = () => new Transcript().user("schedule it").call("cron_add", { schedule: "* * *" }, { error });
@@ -442,7 +444,6 @@ function learningSetup(pluginConfig: Record<string, unknown> = {}, send?: (ctx: 
           }
         : undefined;
     },
-    events,
   );
   return { ...api, stateDir, sent, channels };
 }
@@ -467,14 +468,14 @@ test("a new lesson is told in one line, once, in the chat the user is talking fr
   assert.equal(sent.length, 1);
 });
 
-test("a lesson learned with no chat on the turn and none known is not sent, and the log says why", async () => {
+test("a lesson learned with no chat on the turn and none known is kept for the agent, and the log says so", async () => {
   const { hooks, sent, logs } = learningSetup();
   const agentEnd = hooks.get("agent_end")!.handler;
-  // Nothing known yet: nothing sent, and the log says why.
+  // A cron or command-line turn, no chat known yet: nothing sent; the agent passes it on in the next turn.
   agentEnd({}, { sessionId: "s1", agentId: "main" });
   await settle();
   assert.equal(sent.length, 0);
-  assert.ok(logs.some((line) => line.includes("no chat to tell")));
+  assert.ok(logs.some((line) => line.includes("no chat a plugin can send to; the agent passes it on in its next reply")));
 });
 
 test("the last chat is remembered across turns and restarts", async () => {
@@ -522,7 +523,7 @@ test("no message with the setting off, or on a channel that takes none", async (
     hooks.get("agent_end")!.handler({}, { ...telegramTurn("s1"), channel: "webchat" });
     await settle();
     assert.equal(sent.length, 0);
-    assert.ok(logs.some((line) => line.includes("no chat to tell")));
+    assert.ok(logs.some((line) => line.includes("the agent passes it on")));
   }
 });
 
@@ -785,7 +786,7 @@ interface HostFake {
   slow?: Promise<unknown>;
 }
 
-function updateSetup(host: HostFake, adapter?: Record<string, unknown>, pluginConfig: Record<string, unknown> = {}, events?: Array<Record<string, unknown>>) {
+function updateSetup(host: HostFake, adapter?: Record<string, unknown>, pluginConfig: Record<string, unknown> = {}) {
   const stateDir = tempDir();
   writeAgentDb(stateDir, { s1: new Transcript().user("hi").say("hello"), s2: new Transcript().user("hi").say("hello") });
   const sent: Array<Record<string, unknown>> = [];
@@ -822,7 +823,7 @@ function updateSetup(host: HostFake, adapter?: Record<string, unknown>, pluginCo
     logger: { info: (m) => logs.push(m), warn: (m) => logs.push(`WARN ${m}`) },
     runtime: {
       state: { resolveStateDir: () => stateDir },
-      system: { runCommandWithTimeout, ...(events ? { enqueueSystemEvent: (text: string, options: Record<string, unknown>) => (events.push({ text, ...options }), true) } : {}) },
+      system: { runCommandWithTimeout },
       channel: { outbound: { loadAdapter: async (id: string) => (id === "telegram" ? (adapter ?? { sendPayload: async (ctx: Record<string, unknown>) => void sent.push(ctx) }) : undefined) } },
     },
     on: (hook, handler) => hooks.set(hook, handler as Handler),
@@ -832,11 +833,17 @@ function updateSetup(host: HostFake, adapter?: Record<string, unknown>, pluginCo
   /** A turn from Telegram (true), from no chat (false), or with this context (a webchat turn, say). */
   const turn = async (sessionId: string, chat: boolean | Record<string, unknown> = true) => {
     const ctx = typeof chat === "object" ? { sessionId, agentId: "main", ...chat } : chat ? { sessionId, agentId: "main", channel: "telegram", chatId: "4242" } : { sessionId, agentId: "main" };
-    hooks.get("agent_end")!({}, ctx);
+    hooks.get("agent_end")!({ success: true }, ctx);
+    for (let i = 0; i < 10; i++) await settle();
+    // An automatic update waits for a quiet gateway (timing.quietMs, short in these tests).
+    await new Promise((resolve) => setTimeout(resolve, timing.quietMs * 4));
     for (let i = 0; i < 10; i++) await settle();
   };
+  /** The prompt hook for a run, and what it put in front of the agent. */
+  const prompt = (ctx: Record<string, unknown>) => (hooks.get("before_prompt_build")!({}, ctx) as { prependContext?: string } | undefined)?.prependContext ?? "";
+  const end = (ctx: Record<string, unknown>, success = true) => hooks.get("agent_end")!({ success }, ctx);
   const store = new FileStore(path.join(stateDir, "plugin-data", "refine-cycle"));
-  return { sent, commands, logs, turn, store, host };
+  return { sent, commands, logs, turn, prompt, end, store, host };
 }
 
 const gitHost = (over: Partial<HostFake> = {}): HostFake => ({
@@ -903,13 +910,14 @@ test("a failed check is logged, not shown, and tried again after an hour", async
   await setup.turn("s1");
   assert.equal(setup.sent.length, 1);
 });
-test("no chat, no message: the version waits for a turn that has one", async () => {
+test("with no chat on the turn, the update notice goes through the agent, and is not sent again later", async () => {
   const setup = updateSetup(gitHost());
   await setup.turn("s1", false);
   assert.equal(setup.sent.length, 0);
-  assert.ok(setup.logs.some((line) => line.includes("update 0.2.0: no chat to tell")));
+  assert.ok(setup.logs.some((line) => line.includes("update 0.2.0: no chat a plugin can send to")));
+  assert.match(setup.prompt({ sessionId: "s2", agentId: "main", runId: "r2", trigger: "user" }), /0\.2\.0 is available/);
   await setup.turn("s2", true);
-  assert.equal(setup.sent.length, 1);
+  assert.equal(setup.sent.length, 0, "once: it already went through the agent");
 });
 
 test("a channel without buttons gets the command to type instead", async () => {
@@ -1231,30 +1239,68 @@ test("/refine status offers the Update button in a chat with buttons, and the co
 });
 
 
-// -- G1: notices through the agent where the plugin cannot send (webchat, the Tray) --
+// -- G1/L1/L2: notices through the agent where the plugin cannot send (webchat, the Tray) --
 
-const webchatTurn = (sessionId: string, sessionKey = "agent:main:tray") => ({ sessionId, agentId: "main", channel: "webchat", chatId: sessionKey, sessionKey, trigger: "user" });
+const webchatTurn = (sessionId: string, sessionKey = "agent:main:tray", runId = `run-${sessionId}`) =>
+  ({ sessionId, agentId: "main", channel: "webchat", chatId: sessionKey, sessionKey, trigger: "user", runId });
 
-test("a lesson learned in a webchat session is given to the agent once, as a system event with the numbers", async () => {
-  const events: Array<Record<string, unknown>> = [];
-  const { hooks, sent } = learningSetup({}, undefined, events);
+const NOTICE = /\[Refine Cycle notice\] Tell the user in one short sentence, then go on with their request; this is a notice, not a task: /;
+
+test("L1: a lesson learned while the next webchat session has begun is passed on in that session's next reply", async () => {
+  const { hooks, sent, stateDir } = learningSetup();
+  const prompt = (ctx: Record<string, unknown>) => hooks.get("before_prompt_build")!.handler({}, ctx) as { prependContext?: string } | undefined;
   const agentEnd = hooks.get("agent_end")!.handler;
-  agentEnd({}, webchatTurn("s1"));
+  // The live order (2026-09-30): the lesson is learned in s1's pass, because s2's failure was already in the history.
+  agentEnd({ success: true }, webchatTurn("s1", "agent:main:g1-pin-s1"));
   await settle();
   assert.equal(sent.length, 0, "no direct send: webchat takes none");
-  assert.equal(events.length, 1);
-  assert.equal(events[0].sessionKey, "agent:main:tray");
-  assert.equal(events[0].agentId, "main");
-  assert.match(String(events[0].text), /^Tell the user in one short sentence, then go on with their request; this is a notice, not a task: Refine Cycle learned a new lesson; lessons use \d+ of 4400 characters\.$/);
-  // Later turns never give it again.
-  agentEnd({}, webchatTurn("s2"));
-  agentEnd({}, webchatTurn("s3"));
+  const box = path.join(stateDir, "plugin-data", "refine-cycle", "notices", "main.json");
+  assert.ok(fs.existsSync(box), "the notice waits for the agent");
+  // The user's next message, in s2: its prompt carries the notice, after the lessons block.
+  const s2 = webchatTurn("s2", "agent:main:g1-pin-s2");
+  const text = prompt(s2)!.prependContext!;
+  assert.match(text, /^<refine_cycle_lessons[\s\S]*<\/refine_cycle_lessons>\n\n\[Refine Cycle notice\]/);
+  assert.match(text, new RegExp(`${NOTICE.source}Refine Cycle learned a new lesson; lessons use \\d+ of 4400 characters\\.$`));
+  agentEnd({ success: true }, s2);
   await settle();
-  assert.equal(events.length, 1);
+  assert.ok(!fs.existsSync(box), "passed on: gone");
+  assert.doesNotMatch(prompt(webchatTurn("s3", "agent:main:g1-pin-s2", "run-s3b"))?.prependContext ?? "", NOTICE, "once");
 });
 
-test("with a Telegram chat known, a lesson learned in webchat is sent there, not given to the agent", async () => {
-  const events: Array<Record<string, unknown>> = [];
+test("L2: a notice handed to a run that ended without a reply is given to the next run", async () => {
+  const { hooks } = learningSetup();
+  const prompt = (ctx: Record<string, unknown>) => (hooks.get("before_prompt_build")!.handler({}, ctx) as { prependContext?: string } | undefined)?.prependContext ?? "";
+  const agentEnd = hooks.get("agent_end")!.handler;
+  agentEnd({ success: true }, webchatTurn("s1"));
+  await settle();
+  const crashed = webchatTurn("s2", "agent:main:tray", "run-crashed");
+  assert.match(prompt(crashed), NOTICE);
+  // The host's error ("Codex session policy handoff failed …"): no reply reached the user.
+  agentEnd({ success: false, error: "Codex session policy handoff failed" }, crashed);
+  await settle();
+  const retry = webchatTurn("s2", "agent:main:tray", "run-retry");
+  assert.match(prompt(retry), NOTICE, "the retry gets it");
+  agentEnd({ success: true }, retry);
+  await settle();
+  assert.doesNotMatch(prompt(webchatTurn("s3")), NOTICE);
+});
+
+test("heartbeat and cron runs are never handed a notice; the user's next turn is", async () => {
+  const { hooks } = learningSetup();
+  const prompt = (ctx: Record<string, unknown>) => (hooks.get("before_prompt_build")!.handler({}, ctx) as { prependContext?: string } | undefined)?.prependContext ?? "";
+  const agentEnd = hooks.get("agent_end")!.handler;
+  agentEnd({ success: true }, webchatTurn("s1"));
+  await settle();
+  for (const trigger of ["heartbeat", "cron"]) {
+    const background = { ...webchatTurn("s2", "agent:main:main", `run-${trigger}`), trigger };
+    assert.doesNotMatch(prompt(background), NOTICE, trigger);
+    agentEnd({ success: true }, background);
+    await settle();
+  }
+  assert.match(prompt(webchatTurn("s3")), NOTICE);
+});
+
+test("with a Telegram chat known, a lesson learned in webchat is sent there, never also through the agent", async () => {
   const stateDir = tempDir();
   const error = "cron expression '* * *' has 3 fields, expected 5";
   const failing = () => {
@@ -1266,63 +1312,34 @@ test("with a Telegram chat known, a lesson learned in webchat is sent there, not
   const sent: Array<Record<string, unknown>> = [];
   const loadAdapter = async (id: string) => (id === "telegram" ? { sendText: async (ctx: Record<string, unknown>) => void sent.push(ctx) } : undefined);
   const reply = async () => ({ text: lessonJson(fingerprint("cron_add", error), "When calling cron_add, write the schedule as five cron fields, e.g. 0 3 * * *.") });
-  const agentEnd = fakeApi(stateDir, reply, true, undefined, { backfillSessions: 0 }, loadAdapter, events).hooks.get("agent_end")!.handler;
-  agentEnd({}, telegramTurn("chatty"));
+  const { hooks } = fakeApi(stateDir, reply, true, undefined, { backfillSessions: 0 }, loadAdapter);
+  hooks.get("agent_end")!.handler({}, telegramTurn("chatty"));
   await settle();
-  agentEnd({}, webchatTurn("s1"));
+  hooks.get("agent_end")!.handler({}, webchatTurn("s1"));
   await settle();
   assert.equal(sent.length, 1);
   assert.match(String(sent[0].text), /new lesson learned/);
-  assert.equal(events.length, 0, "never both");
-});
-
-test("a heartbeat turn does not become the session notices go to", async () => {
-  const events: Array<Record<string, unknown>> = [];
-  const stateDir = tempDir();
-  const error = "cron expression '* * *' has 3 fields, expected 5";
-  const failing = () => {
-    const t = new Transcript().user("schedule it");
-    for (let i = 0; i < 5; i++) t.call("cron_add", { schedule: "* * *" }, { error });
-    return t;
-  };
-  writeAgentDb(stateDir, { chatty: new Transcript().user("hi"), s1: failing() });
-  const reply = async () => ({ text: lessonJson(fingerprint("cron_add", error), "When calling cron_add, write the schedule as five cron fields, e.g. 0 3 * * *.") });
-  const agentEnd = fakeApi(stateDir, reply, true, undefined, { backfillSessions: 0 }, async () => undefined, events).hooks.get("agent_end")!.handler;
-  agentEnd({}, webchatTurn("chatty", "agent:main:tray"));
-  await settle();
-  // The lesson comes from the heartbeat's run: its reply reaches nobody, so the notice goes to the user's session.
-  agentEnd({}, { ...webchatTurn("s1", "agent:main:main"), trigger: "heartbeat" });
-  await settle();
-  assert.deepEqual(events.map((event) => event.sessionKey), ["agent:main:tray"]);
+  assert.doesNotMatch((hooks.get("before_prompt_build")!.handler({}, webchatTurn("s2")) as { prependContext?: string } | undefined)?.prependContext ?? "", NOTICE);
 });
 
 test("the update notice goes to Telegram with its button, or to the agent in webchat, once, and is then announced", async () => {
-  const events: Array<Record<string, unknown>> = [];
-  const web = updateSetup(gitHost(), { sendText: async () => undefined }, {}, events);
+  const web = updateSetup(gitHost(), { sendText: async () => undefined });
   await web.turn("s1", webchatTurn("s1"));
   assert.equal(web.sent.length, 0);
-  assert.equal(events.length, 1);
-  assert.match(String(events[0].text), /: Refine Cycle 0\.2\.0 is available; sending \/refine update installs it\.$/);
   assert.deepEqual(web.store.read<{ announced: string[] }>("update/state.json")!.announced, ["0.2.0"]);
+  const first = web.prompt(webchatTurn("s2"));
+  assert.match(first, /Refine Cycle 0\.2\.0 is available; sending \/refine update installs it\.$/);
+  web.end(webchatTurn("s2"));
   const state = web.store.read<Record<string, unknown>>("update/state.json")!;
   web.store.write("update/state.json", { ...state, checkedAt: "2026-01-01T00:00:00Z" });
-  await web.turn("s2", webchatTurn("s2"));
-  assert.equal(events.length, 1, "not given twice");
+  await web.turn("s3", webchatTurn("s3"));
+  assert.doesNotMatch(web.prompt(webchatTurn("s4")), NOTICE, "not given twice");
 
-  const tgEvents: Array<Record<string, unknown>> = [];
-  const tg = updateSetup(gitHost(), undefined, {}, tgEvents);
+  const tg = updateSetup(gitHost());
   await tg.turn("s1");
   assert.equal(tg.sent.length, 1);
   assert.ok(tg.sent[0].payload, "the button payload");
-  assert.equal(tgEvents.length, 0);
-});
-
-test("with no chat and no session the user talked in, the update notice waits and is not marked announced", async () => {
-  const events: Array<Record<string, unknown>> = [];
-  const setup = updateSetup(gitHost(), undefined, {}, events);
-  await setup.turn("s1", false);
-  assert.equal(events.length, 0);
-  assert.deepEqual(setup.store.read<{ announced: string[] }>("update/state.json")!.announced, []);
+  assert.doesNotMatch(tg.prompt(webchatTurn("s2")), NOTICE);
 });
 
 // -- G2: updates install themselves --
@@ -1466,3 +1483,87 @@ function allLessonsOf(store: FileStore): Array<[string, string, string | undefin
     return [lesson.id, lesson.status, lesson.disabledBy];
   });
 }
+
+
+// -- L3: the automatic update compares with the running version, and waits for a quiet gateway --
+
+test("L3: a cached 'installed' older than the running version is not an update", async () => {
+  // The live case: 0.1.4 running, the stored state still saying installed 0.1.2, latest 0.1.3.
+  // Here the running version is package.json's; the state is a check's leftover from before an install.
+  const running = JSON.parse(fs.readFileSync(new URL("../package.json", import.meta.url), "utf8")).version as string;
+  const setup = updateSetup(gitHost({ installed: running, tags: `a\trefs/tags/v${running}\n` }), { sendText: async (ctx: Record<string, unknown>) => void setup.sent.push(ctx) }, { autoUpdate: true });
+  setup.store.write("update/state.json", { checkedAt: new Date().toISOString(), ok: true, source: "git", installed: "0.0.1", latest: running, announced: [] });
+  await setup.turn("s1");
+  assert.ok(!setup.host.runs.some((argv) => argv.slice(2).join(" ") === "plugins update refine-cycle"), JSON.stringify(setup.host.runs));
+  assert.equal(setup.sent.length, 0);
+  assert.doesNotMatch(((await setup.commands.get("refine")!({ args: "status", agentId: "main" })) as { text: string }).text, /is available/);
+});
+
+test("L3: the automatic update waits for a quiet gateway, and every run postpones it", async () => {
+  const saved = timing.quietMs;
+  timing.quietMs = 150;
+  try {
+    const setup = updateSetup(gitHost(), { sendText: async (ctx: Record<string, unknown>) => void setup.sent.push(ctx) }, { autoUpdate: true });
+    const updates = () => setup.host.runs.filter((argv) => argv.slice(2).join(" ") === "plugins update refine-cycle").length;
+    const pause = async (ms: number) => {
+      await new Promise((resolve) => setTimeout(resolve, ms));
+      for (let i = 0; i < 10; i++) await settle();
+    };
+    setup.end({ sessionId: "s1", agentId: "main", channel: "telegram", chatId: "4242", runId: "r1" });
+    await pause(20);
+    assert.ok(setup.host.runs.some((argv) => argv[0] === "git"), "the check ran after the turn");
+    assert.equal(updates(), 0, "not inside the turn's own agent_end chain");
+    // A new run starts before the quiet period is over, and is still going when it would fire.
+    setup.prompt({ sessionId: "s2", agentId: "main", runId: "r2", trigger: "user" });
+    await pause(250);
+    assert.equal(updates(), 0, "never while a run is in progress");
+    setup.end({ sessionId: "s2", agentId: "main", runId: "r2" });
+    await pause(60);
+    assert.equal(updates(), 0, "the quiet period starts again when the run ends");
+    await pause(250);
+    assert.equal(updates(), 1);
+    assert.deepEqual(setup.sent.map((m) => m.text), ["♾️ Refine Cycle — updated to 0.2.0."]);
+  } finally {
+    timing.quietMs = saved;
+  }
+});
+
+// -- L4: a tidy can be undone --
+
+test("L4: /refine enable turns a disabled lesson back on; a deleted one stays deleted", async () => {
+  const stateDir = tempDir();
+  writeAgentDb(stateDir, { s1: new Transcript().user("hi") });
+  seedJudged(stateDir, "helps", "did not help", 30);
+  seedJudged(stateDir, "gone", "did not help", 30);
+  const store = new FileStore(path.join(stateDir, "plugin-data", "refine-cycle"));
+  store.open();
+  setStatus(store, "helps", "disabled", new Date(), 0, "tidy: did not help");
+  setStatus(store, "gone", "deleted", new Date());
+  const { commands } = fakeApi(stateDir, async () => ({ text: "{}" }));
+  const refine = async (args: string) => ((await commands.get("refine")!({ args, agentId: "main" })) as { text: string }).text;
+  assert.equal(await refine("enable helps"), "Lesson helps enabled. The tidy will not switch it off again.");
+  assert.deepEqual(allLessonsOf(store).find((row) => row[0] === "helps"), ["helps", "active", undefined]);
+  assert.equal(await refine("enable helps"), "Lesson helps is active; only a disabled lesson can be enabled.");
+  assert.equal(await refine("enable gone"), "Lesson gone was deleted; a deleted lesson stays deleted.");
+  assert.equal(await refine("enable nope"), "No lesson nope.");
+  assert.match(await refine("list"), /helps \[active\]/);
+});
+
+test("L4: the tidy never switches off again a lesson the user enabled", async () => {
+  const stateDir = tempDir();
+  writeAgentDb(stateDir, { s1: new Transcript().user("hi").say("hello"), s2: new Transcript().user("hi").say("hello") });
+  seedJudged(stateDir, "helps", "did not help", 30);
+  seedJudged(stateDir, "works", "working", 30);
+  const sent: Array<Record<string, unknown>> = [];
+  const loadAdapter = async (id: string) => (id === "telegram" ? { sendText: async (ctx: Record<string, unknown>) => void sent.push(ctx) } : undefined);
+  const { hooks, commands } = fakeApi(stateDir, async () => ({ text: "{}" }), true, undefined, { maxInjectedChars: 300, checkForUpdates: false }, loadAdapter);
+  hooks.get("agent_end")!.handler({}, telegramTurn("s1"));
+  await settle();
+  const store = new FileStore(path.join(stateDir, "plugin-data", "refine-cycle"));
+  assert.equal(allLessonsOf(store)[0][1], "disabled", "the tidy switched it off");
+  await commands.get("refine")!({ args: "enable helps", agentId: "main" });
+  hooks.get("agent_end")!.handler({}, telegramTurn("s2"));
+  await settle();
+  assert.deepEqual(allLessonsOf(store), [["helps", "active", undefined], ["works", "active", undefined]], "still over the limit, but the user's choice stands");
+  assert.equal(sent.length, 1, "one tidy line, from the first tidy only");
+});

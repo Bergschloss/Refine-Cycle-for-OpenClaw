@@ -22,12 +22,12 @@ import { formatBlock } from "./core/injection.js";
 import { sqliteHistory, agentDatabasePath } from "./host/history.js";
 import { warmUpNormalizer } from "./core/fingerprint.js";
 import { readSources } from "./host/sources.js";
-import { activeLessons, allLessons, DEFAULT_AGENT, lessonAgent, recover, setStatus } from "./lessons.js";
+import { activeLessons, allLessons, DEFAULT_AGENT, enable, lessonAgent, recover, setStatus } from "./lessons.js";
 import { audit, callsToday, describeAudit, describePass, ensureLedger, describeReport, describeStatus, knownAgents, processSession, RAW_FORMAT, recordExposure, report, status, tidy } from "./pipeline.js";
 import { replay } from "./replay.js";
 import { readSettings } from "./settings.js";
-import { agentNotice, lessonNotice, lessonSentence, storeErrorText, tidyNotice, tidySentence } from "./core/notice.js";
-import { actionLine, autoFailedText, autoUpdatedText, availableText, checkDue, failedText, failureReason, hostUpdateLine, isNewer, latestTag, toAnnounce, toInstall, UPDATE_COMMAND, updatedText, upToDateText, } from "./core/update.js";
+import { agentNotices, lessonNotice, lessonSentence, storeErrorText, tidyNotice, tidySentence } from "./core/notice.js";
+import { actionLine, autoFailedText, autoUpdatedText, availableText, checkDue, failedText, failureReason, hostUpdateLine, isNewer, latestTag, parseVersion, toAnnounce, toInstall, UPDATE_COMMAND, updatedText, upToDateText, } from "./core/update.js";
 import { FileStore, StoreError } from "./store.js";
 /** Runs no person started: their session is not where the user reads a reply. */
 const BACKGROUND_TRIGGERS = new Set(["heartbeat", "cron", "memory", "overflow"]);
@@ -43,7 +43,11 @@ function commandAgent(ctx) {
 }
 const PLUGIN_DIR = "refine-cycle";
 /** How long a chat command waits for its pass before it answers "started" and sends the result later. Tests shorten it. */
-export const timing = { chatWaitMs: 10_000 };
+/**
+ * `quietMs`: how long the gateway must be quiet (no run, no turn) before an automatic
+ * update, which reloads plugins and would break a conversation in progress. Tests shorten both.
+ */
+export const timing = { chatWaitMs: 10_000, quietMs: 10 * 60_000 };
 /**
  * When a started gateway warms the error normalizer up: the first Unicode-aware match
  * costs V8 ~200 ms once per process (measured on 2026.9.6, Node 26), and it should not
@@ -199,22 +203,75 @@ export default function register(api) {
         while (injected.size > MAX_SESSIONS_REMEMBERED)
             injected.delete(injected.keys().next().value);
     };
+    /**
+     * Notices waiting for the agent, handed to this run when a person started it (not the
+     * heartbeat, a cron job, memory or overflow: nobody reads those replies). Marked as handed
+     * to this run; removed only when it ends with a reply. Never throws.
+     */
+    const handNotices = (ctx) => {
+        const key = runKey(ctx);
+        if (!key || BACKGROUND_TRIGGERS.has(ctx?.trigger ?? ""))
+            return null;
+        try {
+            const path = noticesPath(ctx?.agentId || DEFAULT_AGENT);
+            const box = store.read(path);
+            if (!box?.notices?.length)
+                return null;
+            // Already with another run that is still going: that run passes them on, not this one too.
+            if (box.handedTo && box.handedTo.runKey !== key && running.has(box.handedTo.runKey))
+                return null;
+            store.write(path, { ...box, handedTo: { runKey: key, at: new Date().toISOString() } });
+            return agentNotices(box.notices.map((notice) => notice.sentence));
+        }
+        catch (error) {
+            warn(`notices not handed to the agent: ${String(error)}`);
+            return null;
+        }
+    };
+    /** A run ended: the notices it was handed are done if it replied; otherwise the next run gets them. */
+    const settleNotices = (ctx, replied) => {
+        const key = runKey(ctx);
+        if (!key)
+            return;
+        try {
+            const path = noticesPath(ctx.agentId || DEFAULT_AGENT);
+            const box = store.read(path);
+            if (!box?.handedTo || box.handedTo.runKey !== key)
+                return;
+            const handedAt = box.handedTo.at;
+            // Notices that arrived while the run was going on were not handed: they stay.
+            const left = replied ? box.notices.filter((notice) => notice.at > handedAt) : box.notices;
+            if (left.length === 0)
+                store.remove(path);
+            else
+                store.write(path, { notices: left });
+            log(replied ? "notices passed to the user through the agent" : "the run that had the notices ended without a reply; the next turn gets them");
+        }
+        catch (error) {
+            warn(`notices not settled: ${String(error)}`);
+        }
+    };
     api.on("before_prompt_build", (_event, ctx) => {
-        if (storeError || !settings.injectEnabled || !injectionAllowed)
+        const key = runKey(ctx);
+        if (key)
+            running.add(key);
+        if (storeError || !injectionAllowed)
             return undefined;
         try {
-            const block = formatBlock(activeLessons(store, ctx?.agentId || DEFAULT_AGENT));
-            if (!block)
-                return undefined;
-            if (ctx?.sessionId)
+            const block = settings.injectEnabled ? formatBlock(activeLessons(store, ctx?.agentId || DEFAULT_AGENT)) : null;
+            if (block && ctx?.sessionId)
                 remember(ctx.sessionId, block);
-            // The limit is soft: every lesson is shown; the log says once when the block passes it.
-            const over = block.text.length > settings.maxInjectedChars;
-            if (over && !lastOver) {
-                warn(`the lessons block is ${block.text.length} characters, over the soft limit of ${settings.maxInjectedChars}; every lesson is still shown`);
+            if (block) {
+                // The limit is soft: every lesson is shown; the log says once when the block passes it.
+                const over = block.text.length > settings.maxInjectedChars;
+                if (over && !lastOver) {
+                    warn(`the lessons block is ${block.text.length} characters, over the soft limit of ${settings.maxInjectedChars}; every lesson is still shown`);
+                }
+                lastOver = over;
             }
-            lastOver = over;
-            return { prependContext: block.text };
+            const notices = handNotices(ctx);
+            const text = [block?.text, notices].filter(Boolean).join("\n\n");
+            return text ? { prependContext: text } : undefined;
         }
         catch (error) {
             warn(`injection skipped: ${String(error)}`);
@@ -344,55 +401,46 @@ export default function register(api) {
      * from. Once per run that activated lessons (the caller compares the active lessons
      * before and after); a send that fails is logged, not retried.
      */
-    const announce = async (agentId, lessonIds, chat, sessionKey) => {
+    const announce = async (agentId, lessonIds, chat) => {
         if (!settings.notifyOnLesson || lessonIds.length === 0)
             return;
         const used = formatBlock(activeLessons(store, agentId))?.text.length ?? 0;
-        await notify(agentId, chat, sessionKey, lessonNotice(used, settings.maxInjectedChars), lessonSentence(used, settings.maxInjectedChars), `lesson ${lessonIds.join(", ")}`);
+        await notify(agentId, chat, lessonNotice(used, settings.maxInjectedChars), lessonSentence(used, settings.maxInjectedChars), `lesson ${lessonIds.join(", ")}`);
     };
+    const noticesPath = (agentId) => `notices/${agentId}.json`;
+    const MAX_NOTICES = 10;
+    /** The run a hook context belongs to: the host's run id, else its session. */
+    const runKey = (ctx) => ctx?.runId || ctx?.sessionId || null;
     /**
-     * The session the user last talked in, per agent: a turn a person started (not the
-     * heartbeat, a cron job, memory or overflow), kept in the store so a restart does not
-     * forget it. A notice with no chat to send to goes there, through the agent.
+     * Give a notice to the agent for the user, for a chat a plugin cannot send to (webchat,
+     * the Tray). It waits in the store (`notices/<agent>.json`) and the prompt hook hands it
+     * to the agent in the next turn a person started, whichever session that is, as one line
+     * after the lessons block; it is removed only once a reply came from that turn
+     * (`agent_end` with `success`). So it is never lost to the previous session, to a turn
+     * that failed, or to a restart. One notice per `what`: a later one replaces it.
+     * False when it cannot be stored.
      */
-    const currentSession = (agentId, turn) => {
-        const path = `chats/${agentId}.session.json`;
-        const known = store.read(path)?.sessionKey || null;
-        if (!turn?.sessionKey || BACKGROUND_TRIGGERS.has(turn.trigger ?? ""))
-            return known;
-        if (known !== turn.sessionKey)
-            store.write(path, { sessionKey: turn.sessionKey });
-        return turn.sessionKey;
-    };
-    /**
-     * Give a notice to the agent for the user: a system event on their session, which the
-     * host puts in front of the agent's next reply there (webchat, the Tray). The only way to
-     * reach a chat a plugin cannot send to; false when the host has no such call or drops it.
-     */
-    const tellThroughAgent = (agentId, sessionKey, sentence, what) => {
-        const enqueueEvent = api.runtime?.system?.enqueueSystemEvent;
-        if (!sessionKey || !enqueueEvent) {
-            log(`${what}: no chat to tell and ${sessionKey ? "the host offers no system events" : "no session the user talked in is known yet"}`);
-            return false;
-        }
+    const tellThroughAgent = (agentId, sentence, what) => {
         try {
-            const queued = enqueueEvent(agentNotice(sentence), { sessionKey, agentId, contextKey: `refine-cycle:${what}` });
-            log(`${what}: ${queued ? "given to the agent for its next reply" : "the host did not queue the notice (a duplicate, or its session store changed)"} in ${sessionKey}`);
-            return queued;
+            const path = noticesPath(agentId);
+            const pending = (store.read(path)?.notices ?? []).filter((notice) => notice.what !== what);
+            store.write(path, { notices: [...pending, { what, sentence, at: new Date().toISOString() }].slice(-MAX_NOTICES) });
+            log(`${what}: no chat a plugin can send to; the agent passes it on in its next reply`);
+            return true;
         }
         catch (error) {
-            warn(`${what}: could not give the notice to the agent: ${String(error)}`);
+            warn(`${what}: could not keep the notice for the agent: ${String(error)}`);
             return false;
         }
     };
     /**
-     * One notice, once: straight to a chat a plugin can send to, else through the agent into
-     * the session the user talks in. Never both. True when it was sent or queued.
+     * One notice, once: straight to a chat a plugin can send to, else through the agent in the
+     * next turn the user starts. Never both. True when it was sent or kept for the agent.
      */
-    const notify = async (agentId, chat, sessionKey, text, sentence, what) => {
+    const notify = async (agentId, chat, text, sentence, what) => {
         if (await reachable(chat))
             return say(chat, text, what);
-        return tellThroughAgent(agentId, sessionKey, sentence, what);
+        return tellThroughAgent(agentId, sentence, what);
     };
     /** Run `job` after everything queued before it: one learning pass at a time in this process. */
     const schedule = (job) => {
@@ -414,7 +462,7 @@ export default function register(api) {
      * until the block fits, then one line about it. With nothing it may switch off, or with
      * the setting off, only the warning.
      */
-    const tidyUp = async (agentId, chat, sessionKey) => {
+    const tidyUp = async (agentId, chat) => {
         if (!settings.autoTidy)
             return;
         const result = tidy(store, agentId, new Date(), settings.maxInjectedChars);
@@ -444,12 +492,11 @@ export default function register(api) {
             }
         }
         const verdicts = result.disabled.map((d) => d.verdict);
-        await notify(agentId, chat, sessionKey, tidyNotice(verdicts, result.after, result.limit), tidySentence(verdicts, result.after, result.limit), "tidy");
+        await notify(agentId, chat, tidyNotice(verdicts, result.after, result.limit), tidySentence(verdicts, result.after, result.limit), "tidy");
     };
     /** One learning pass over one session, then the tidy and the lesson message for whatever it activated. */
-    const learn = async (agentId, sessionId, workspaceDir, turnChat, options = {}, turn = null) => {
+    const learn = async (agentId, sessionId, workspaceDir, turnChat, options = {}) => {
         const chat = await currentChat(agentId, turnChat);
-        const sessionKey = currentSession(agentId, turn);
         const before = new Set(activeLessons(store, agentId).map((lesson) => lesson.id));
         const shown = injected.get(sessionId) ?? [];
         injected.delete(sessionId);
@@ -463,12 +510,12 @@ export default function register(api) {
         const learned = activeLessons(store, agentId).filter((lesson) => !before.has(lesson.id)).map((lesson) => lesson.id);
         // A lesson just learned is not the tidy's: until a later session ends, its verdict is `no recurrence window`.
         try {
-            await tidyUp(agentId, chat, sessionKey);
+            await tidyUp(agentId, chat);
         }
         catch (error) {
             warn(`tidy skipped: ${String(error)}`);
         }
-        await announce(agentId, learned, chat, sessionKey);
+        await announce(agentId, learned, chat);
         return decision;
     };
     const enqueue = (ctx) => {
@@ -481,25 +528,22 @@ export default function register(api) {
         if (workspaceDir)
             workspaces.set(agentId, workspaceDir);
         const turnChat = ctx.channel && ctx.chatId ? { channel: ctx.channel, to: ctx.chatId, ...(ctx.accountId ? { accountId: ctx.accountId } : {}) } : null;
-        const turn = { ...(ctx.sessionKey ? { sessionKey: ctx.sessionKey } : {}), ...(ctx.trigger ? { trigger: ctx.trigger } : {}) };
         void schedule(async () => {
             queued.delete(sessionId);
             try {
-                await learn(agentId, sessionId, workspaceDir, turnChat, {}, turn);
+                await learn(agentId, sessionId, workspaceDir, turnChat);
             }
             catch (error) {
                 warn(`learning skipped for ${sessionId}: ${String(error)}`);
             }
             let chat = null;
-            let sessionKey = null;
             try {
                 chat = await currentChat(agentId, turnChat);
-                sessionKey = currentSession(agentId, turn);
             }
             catch {
                 // no chat known: the update check still runs, its message waits
             }
-            afterTurn(agentId, chat, sessionKey);
+            afterTurn(agentId, chat);
         });
     };
     // -- Update available, and /refine update -------------------------------------------
@@ -593,14 +637,14 @@ export default function register(api) {
      * where the channel has buttons; with no chat a plugin can send to, through the agent.
      * Marked announced only once it was sent or queued.
      */
-    const announceUpdate = async (agentId, state, chat, sessionKey) => {
-        const latest = toAnnounce(state);
+    const announceUpdate = async (agentId, state, chat) => {
+        const latest = toAnnounce(withRunning(state));
         if (!latest || !state)
             return;
         const text = availableText(latest);
         let sent = false;
         if (!chat || !(await reachable(chat))) {
-            sent = tellThroughAgent(agentId, sessionKey, `Refine Cycle ${latest} is available; sending /refine update installs it.`, `update ${latest}`);
+            sent = tellThroughAgent(agentId, `Refine Cycle ${latest} is available; sending /refine update installs it.`, `update ${latest}`);
             if (sent)
                 store.write(UPDATE_STATE, { ...state, announced: [...state.announced, latest].slice(-20) });
             return;
@@ -629,12 +673,21 @@ export default function register(api) {
             store.write(UPDATE_STATE, { ...state, announced: [...state.announced, latest].slice(-20) });
     };
     /**
+     * The update state with the version that is running now as `installed`. The stored one
+     * is only what the last check saw, and a plugin installed since (`openclaw plugins
+     * install`) runs a newer version than it says (live check, 2026-09-30: 0.1.4 running,
+     * the state still said 0.1.2 and offered 0.1.3).
+     */
+    const withRunning = (state) => state && parseVersion(version) ? { ...state, installed: version } : state;
+    /**
      * `autoUpdate`: install the newer release the check found, with the host's own update
      * (no restart), once per version whatever the result, then one line about it. The version
-     * is recorded as tried before the update starts, so a crash under it never loops.
+     * is recorded as tried before the update starts, so a crash under it never loops. Called
+     * only when the gateway is quiet (`whenQuiet`): the host's update reloads plugins, which
+     * breaks a conversation in progress.
      */
-    const installByItself = async (agentId, state, chat, sessionKey) => {
-        const latest = toInstall(state);
+    const installByItself = async (agentId, state, chat) => {
+        const latest = toInstall(withRunning(state));
         if (!latest || !state)
             return;
         store.write(UPDATE_STATE, { ...state, attempted: [...(state.attempted ?? []), latest].slice(-20) });
@@ -646,22 +699,58 @@ export default function register(api) {
         const [text, sentence] = result.ok
             ? [autoUpdatedText(to), `Refine Cycle updated itself to ${to}.`]
             : [autoFailedText(latest, result.reason ?? "no reason given"), `Refine Cycle could not update itself to ${latest}: ${result.reason ?? "no reason given"}.`];
-        const told = await notify(agentId, chat, sessionKey, text, sentence, `update ${latest}`);
+        const told = await notify(agentId, chat, text, sentence, `update ${latest}`);
         const now = store.read(UPDATE_STATE) ?? state;
         if (told)
             store.write(UPDATE_STATE, { ...now, announced: [...now.announced, latest].slice(-20) });
     };
-    /** After a turn: the daily check, off the learning queue, then the update itself or the message about it. */
-    const afterTurn = (agentId, chat, sessionKey) => {
+    /** Agent runs in progress (a prompt was built, the run has not ended), by run. */
+    const running = new Set();
+    let quietTimer;
+    let quietJob;
+    /**
+     * Run `job` once the gateway has been quiet for `timing.quietMs`: no run in progress, and
+     * no turn started or ended in that time. Every turn postpones it; a newer job replaces an
+     * older one. Started outside the host's work scope, and the timer does not hold the
+     * process open. The host exposes no idle signal to a plugin (2026.9.6), so this is the
+     * plugin's own count of the runs its hooks saw.
+     */
+    const whenQuiet = (job) => {
+        quietJob = job;
+        armQuiet();
+    };
+    const armQuiet = () => {
+        if (!quietJob)
+            return;
+        if (quietTimer)
+            clearTimeout(quietTimer);
+        quietTimer = runOutsideHostWorkScope(() => setTimeout(() => {
+            quietTimer = undefined;
+            if (running.size > 0)
+                return armQuiet();
+            const job = quietJob;
+            quietJob = undefined;
+            void job?.().catch((error) => warn(`automatic update skipped: ${String(error)}`));
+        }, timing.quietMs));
+        quietTimer.unref?.();
+    };
+    /**
+     * After a turn: the daily check, off the learning queue; then the message about a new
+     * version at once, or the update itself once the gateway is quiet.
+     */
+    const afterTurn = (agentId, chat) => {
         if (!settings.checkForUpdates || storeError)
             return;
         void runOutsideHostWorkScope(async () => {
             try {
                 const state = await checkForUpdate(new Date());
-                if (settings.autoUpdate)
-                    await installByItself(agentId, state, chat, sessionKey);
-                else
-                    await announceUpdate(agentId, state, chat, sessionKey);
+                if (!settings.autoUpdate)
+                    return await announceUpdate(agentId, state, chat);
+                if (!toInstall(withRunning(state)))
+                    return;
+                log(`update ${toInstall(withRunning(state))}: installed once the gateway has been quiet for ${Math.round(timing.quietMs / 60_000)} min`);
+                // The newest state and chat when it fires, not the ones of this turn.
+                whenQuiet(async () => installByItself(agentId, store.read(UPDATE_STATE), await currentChat(agentId, null)));
             }
             catch (error) {
                 warn(`update check skipped: ${String(error)}`);
@@ -720,9 +809,19 @@ export default function register(api) {
      * scope. The same budget and rules apply; only the session and the focus are chosen.
      */
     const passByHand = (agentId, sessionId, options) => runOutsideHostWorkScope(() => schedule(() => learn(agentId, sessionId, workspaceFor(agentId), null, options)));
-    api.on("agent_end", (_event, ctx) => {
-        if (storeError || !ctx)
+    api.on("agent_end", (event, ctx) => {
+        if (!ctx)
             return;
+        const key = runKey(ctx);
+        if (key)
+            running.delete(key);
+        // Every turn that ends postpones an automatic update by the whole quiet period.
+        armQuiet();
+        if (storeError)
+            return;
+        // `success: false` (2026.9.6 PluginHookAgentEndEvent): the run ended with an error and
+        // the user saw no reply (R-live: the Codex handoff error), so its notices are given again.
+        settleNotices(ctx, event?.success !== false);
         // The queue is chained outside the turn's work scope, so the learning work (and
         // its model call) does not run inside a scope the host closes when this returns.
         runOutsideHostWorkScope(() => enqueue(ctx));
@@ -746,7 +845,7 @@ export default function register(api) {
         const name = typeof configured === "string" ? configured : configured?.primary;
         return `${name || "the host's default"} (the default agent's model: OpenClaw chooses it, the plugin sends none)`;
     };
-    const USAGE = "Usage: list | status | audit | report | run [reason] | session <id> [reason] | dry-run [session <id>] [reason] | model [auto | <provider>/<model>] | update | disable <id> | delete <id> | rollback <id>";
+    const USAGE = "Usage: list | status | audit | report | run [reason] | session <id> [reason] | dry-run [session <id>] [reason] | model [auto | <provider>/<model>] | update | disable <id> | enable <id> | delete <id> | rollback <id>";
     /** `model`, `model auto`, `model <provider/model>`: show, clear or set the model lessons are written with. */
     const modelCommand = (value, scope) => {
         const allowed = api.config?.plugins?.entries?.[api.id]?.llm?.allowModelOverride === true;
@@ -780,7 +879,7 @@ export default function register(api) {
         const modelWarning = dropped
             ? [`Model ${dropped} is set (${effectiveModel().source}) but OpenClaw does not let this plugin choose its model, so it is dropped before the call; set plugins.entries.${api.id}.llm.allowModelOverride to true to use it.`]
             : [];
-        const state = store.read(UPDATE_STATE);
+        const state = withRunning(store.read(UPDATE_STATE));
         return [
             ...modelWarning,
             ...(state?.ok && state.latest && state.installed && isNewer(state.latest, state.installed)
@@ -790,7 +889,7 @@ export default function register(api) {
     };
     /** Is a newer release known? Then a chat `status` offers the Update button. */
     const updateKnown = () => {
-        const state = store.read(UPDATE_STATE);
+        const state = withRunning(store.read(UPDATE_STATE));
         return !!(state?.ok && state.latest && state.installed && isNewer(state.latest, state.installed));
     };
     /**
@@ -824,6 +923,40 @@ export default function register(api) {
             // The command line lists every agent's lessons, so it says whose each one is.
             const owner = (lesson) => (agentId === undefined ? ` (agent ${lessonAgent(lesson)})` : "");
             return { text: [...lessons.map((lesson) => `${lesson.id} [${lesson.status}]${owner(lesson)} ${lesson.text}`), budget].join("\n"), ok: true };
+        }
+        // `enable` turns a disabled lesson back on (the tidy's, or the user's own); a deleted one stays deleted.
+        if (verb === "enable") {
+            if (!id)
+                return { text: "Usage: enable <lesson id>", ok: false };
+            const lesson = mine.find((candidate) => candidate.id === id);
+            if (!lesson)
+                return { text: `No lesson ${id}.`, ok: false };
+            if (lesson.status === "deleted")
+                return { text: `Lesson ${id} was deleted; a deleted lesson stays deleted.`, ok: false };
+            if (lesson.status !== "disabled")
+                return { text: `Lesson ${id} is ${lesson.status}; only a disabled lesson can be enabled.`, ok: false };
+            recover(store, now);
+            let changed;
+            try {
+                changed = enable(store, id, now, agentId === undefined ? 5_000 : 0);
+            }
+            catch (error) {
+                if (error instanceof StoreError)
+                    return { text: "The lesson store is busy; try again in a moment.", ok: false };
+                throw error;
+            }
+            if (changed?.status === "active" && settings.rawLog) {
+                try {
+                    const line = { kind: "lesson_status", format: RAW_FORMAT, at: now.toISOString(), lessonId: id, agentId: lessonAgent(changed), status: "active" };
+                    writeRaw(line);
+                }
+                catch (error) {
+                    warn(`raw record for ${id} not written: ${String(error)}`);
+                }
+            }
+            return changed?.status === "active"
+                ? { text: `Lesson ${id} enabled. The tidy will not switch it off again.`, ok: true }
+                : { text: `No lesson ${id}.`, ok: false };
         }
         // `rollback` is the Hermes plugin's name for taking a lesson back; here it is `delete`: a tombstone.
         if (verb === "disable" || verb === "delete" || verb === "rollback") {
@@ -993,7 +1126,7 @@ export default function register(api) {
     };
     api.registerCommand?.({
         name: "refine",
-        description: "Refine Cycle: list, status, audit, report, run [reason], session <id>, dry-run, model, update, disable <id>, delete <id>, rollback <id>",
+        description: "Refine Cycle: list, status, audit, report, run [reason], session <id>, dry-run, model, update, disable <id>, enable <id>, delete <id>, rollback <id>",
         acceptsArgs: true,
         handler: async (ctx) => {
             const agentId = commandAgent(ctx);
@@ -1052,6 +1185,7 @@ export default function register(api) {
             .description("Update the plugin with OpenClaw's own plugins update, and say to which version")
             .action(async () => print(await control("update")));
         root.command("disable <id>").description("Stop injecting a lesson").action(async (id) => print(await control(`disable ${String(id)}`)));
+        root.command("enable <id>").description("Turn a disabled lesson back on; the tidy will not switch it off again").action(async (id) => print(await control(`enable ${String(id)}`)));
         root.command("delete <id>").description("Delete a lesson (kept as a tombstone)").action(async (id) => print(await control(`delete ${String(id)}`)));
         root.command("rollback <id>").description("The Hermes name for delete: take a lesson back for good").action(async (id) => print(await control(`rollback ${String(id)}`)));
         root

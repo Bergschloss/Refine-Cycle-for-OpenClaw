@@ -638,9 +638,10 @@ export function tidy(store: FileStore, agentId: string, now: Date, limit: number
   const size = () => formatBlock(activeLessons(store, agentId))?.text.length ?? 0;
   const before = size();
   if (before <= limit) return null;
-  const created = new Map(allLessons(store).map((lesson) => [lesson.id, lesson.createdAt]));
-  const rows = judgeLessons(store, now, agentId).filter((row) => row.status === "active");
-  const oldestFirst = (a: AuditRow, b: AuditRow) => (created.get(a.id) ?? "").localeCompare(created.get(b.id) ?? "") || a.id.localeCompare(b.id);
+  const lessons = new Map(allLessons(store).map((lesson) => [lesson.id, lesson]));
+  // A lesson the user turned back on after a tidy is theirs: never switched off again.
+  const rows = judgeLessons(store, now, agentId).filter((row) => row.status === "active" && !lessons.get(row.id)?.enabledByUser);
+  const oldestFirst = (a: AuditRow, b: AuditRow) => (lessons.get(a.id)?.createdAt ?? "").localeCompare(lessons.get(b.id)?.createdAt ?? "") || a.id.localeCompare(b.id);
   const eligible = TIDY_ORDER.flatMap((wanted) => rows.filter((row) => row.verdict === wanted).sort(oldestFirst));
   const result: TidyResult = { before, after: before, limit, disabled: [] };
   for (const row of eligible) {
@@ -1087,7 +1088,8 @@ export interface RawLessonStatusLine {
   at: string;
   lessonId: string;
   agentId: string;
-  status: "disabled" | "deleted";
+  /** `active`: the user enabled a disabled lesson again (`enable`). */
+  status: "disabled" | "deleted" | "active";
   /** Only when the plugin did it itself: `tidy: did not help`, `tidy: unused`. Absent: the user did. */
   by?: string;
 }

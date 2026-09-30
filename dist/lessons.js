@@ -109,10 +109,43 @@ export function setStatus(store, id, status, now, waitMs = 5_000, reason) {
         release();
     }
 }
-/** The lesson with its new status; `disabledBy` only on a disable the plugin made. */
+/**
+ * The lesson with its new status; `disabledBy` only on a disable the plugin made, and
+ * `enabledByUser` once the user turned it back on (kept until the user takes it away again).
+ */
 function withStatus(lesson, status, now, reason) {
-    const { disabledBy: _previous, ...rest } = lesson;
-    return { ...rest, status, changedAt: now.toISOString(), ...(status === "disabled" && reason ? { disabledBy: reason } : {}) };
+    const { disabledBy: _previous, enabledByUser, ...rest } = lesson;
+    return {
+        ...rest,
+        status,
+        changedAt: now.toISOString(),
+        ...(status === "disabled" && reason ? { disabledBy: reason } : {}),
+        ...(status === "active" && (enabledByUser || reason === ENABLED_BY_USER) ? { enabledByUser: true } : {}),
+    };
+}
+const ENABLED_BY_USER = "user";
+/**
+ * Turn a disabled lesson back on, by hand: it is shown again, and the tidy never switches
+ * it off again. A deleted lesson stays deleted; an active one is left as it is. Journaled
+ * like every other change. Undefined when there is no such lesson.
+ */
+export function enable(store, id, now, waitMs = 5_000) {
+    const release = store.lock("lessons", waitMs);
+    try {
+        const lesson = readLesson(store, id);
+        if (!lesson || lesson.status !== "disabled")
+            return lesson;
+        const journalId = newJournalId(now, id, "enable");
+        const record = { id: journalId, op: "enable", lessonId: id, state: "intent", at: now.toISOString(), previousStatus: lesson.status };
+        store.write(journalPath(journalId), record);
+        const changed = withStatus(lesson, "active", now, ENABLED_BY_USER);
+        store.write(lessonPath(id), changed);
+        store.write(journalPath(journalId), { ...record, state: "applied" });
+        return changed;
+    }
+    finally {
+        release();
+    }
 }
 function setStatusLocked(store, id, status, now, reason) {
     const lesson = readLesson(store, id);
@@ -212,11 +245,13 @@ function recoverLocked(store, now) {
             }
         }
         else if (current) {
-            const status = record.op === "disable" ? "disabled" : "deleted";
+            const status = record.op === "disable" ? "disabled" : record.op === "enable" ? "active" : "deleted";
             // A later change (a delete after a crashed disable) wins; a tombstone stays one.
             const changedLater = Date.parse(current.changedAt) > Date.parse(record.at);
-            if (current.status !== status && current.status !== "deleted" && !changedLater) {
-                store.write(lessonPath(record.lessonId), withStatus(current, status, now, record.reason));
+            // An enable only ever turns a disabled lesson back on.
+            const applies = record.op === "enable" ? current.status === "disabled" : current.status !== status && current.status !== "deleted";
+            if (applies && !changedLater) {
+                store.write(lessonPath(record.lessonId), withStatus(current, status, now, record.op === "enable" ? ENABLED_BY_USER : record.reason));
             }
         }
         store.write(journalPath(record.id), { ...record, state: "applied" });

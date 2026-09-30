@@ -160,7 +160,7 @@ store lock), `dry_run`, `pending` (a call that never finished: a crash).
 | `format` | number | `1` |
 | `at` | string | when |
 | `lessonId`, `agentId` | string | the lesson and its agent |
-| `status` | `"disabled"` \| `"deleted"` | what the user made it (`rollback` is `deleted`), or what the tidy made it (`disabled`) |
+| `status` | `"disabled"` \| `"deleted"` \| `"active"` | what the user made it (`rollback` is `deleted`; `active` is `enable` of a disabled lesson, from 2026-09-30: count it as active again), or what the tidy made it (`disabled`) |
 | `by` | string | only when the plugin did it itself: `tidy: did not help` or `tidy: unused` (`autoTidy`, from 2026-09-30); absent when the user did |
 
 ## Limits

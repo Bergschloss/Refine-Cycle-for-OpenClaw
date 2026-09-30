@@ -484,9 +484,10 @@ export function tidy(store, agentId, now, limit, waitMs = 0) {
     const before = size();
     if (before <= limit)
         return null;
-    const created = new Map(allLessons(store).map((lesson) => [lesson.id, lesson.createdAt]));
-    const rows = judgeLessons(store, now, agentId).filter((row) => row.status === "active");
-    const oldestFirst = (a, b) => (created.get(a.id) ?? "").localeCompare(created.get(b.id) ?? "") || a.id.localeCompare(b.id);
+    const lessons = new Map(allLessons(store).map((lesson) => [lesson.id, lesson]));
+    // A lesson the user turned back on after a tidy is theirs: never switched off again.
+    const rows = judgeLessons(store, now, agentId).filter((row) => row.status === "active" && !lessons.get(row.id)?.enabledByUser);
+    const oldestFirst = (a, b) => (lessons.get(a.id)?.createdAt ?? "").localeCompare(lessons.get(b.id)?.createdAt ?? "") || a.id.localeCompare(b.id);
     const eligible = TIDY_ORDER.flatMap((wanted) => rows.filter((row) => row.verdict === wanted).sort(oldestFirst));
     const result = { before, after: before, limit, disabled: [] };
     for (const row of eligible) {

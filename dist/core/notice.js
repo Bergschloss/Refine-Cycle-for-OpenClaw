@@ -55,6 +55,13 @@ export function agentNotice(sentence) {
     return `Tell the user in one short sentence, then go on with their request; this is a notice, not a task: ${sentence}`;
 }
 /**
+ * The same for notices put in front of the agent's next user turn with the prompt (the
+ * Tray, the web UI): one line, after the lessons block, never inside it.
+ */
+export function agentNotices(sentences) {
+    return `[Refine Cycle notice] ${agentNotice(sentences.join(" "))}`;
+}
+/**
  * What a user reads when the plugin cannot use its store: the folder, the likely cause
  * read from the error, and what to do. The plugin is idle until then (it fails open).
  */
