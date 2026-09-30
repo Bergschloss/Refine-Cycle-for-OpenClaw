@@ -66,3 +66,57 @@ reported as such.
 
 **Harmless or breach.** Harmless for the verdict if R2 records no `budget_spent` refusal.
 Otherwise the affected scenarios are named in the report.
+
+## DEV-4 — First-call scoring counts the first call of the target tool (2026-09-30)
+
+**What happened.**
+- §6 scores R3 (and R2's recurrence sessions) by the agent's first tool call.
+- On this host the agent's first call is almost always an `exec` discovery script that lists the
+  available tools. The raw runner scored that call, so every arm of R3 read 0 of 120.
+- The rescoring (`rescore.py`, outputs `r2-rescored.jsonl` and `r3-rescored.jsonl`) scores the
+  first call of the **target** tool instead: a direct call (`<tool>` or `openclaw__<tool>`), or an
+  `exec` whose code calls `openclaw__<tool>({...})`, with the parameter read from that call. The
+  pass rule is the frozen `validate_first_call` of the runner, unchanged.
+- The rule was fixed while every arm stood at 0 of 120, before any per-arm number was seen.
+
+**Consequence.**
+- The endpoint is "the first attempt at the target tool is correct", not "the first tool call of
+  any kind is correct". A session that never calls the target tool scores as a failure.
+- The same rule applies to all three arms, so the comparison between arms is unaffected.
+
+**Harmless or breach.** A breach of the literal §6 wording, made blind to arms and applied
+equally. Both the raw and the rescored files are kept.
+
+## DEV-5 — Packet builder input adapted (2026-09-30)
+
+**What happened.**
+- The frozen `make_packets.py` reads sessions whose `outcome` is `"learned"` and takes the tool
+  and shape from a `candidate` object.
+- The plugin writes `outcome: "lesson"` and keeps the tool and shape under `lesson` and
+  `failures` (`RAW-FORMAT.md`). The builder produced 0 packets.
+- `adapt_packets.py` renames the outcome and fills `candidate` from those fields. The frozen
+  builder then runs unchanged.
+
+**Consequence.** None for the metrics: the packets hold the same six keys and the same text.
+
+**Harmless or breach.** Harmless. The frozen file is unchanged; the adapter is kept beside the
+raw files.
+
+## DEV-6 — Two grader families instead of three (2026-09-30)
+
+**What happened.**
+- Amendment A1 requires three LLM graders from three families, none OpenAI.
+- Available: Anthropic Claude (Opus 5.5, blind subagent) and Google Gemini (3.1 Pro High). The
+  only open-weight model on offer was GPT-OSS, which is OpenAI and excluded; no local Qwen or
+  Llama was available.
+- The primary packets (R2, 10 lessons) are graded by both. The supplementary R1 packets are
+  graded by Claude only, because their `existing_rules` hold the owner's private instructions,
+  which are not sent to an outside model.
+
+**Consequence.**
+- A 2-of-3 majority is not possible. The label is the agreed one when both agree; when they
+  differ, the more severe label is taken (the conservative tie-break of §5).
+- Fleiss' κ over three graders cannot be computed; agreement between the two is reported
+  instead, together with each grader's own rate.
+
+**Harmless or breach.** A breach of A1. It is reported as a stated limit next to §11 T5.
