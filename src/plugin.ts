@@ -178,9 +178,11 @@ const PLUGIN_DIR = "refine-cycle";
 /** How long a chat command waits for its pass before it answers "started" and sends the result later. Tests shorten it. */
 /**
  * `quietMs`: how long the gateway must be quiet (no run, no turn) before an automatic
- * update, which reloads plugins and would break a conversation in progress. Tests shorten both.
+ * update, which reloads plugins and would break a conversation in progress. `staleRunMs`: a run
+ * not seen to end in this long (a crash before `agent_end`) no longer holds that update.
+ * Tests shorten them.
  */
-export const timing = { chatWaitMs: 10_000, quietMs: 10 * 60_000 };
+export const timing = { chatWaitMs: 10_000, quietMs: 10 * 60_000, staleRunMs: 2 * 60 * 60_000 };
 /**
  * When a started gateway warms the error normalizer up: the first Unicode-aware match
  * costs V8 ~200 ms once per process (measured on 2026.9.6, Node 26), and it should not
@@ -350,8 +352,9 @@ export default function register(api: PluginApi): void {
       const box = store.read<NoticeBox>(path);
       if (!box?.notices?.length) return null;
       // Already with another run that is still going: that run passes them on, not this one too.
-      if (box.handedTo && box.handedTo.runKey !== key && running.has(box.handedTo.runKey)) return null;
-      store.write(path, { ...box, handedTo: { runKey: key, at: new Date().toISOString() } });
+      if (box.handedTo && box.handedTo.runKey !== key && runsInProgress() > 0 && running.has(box.handedTo.runKey)) return null;
+      const ids = box.notices.map(noticeId);
+      store.write(path, { ...box, handedTo: { runKey: key, at: new Date().toISOString(), ids } });
       return agentNotices(box.notices.map((notice) => notice.sentence));
     } catch (error) {
       warn(`notices not handed to the agent: ${String(error)}`);
@@ -367,9 +370,9 @@ export default function register(api: PluginApi): void {
       const path = noticesPath(ctx.agentId || DEFAULT_AGENT);
       const box = store.read<NoticeBox>(path);
       if (!box?.handedTo || box.handedTo.runKey !== key) return;
-      const handedAt = box.handedTo.at;
-      // Notices that arrived while the run was going on were not handed: they stay.
-      const left = replied ? box.notices.filter((notice) => notice.at > handedAt) : box.notices;
+      // Exactly the notices this run was handed go; one that arrived while it ran stays.
+      const handed = new Set(box.handedTo.ids ?? []);
+      const left = replied ? box.notices.filter((notice) => !handed.has(noticeId(notice))) : box.notices;
       if (left.length === 0) store.remove(path);
       else store.write(path, { notices: left });
       log(replied ? "notices passed to the user through the agent" : "the run that had the notices ended without a reply; the next turn gets them");
@@ -382,7 +385,7 @@ export default function register(api: PluginApi): void {
     "before_prompt_build",
     (_event, ctx) => {
       const key = runKey(ctx);
-      if (key) running.add(key);
+      if (key) runStarted(key);
       if (storeError || !injectionAllowed) return undefined;
       try {
         const block = settings.injectEnabled ? formatBlock(activeLessons(store, ctx?.agentId || DEFAULT_AGENT)) : null;
@@ -546,8 +549,10 @@ export default function register(api: PluginApi): void {
    */
   interface NoticeBox {
     notices: Array<{ what: string; sentence: string; at: string }>;
-    handedTo?: { runKey: string; at: string };
+    handedTo?: { runKey: string; at: string; ids?: string[] };
   }
+  /** One notice, as the hand-over names it: what it is about and when it was stored. */
+  const noticeId = (notice: { what: string; at: string }) => `${notice.what}@${notice.at}`;
   const noticesPath = (agentId: string) => `notices/${agentId}.json`;
   const MAX_NOTICES = 10;
   /** The run a hook context belongs to: the host's run id, else its session. */
@@ -847,8 +852,24 @@ export default function register(api: PluginApi): void {
     if (told) store.write(UPDATE_STATE, { ...now, announced: [...now.announced, latest].slice(-20) });
   };
 
-  /** Agent runs in progress (a prompt was built, the run has not ended), by run. */
-  const running = new Set<string>();
+  /**
+   * Agent runs in progress (a prompt was built, the run has not ended), by run, with when
+   * each was last seen. A run that never reaches `agent_end` (a crash) would otherwise hold
+   * the automatic update forever: one not seen for `timing.staleRunMs` no longer counts,
+   * and the set never grows past MAX_RUNS_TRACKED.
+   */
+  const running = new Map<string, number>();
+  const MAX_RUNS_TRACKED = 200;
+  const runStarted = (key: string) => {
+    running.delete(key);
+    running.set(key, Date.now());
+    while (running.size > MAX_RUNS_TRACKED) running.delete(running.keys().next().value!);
+  };
+  const runsInProgress = (): number => {
+    const cutoff = Date.now() - timing.staleRunMs;
+    for (const [key, seen] of running) if (seen < cutoff) running.delete(key);
+    return running.size;
+  };
   let quietTimer: ReturnType<typeof setTimeout> | undefined;
   let quietJob: (() => Promise<void>) | undefined;
 
@@ -869,7 +890,7 @@ export default function register(api: PluginApi): void {
     quietTimer = runOutsideHostWorkScope(() =>
       setTimeout(() => {
         quietTimer = undefined;
-        if (running.size > 0) return armQuiet();
+        if (runsInProgress() > 0) return armQuiet();
         const job = quietJob;
         quietJob = undefined;
         void job?.().catch((error: unknown) => warn(`automatic update skipped: ${String(error)}`));

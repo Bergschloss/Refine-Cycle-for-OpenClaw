@@ -45,9 +45,11 @@ const PLUGIN_DIR = "refine-cycle";
 /** How long a chat command waits for its pass before it answers "started" and sends the result later. Tests shorten it. */
 /**
  * `quietMs`: how long the gateway must be quiet (no run, no turn) before an automatic
- * update, which reloads plugins and would break a conversation in progress. Tests shorten both.
+ * update, which reloads plugins and would break a conversation in progress. `staleRunMs`: a run
+ * not seen to end in this long (a crash before `agent_end`) no longer holds that update.
+ * Tests shorten them.
  */
-export const timing = { chatWaitMs: 10_000, quietMs: 10 * 60_000 };
+export const timing = { chatWaitMs: 10_000, quietMs: 10 * 60_000, staleRunMs: 2 * 60 * 60_000 };
 /**
  * When a started gateway warms the error normalizer up: the first Unicode-aware match
  * costs V8 ~200 ms once per process (measured on 2026.9.6, Node 26), and it should not
@@ -218,9 +220,10 @@ export default function register(api) {
             if (!box?.notices?.length)
                 return null;
             // Already with another run that is still going: that run passes them on, not this one too.
-            if (box.handedTo && box.handedTo.runKey !== key && running.has(box.handedTo.runKey))
+            if (box.handedTo && box.handedTo.runKey !== key && runsInProgress() > 0 && running.has(box.handedTo.runKey))
                 return null;
-            store.write(path, { ...box, handedTo: { runKey: key, at: new Date().toISOString() } });
+            const ids = box.notices.map(noticeId);
+            store.write(path, { ...box, handedTo: { runKey: key, at: new Date().toISOString(), ids } });
             return agentNotices(box.notices.map((notice) => notice.sentence));
         }
         catch (error) {
@@ -238,9 +241,9 @@ export default function register(api) {
             const box = store.read(path);
             if (!box?.handedTo || box.handedTo.runKey !== key)
                 return;
-            const handedAt = box.handedTo.at;
-            // Notices that arrived while the run was going on were not handed: they stay.
-            const left = replied ? box.notices.filter((notice) => notice.at > handedAt) : box.notices;
+            // Exactly the notices this run was handed go; one that arrived while it ran stays.
+            const handed = new Set(box.handedTo.ids ?? []);
+            const left = replied ? box.notices.filter((notice) => !handed.has(noticeId(notice))) : box.notices;
             if (left.length === 0)
                 store.remove(path);
             else
@@ -254,7 +257,7 @@ export default function register(api) {
     api.on("before_prompt_build", (_event, ctx) => {
         const key = runKey(ctx);
         if (key)
-            running.add(key);
+            runStarted(key);
         if (storeError || !injectionAllowed)
             return undefined;
         try {
@@ -407,6 +410,8 @@ export default function register(api) {
         const used = formatBlock(activeLessons(store, agentId))?.text.length ?? 0;
         await notify(agentId, chat, lessonNotice(used, settings.maxInjectedChars), lessonSentence(used, settings.maxInjectedChars), `lesson ${lessonIds.join(", ")}`);
     };
+    /** One notice, as the hand-over names it: what it is about and when it was stored. */
+    const noticeId = (notice) => `${notice.what}@${notice.at}`;
     const noticesPath = (agentId) => `notices/${agentId}.json`;
     const MAX_NOTICES = 10;
     /** The run a hook context belongs to: the host's run id, else its session. */
@@ -704,8 +709,27 @@ export default function register(api) {
         if (told)
             store.write(UPDATE_STATE, { ...now, announced: [...now.announced, latest].slice(-20) });
     };
-    /** Agent runs in progress (a prompt was built, the run has not ended), by run. */
-    const running = new Set();
+    /**
+     * Agent runs in progress (a prompt was built, the run has not ended), by run, with when
+     * each was last seen. A run that never reaches `agent_end` (a crash) would otherwise hold
+     * the automatic update forever: one not seen for `timing.staleRunMs` no longer counts,
+     * and the set never grows past MAX_RUNS_TRACKED.
+     */
+    const running = new Map();
+    const MAX_RUNS_TRACKED = 200;
+    const runStarted = (key) => {
+        running.delete(key);
+        running.set(key, Date.now());
+        while (running.size > MAX_RUNS_TRACKED)
+            running.delete(running.keys().next().value);
+    };
+    const runsInProgress = () => {
+        const cutoff = Date.now() - timing.staleRunMs;
+        for (const [key, seen] of running)
+            if (seen < cutoff)
+                running.delete(key);
+        return running.size;
+    };
     let quietTimer;
     let quietJob;
     /**
@@ -726,7 +750,7 @@ export default function register(api) {
             clearTimeout(quietTimer);
         quietTimer = runOutsideHostWorkScope(() => setTimeout(() => {
             quietTimer = undefined;
-            if (running.size > 0)
+            if (runsInProgress() > 0)
                 return armQuiet();
             const job = quietJob;
             quietJob = undefined;

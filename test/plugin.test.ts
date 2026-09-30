@@ -1567,3 +1567,45 @@ test("L4: the tidy never switches off again a lesson the user enabled", async ()
   assert.deepEqual(allLessonsOf(store), [["helps", "active", undefined], ["works", "active", undefined]], "still over the limit, but the user's choice stands");
   assert.equal(sent.length, 1, "one tidy line, from the first tidy only");
 });
+
+
+// -- Review round 1 --
+
+test("a run that crashed before agent_end stops holding the automatic update after staleRunMs", async () => {
+  const saved = { ...timing };
+  timing.quietMs = 30;
+  timing.staleRunMs = 120;
+  try {
+    const setup = updateSetup(gitHost(), { sendText: async (ctx: Record<string, unknown>) => void setup.sent.push(ctx) }, { autoUpdate: true });
+    const updates = () => setup.host.runs.filter((argv) => argv.slice(2).join(" ") === "plugins update refine-cycle").length;
+    const pause = async (ms: number) => {
+      await new Promise((resolve) => setTimeout(resolve, ms));
+      for (let i = 0; i < 10; i++) await settle();
+    };
+    // A run starts and never ends: the process lost it (the Codex handoff crash).
+    setup.prompt({ sessionId: "lost", agentId: "main", runId: "r-lost", trigger: "user" });
+    setup.end({ sessionId: "s1", agentId: "main", channel: "telegram", chatId: "4242", runId: "r1" });
+    await pause(80);
+    assert.equal(updates(), 0, "held while the lost run still counts");
+    await pause(200);
+    assert.equal(updates(), 1, "a run not seen for staleRunMs no longer holds it");
+  } finally {
+    Object.assign(timing, saved);
+  }
+});
+
+test("a notice stored while a run has the others, even in the same millisecond, is not dropped with them", () => {
+  const { hooks, stateDir } = learningSetup();
+  const store = new FileStore(path.join(stateDir, "plugin-data", "refine-cycle"));
+  const at = "2026-09-30T21:00:00.000Z";
+  store.write("notices/main.json", { notices: [{ what: "lesson a", sentence: "First.", at }] });
+  const run = webchatTurn("s1", "agent:main:tray", "r-1");
+  const text = (hooks.get("before_prompt_build")!.handler({}, run) as { prependContext?: string }).prependContext!;
+  assert.match(text, /First\.$/);
+  const box = store.read<{ notices: unknown[]; handedTo: { at: string } }>("notices/main.json")!;
+  // A second notice, stored with exactly the hand-over's time.
+  store.write("notices/main.json", { ...box, notices: [...box.notices, { what: "tidy", sentence: "Second.", at: box.handedTo.at }] });
+  hooks.get("agent_end")!.handler({ success: true }, run);
+  const left = store.read<{ notices: Array<{ sentence: string }> }>("notices/main.json")!;
+  assert.deepEqual(left.notices.map((notice) => notice.sentence), ["Second."]);
+});
