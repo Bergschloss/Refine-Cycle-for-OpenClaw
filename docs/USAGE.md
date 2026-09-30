@@ -36,6 +36,8 @@ openclaw gateway restart
 openclaw refine-cycle list
 ```
 
+**Installing again after `openclaw plugins uninstall`?** OpenClaw 2026.9.6 keeps the plugin switched off after an uninstall, and a new install does not switch it back on: `list` then says the command is unavailable because `enabled=false`. Turn it on with `openclaw plugins enable refine-cycle`.
+
 ## Commands
 
 | In chat | On the command line | |
