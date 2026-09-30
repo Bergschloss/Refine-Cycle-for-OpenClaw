@@ -10,12 +10,10 @@
 
 **Cross-session by design.** An agent can put a mistake right in one conversation and make it again in the next: the same wrong date format, the same missing flag, the same command that never works on your machine. Refine Cycle remembers across conversations, so you stop explaining the same thing twice.
 
-| On 120 new tasks | First call right |
+| | Right on the first try |
 |---|---:|
-| The agent on its own | **9** of 120 |
-| With a lesson Refine Cycle learned by itself | **109** of 120 |
-
-[How it was tested →](#what-the-testing-shows)
+| No plugin | **8%** |
+| With the plugin | **91%** |
 
 [**Install on your OpenClaw →**](#install)
 
@@ -47,7 +45,11 @@ Every rule, command and setting: [docs/USAGE.md](docs/USAGE.md).
 
 ## What the testing shows
 
-The test was written down and frozen before it ran, on OpenClaw 2026.9.6 with GPT-6 Luna. First the plugin learned from 20 scripted scenarios: in each of the 10 where a lesson was possible, it learned one, and two graders from different model families rated all 10 useful. Then the agent got 120 tasks it had not seen. It made the right first call in 109 with that lesson and in 9 with nothing. A note of the same length that stated the right format as a plain fact, without telling the agent to use it, scored 79. The tasks use test tools built to provoke one mistake each: this shows that a learned lesson changes what the agent does, not how often a real install finds one. Protocol, deviations and grading: [docs/proof/](docs/proof/).
+On 120 new tasks, the agent got the tool call right on the first try 8% of the time without the plugin and 91% with a lesson the plugin had learned by itself.
+
+- In all 10 test scenarios where a lesson was possible, the plugin learned one. Two AI graders from different companies rated all 10 useful.
+- The tasks used test tools built to provoke one mistake each, on OpenClaw 2026.9.6 with GPT-6 Luna. In real use the plugin will find fewer lessons.
+- The method and every deviation from the plan: [docs/proof/](docs/proof/).
 
 ## Install
 
