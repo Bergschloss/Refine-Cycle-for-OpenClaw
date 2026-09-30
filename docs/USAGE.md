@@ -10,7 +10,10 @@ Tested on OpenClaw 2026.9.6 (2026.9.5 is supported). The plugin runs inside Open
 
 ```bash
 openclaw plugins install git:github.com/Bergschloss/Refine-Cycle-for-OpenClaw --accept-capabilities
+openclaw plugins enable refine-cycle
 ```
+
+The second line changes nothing on a first install. It matters when you install again after `openclaw plugins uninstall`: OpenClaw 2026.9.6 keeps a removed plugin switched off, and a new install does not switch it back on.
 
 Once the plugin is published on ClawHub (not yet), it will also install from there, with ClawHub's review and provenance instead of the git warning:
 
@@ -36,7 +39,6 @@ openclaw gateway restart
 openclaw refine-cycle list
 ```
 
-**Installing again after `openclaw plugins uninstall`?** OpenClaw 2026.9.6 keeps the plugin switched off after an uninstall, and a new install does not switch it back on: `list` then says the command is unavailable because `enabled=false`. Turn it on with `openclaw plugins enable refine-cycle`.
 
 ## Commands
 

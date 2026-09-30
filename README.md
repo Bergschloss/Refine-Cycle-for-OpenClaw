@@ -52,10 +52,11 @@ On 120 new tasks, the agent got the tool call right on the first try 8% of the t
 
 Needs OpenClaw 2026.9.5 or newer (tested on 2026.9.6).
 
-**1. Install the plugin.** OpenClaw asks you to confirm a source from outside ClawHub; answer `y`.
+**1. Install and switch it on.** OpenClaw asks you to confirm a source from outside ClawHub; answer `y`. The second line matters when you install it again after removing it: OpenClaw leaves a removed plugin switched off.
 
 ```bash
 openclaw plugins install git:github.com/Bergschloss/Refine-Cycle-for-OpenClaw --accept-capabilities
+openclaw plugins enable refine-cycle
 ```
 
 **2. Let it see your sessions.** Without this it stays idle.
