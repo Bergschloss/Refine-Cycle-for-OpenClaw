@@ -1784,3 +1784,18 @@ test("a direct send that fails goes through the agent instead of being lost", as
   const prompt = hooks.get("before_prompt_build")!.handler({}, { sessionId: "s2", agentId: "main", runId: "r2", trigger: "user" }) as { prependContext: string };
   assert.match(prompt.prependContext, /\[Refine Cycle notice\].*learned a new lesson/);
 });
+
+
+test("a notice stored while a run holds the others does not make those others come back a second time", async () => {
+  const { hooks, stateDir } = learningSetup();
+  const store = new FileStore(path.join(stateDir, "plugin-data", "refine-cycle"));
+  store.write("notices/main.json", { notices: [{ what: "lesson a", sentence: "First.", at: "2026-09-30T21:00:00.000Z" }] });
+  const run = webchatTurn("s1", "agent:main:tray", "r-1");
+  assert.match((hooks.get("before_prompt_build")!.handler({}, run) as { prependContext: string }).prependContext, /First\.$/);
+  // While that run is going, a learning pass stores a new notice (no chat a plugin can reach).
+  hooks.get("agent_end")!.handler({ success: true }, webchatTurn("s0", "agent:main:other", "r-0"));
+  await settle();
+  hooks.get("agent_end")!.handler({ success: true }, run);
+  const next = (hooks.get("before_prompt_build")!.handler({}, webchatTurn("s2", "agent:main:tray", "r-2")) as { prependContext?: string } | undefined)?.prependContext ?? "";
+  assert.doesNotMatch(next, /First\./, "the first notice was passed on already");
+});

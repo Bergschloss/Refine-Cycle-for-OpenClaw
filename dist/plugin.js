@@ -451,8 +451,10 @@ export default function register(api) {
     const tellThroughAgent = (agentId, sentence, what) => {
         try {
             const path = noticesPath(agentId);
-            const pending = (store.read(path)?.notices ?? []).filter((notice) => notice.what !== what);
-            store.write(path, { notices: [...pending, { what, sentence, at: new Date().toISOString() }].slice(-MAX_NOTICES) });
+            const box = store.read(path);
+            const pending = (box?.notices ?? []).filter((notice) => notice.what !== what);
+            // The hand-over record stays: a run that has the earlier notices must still settle them.
+            store.write(path, { ...box, notices: [...pending, { what, sentence, at: new Date().toISOString() }].slice(-MAX_NOTICES) });
             log(`${what}: no chat a plugin can send to; the agent passes it on in its next reply`);
             return true;
         }
