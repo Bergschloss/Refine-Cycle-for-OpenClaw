@@ -28,6 +28,8 @@ import { replay } from "./replay.js";
 import { readSettings } from "./settings.js";
 import { agentNotices, lessonNotice, overLimitNotice, overLimitSentence, plainSentence, lessonSentence, storeErrorSentence, storeErrorText, tidyNotice, tidySentence } from "./core/notice.js";
 import { actionLine, autoFailedText, autoUpdatedText, availableText, restartNeededText, checkDue, failedText, failureReason, hostUpdateLine, isNewer, latestTag, parseVersion, toAnnounce, toInstall, UPDATE_COMMAND, updatedText, upToDateText, } from "./core/update.js";
+import { handNotices, keepNotice, settleNotices } from "./notices.js";
+import { Runs } from "./runs.js";
 import { FileStore, StoreError } from "./store.js";
 /** Runs no person started: their session is not where the user reads a reply. */
 const BACKGROUND_TRIGGERS = new Set(["heartbeat", "cron", "memory", "overflow"]);
@@ -212,25 +214,15 @@ export default function register(api) {
     };
     /**
      * Notices waiting for the agent, handed to this run when a person started it (not the
-     * heartbeat, a cron job, memory or overflow: nobody reads those replies). Marked as handed
-     * to this run; removed only when it ends with a reply. Never throws.
+     * heartbeat, a cron job, memory or overflow: nobody reads those replies). Never throws.
      */
-    const handNotices = (ctx) => {
-        const mine = runIds(ctx);
-        if (mine.length === 0 || BACKGROUND_TRIGGERS.has(ctx?.trigger ?? ""))
+    const handNoticesTo = (ctx) => {
+        if (BACKGROUND_TRIGGERS.has(ctx?.trigger ?? ""))
             return null;
         try {
-            const path = noticesPath(ctx?.agentId || DEFAULT_AGENT);
-            const box = store.read(path);
-            if (!box?.notices?.length)
-                return null;
-            // Already with another run that is still going: that run passes them on, not this one too.
-            const holder = box.handedTo ? handedRun(box.handedTo) : [];
-            if (holder.length && !holder.some((id) => mine.includes(id)) && runsInProgress().some((run) => run.ids.some((id) => holder.includes(id))))
-                return null;
-            const ids = box.notices.map(noticeId);
-            store.write(path, { ...box, handedTo: { runKey: mine[0], runIds: mine, at: new Date().toISOString(), ids } });
-            return agentNotices(box.notices.map((notice) => notice.sentence));
+            const inProgress = (holder) => runsInProgress().some((run) => run.ids.some((id) => holder.includes(id)));
+            const sentences = handNotices(store, ctx?.agentId || DEFAULT_AGENT, runIds(ctx), inProgress, new Date());
+            return sentences ? agentNotices(sentences) : null;
         }
         catch (error) {
             warn(`notices not handed to the agent: ${String(error)}`);
@@ -238,24 +230,11 @@ export default function register(api) {
         }
     };
     /** A run ended: the notices it was handed are done if it replied; otherwise the next run gets them. */
-    const settleNotices = (ctx, replied) => {
-        const mine = runIds(ctx);
-        if (mine.length === 0)
-            return;
+    const settleNoticesOf = (ctx, replied) => {
         try {
-            const path = noticesPath(ctx.agentId || DEFAULT_AGENT);
-            const box = store.read(path);
-            // The same run when any of its ids match: the two hooks need not carry the same fields.
-            if (!box?.handedTo || !handedRun(box.handedTo).some((id) => mine.includes(id)))
-                return;
-            // Exactly the notices this run was handed go; one that arrived while it ran stays.
-            const handed = new Set(box.handedTo.ids ?? []);
-            const left = replied ? box.notices.filter((notice) => !handed.has(noticeId(notice))) : box.notices;
-            if (left.length === 0)
-                store.remove(path);
-            else
-                store.write(path, { notices: left });
-            log(replied ? "notices passed to the user through the agent" : "the run that had the notices ended without a reply; the next turn gets them");
+            const result = settleNotices(store, ctx.agentId || DEFAULT_AGENT, runIds(ctx), replied);
+            if (result)
+                log(result === "passed" ? "notices passed to the user through the agent" : "the run that had the notices ended without a reply; the next turn gets them");
         }
         catch (error) {
             warn(`notices not settled: ${String(error)}`);
@@ -285,7 +264,7 @@ export default function register(api) {
                 }
                 lastOver = over;
             }
-            const notices = handNotices(ctx);
+            const notices = handNoticesTo(ctx);
             const text = [block?.text, notices].filter(Boolean).join("\n\n");
             return text ? { prependContext: text } : undefined;
         }
@@ -433,28 +412,14 @@ export default function register(api) {
         const used = formatBlock(activeLessons(store, agentId))?.text.length ?? 0;
         await notify(agentId, chat, lessonNotice(used, settings.maxInjectedChars), lessonSentence(used, settings.maxInjectedChars), `lesson ${lessonIds.join(", ")}`);
     };
-    /** One notice, as the hand-over names it: what it is about and when it was stored. */
-    const noticeId = (notice) => `${notice.what}@${notice.at}`;
-    const noticesPath = (agentId) => `notices/${agentId}.json`;
-    const MAX_NOTICES = 10;
-    /** The ids of the run a notice was handed to (`runKey` alone in records from before `runIds`). */
-    const handedRun = (handed) => handed.runIds ?? [handed.runKey];
     /**
      * Give a notice to the agent for the user, for a chat a plugin cannot send to (webchat,
-     * the Tray). It waits in the store (`notices/<agent>.json`) and the prompt hook hands it
-     * to the agent in the next turn a person started, whichever session that is, as one line
-     * after the lessons block; it is removed only once a reply came from that turn
-     * (`agent_end` with `success`). So it is never lost to the previous session, to a turn
-     * that failed, or to a restart. One notice per `what`: a later one replaces it.
-     * False when it cannot be stored.
+     * the Tray): kept in the store (`src/notices.ts`) and handed by the prompt hook to the
+     * next turn a person starts. False when it cannot be stored.
      */
     const tellThroughAgent = (agentId, sentence, what) => {
         try {
-            const path = noticesPath(agentId);
-            const box = store.read(path);
-            const pending = (box?.notices ?? []).filter((notice) => notice.what !== what);
-            // The hand-over record stays: a run that has the earlier notices must still settle them.
-            store.write(path, { ...box, notices: [...pending, { what, sentence, at: new Date().toISOString() }].slice(-MAX_NOTICES) });
+            keepNotice(store, agentId, what, sentence, new Date());
             log(`${what}: no chat a plugin can send to; the agent passes it on in its next reply`);
             return true;
         }
@@ -766,24 +731,16 @@ export default function register(api) {
         if (now)
             store.write(UPDATE_STATE, { ...now, announced: [...now.announced, version].slice(-20) });
     };
-    const running = new Map();
-    const MAX_RUNS_TRACKED = 200;
+    /**
+     * Agent runs in progress, as the hooks saw them (`src/runs.ts`): what tells the automatic
+     * update and its restart that the gateway is quiet. A run that never reaches `agent_end`
+     * (one that failed in the host before it, like the Codex handoff error on 2026-09-30)
+     * stops counting after the host's own agent timeout plus a margin (`lostRunMs`).
+     */
+    const runs = new Runs();
     const runIds = (ctx) => [ctx?.sessionId, ctx?.sessionKey, ctx?.runId].filter((id) => typeof id === "string" && id.length > 0);
-    const runStarted = (ctx) => {
-        const ids = runIds(ctx);
-        if (ids.length === 0)
-            return;
-        running.delete(ids[0]);
-        running.set(ids[0], { since: Date.now(), ids });
-        while (running.size > MAX_RUNS_TRACKED)
-            running.delete(running.keys().next().value);
-    };
-    const runEnded = (ctx) => {
-        const ids = new Set(runIds(ctx));
-        for (const [key, seen] of running)
-            if (seen.ids.some((id) => ids.has(id)))
-                running.delete(key);
-    };
+    const runStarted = (ctx) => runs.started(runIds(ctx));
+    const runEnded = (ctx) => runs.ended(runIds(ctx));
     /** The host's agent timeout (`agents.defaults.timeoutSeconds`, 600 s by default in 2026.9.6) and five minutes. */
     const lostRunMs = () => {
         if (timing.lostRunMs > 0)
@@ -792,14 +749,10 @@ export default function register(api) {
         return (typeof seconds === "number" && seconds > 0 ? seconds : 600) * 1000 + 5 * 60_000;
     };
     const runsInProgress = () => {
-        const cutoff = Date.now() - lostRunMs();
-        for (const [key, seen] of running) {
-            if (seen.since < cutoff) {
-                running.delete(key);
-                log(`run ${key} was counted as in progress for over ${Math.round(lostRunMs() / 60_000)} min without ending: treated as lost`);
-            }
-        }
-        return [...running.values()];
+        const { running, lost } = runs.inProgress(lostRunMs());
+        for (const run of lost)
+            log(`run ${run.ids[0]} was counted as in progress for over ${Math.round(lostRunMs() / 60_000)} min without ending: treated as lost`);
+        return running;
     };
     let quietTimer;
     let quietJob;
@@ -992,7 +945,7 @@ export default function register(api) {
             return;
         // `success: false` (2026.9.6 PluginHookAgentEndEvent): the run ended with an error and
         // the user saw no reply (R-live: the Codex handoff error), so its notices are given again.
-        settleNotices(ctx, event?.success !== false);
+        settleNoticesOf(ctx, event?.success !== false);
         // The queue is chained outside the turn's work scope, so the learning work (and
         // its model call) does not run inside a scope the host closes when this returns.
         runOutsideHostWorkScope(() => enqueue(ctx));

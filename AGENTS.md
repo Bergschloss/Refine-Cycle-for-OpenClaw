@@ -57,6 +57,7 @@ OpenClaw needs none of them.
 | `src/pipeline.ts` | the learning loop for one ended turn, the budget, deferred lessons, the report |
 | `src/core/` | pure functions: fingerprint (port of the Hermes `patterns.py`), failure extraction, refusal shapes, already-covered check, the injected block, proposal and validation |
 | `src/store.ts`, `src/lessons.ts` | atomic JSON files, the cross-process lock, the journal |
+| `src/notices.ts`, `src/runs.ts` | notices waiting for the agent's next reply; the runs in progress that keep the automatic update waiting |
 | `src/host/` | reading the agent's SQLite history and its instruction and skill files |
 | `src/replay.ts` | the measurement harness |
 | `dist/` | the compiled plugin OpenClaw loads; generated, never edited by hand |

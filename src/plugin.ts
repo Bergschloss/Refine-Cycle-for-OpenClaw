@@ -32,6 +32,8 @@ import {
   actionLine, autoFailedText, autoUpdatedText, availableText, restartNeededText, checkDue, failedText, failureReason, hostUpdateLine, isNewer, latestTag, parseVersion, toAnnounce, toInstall,
   UPDATE_COMMAND, updatedText, upToDateText, type UpdateState,
 } from "./core/update.ts";
+import { handNotices, keepNotice, settleNotices } from "./notices.ts";
+import { Runs, type RunSeen } from "./runs.ts";
 import { FileStore, StoreError } from "./store.ts";
 
 // The slice of OpenClaw's plugin API this plugin uses (openclaw 2026.9.5,
@@ -346,22 +348,14 @@ export default function register(api: PluginApi): void {
 
   /**
    * Notices waiting for the agent, handed to this run when a person started it (not the
-   * heartbeat, a cron job, memory or overflow: nobody reads those replies). Marked as handed
-   * to this run; removed only when it ends with a reply. Never throws.
+   * heartbeat, a cron job, memory or overflow: nobody reads those replies). Never throws.
    */
-  const handNotices = (ctx: HookContext | undefined): string | null => {
-    const mine = runIds(ctx);
-    if (mine.length === 0 || BACKGROUND_TRIGGERS.has(ctx?.trigger ?? "")) return null;
+  const handNoticesTo = (ctx: HookContext | undefined): string | null => {
+    if (BACKGROUND_TRIGGERS.has(ctx?.trigger ?? "")) return null;
     try {
-      const path = noticesPath(ctx?.agentId || DEFAULT_AGENT);
-      const box = store.read<NoticeBox>(path);
-      if (!box?.notices?.length) return null;
-      // Already with another run that is still going: that run passes them on, not this one too.
-      const holder = box.handedTo ? handedRun(box.handedTo) : [];
-      if (holder.length && !holder.some((id) => mine.includes(id)) && runsInProgress().some((run) => run.ids.some((id) => holder.includes(id)))) return null;
-      const ids = box.notices.map(noticeId);
-      store.write(path, { ...box, handedTo: { runKey: mine[0], runIds: mine, at: new Date().toISOString(), ids } });
-      return agentNotices(box.notices.map((notice) => notice.sentence));
+      const inProgress = (holder: string[]) => runsInProgress().some((run) => run.ids.some((id) => holder.includes(id)));
+      const sentences = handNotices(store, ctx?.agentId || DEFAULT_AGENT, runIds(ctx), inProgress, new Date());
+      return sentences ? agentNotices(sentences) : null;
     } catch (error) {
       warn(`notices not handed to the agent: ${String(error)}`);
       return null;
@@ -369,20 +363,10 @@ export default function register(api: PluginApi): void {
   };
 
   /** A run ended: the notices it was handed are done if it replied; otherwise the next run gets them. */
-  const settleNotices = (ctx: HookContext, replied: boolean) => {
-    const mine = runIds(ctx);
-    if (mine.length === 0) return;
+  const settleNoticesOf = (ctx: HookContext, replied: boolean) => {
     try {
-      const path = noticesPath(ctx.agentId || DEFAULT_AGENT);
-      const box = store.read<NoticeBox>(path);
-      // The same run when any of its ids match: the two hooks need not carry the same fields.
-      if (!box?.handedTo || !handedRun(box.handedTo).some((id) => mine.includes(id))) return;
-      // Exactly the notices this run was handed go; one that arrived while it ran stays.
-      const handed = new Set(box.handedTo.ids ?? []);
-      const left = replied ? box.notices.filter((notice) => !handed.has(noticeId(notice))) : box.notices;
-      if (left.length === 0) store.remove(path);
-      else store.write(path, { notices: left });
-      log(replied ? "notices passed to the user through the agent" : "the run that had the notices ended without a reply; the next turn gets them");
+      const result = settleNotices(store, ctx.agentId || DEFAULT_AGENT, runIds(ctx), replied);
+      if (result) log(result === "passed" ? "notices passed to the user through the agent" : "the run that had the notices ended without a reply; the next turn gets them");
     } catch (error) {
       warn(`notices not settled: ${String(error)}`);
     }
@@ -411,7 +395,7 @@ export default function register(api: PluginApi): void {
           }
           lastOver = over;
         }
-        const notices = handNotices(ctx);
+        const notices = handNoticesTo(ctx);
         const text = [block?.text, notices].filter(Boolean).join("\n\n");
         return text ? { prependContext: text } : undefined;
       } catch (error) {
@@ -566,37 +550,13 @@ export default function register(api: PluginApi): void {
   };
 
   /**
-   * Notices waiting for the agent, per agent. `handedTo` names the run that was given
-   * them (the prompt hook): they are removed when that run ends with a reply, and given
-   * again to the next turn when it does not.
-   */
-  interface NoticeBox {
-    notices: Array<{ what: string; sentence: string; at: string }>;
-    handedTo?: { runKey: string; runIds?: string[]; at: string; ids?: string[] };
-  }
-  /** One notice, as the hand-over names it: what it is about and when it was stored. */
-  const noticeId = (notice: { what: string; at: string }) => `${notice.what}@${notice.at}`;
-  const noticesPath = (agentId: string) => `notices/${agentId}.json`;
-  const MAX_NOTICES = 10;
-  /** The ids of the run a notice was handed to (`runKey` alone in records from before `runIds`). */
-  const handedRun = (handed: NonNullable<NoticeBox["handedTo"]>): string[] => handed.runIds ?? [handed.runKey];
-
-  /**
    * Give a notice to the agent for the user, for a chat a plugin cannot send to (webchat,
-   * the Tray). It waits in the store (`notices/<agent>.json`) and the prompt hook hands it
-   * to the agent in the next turn a person started, whichever session that is, as one line
-   * after the lessons block; it is removed only once a reply came from that turn
-   * (`agent_end` with `success`). So it is never lost to the previous session, to a turn
-   * that failed, or to a restart. One notice per `what`: a later one replaces it.
-   * False when it cannot be stored.
+   * the Tray): kept in the store (`src/notices.ts`) and handed by the prompt hook to the
+   * next turn a person starts. False when it cannot be stored.
    */
   const tellThroughAgent = (agentId: string, sentence: string, what: string): boolean => {
     try {
-      const path = noticesPath(agentId);
-      const box = store.read<NoticeBox>(path);
-      const pending = (box?.notices ?? []).filter((notice) => notice.what !== what);
-      // The hand-over record stays: a run that has the earlier notices must still settle them.
-      store.write(path, { ...box, notices: [...pending, { what, sentence, at: new Date().toISOString() }].slice(-MAX_NOTICES) });
+      keepNotice(store, agentId, what, sentence, new Date());
       log(`${what}: no chat a plugin can send to; the agent passes it on in its next reply`);
       return true;
     } catch (error) {
@@ -906,32 +866,16 @@ export default function register(api: PluginApi): void {
   };
 
   /**
-   * Agent runs in progress: a prompt was built and the run has not ended. Keyed by session,
-   * with the run's other ids, because the two hooks need not carry the same fields (each has
-   * only what its caller had), and `agent_end` clears every entry that shares any id with it.
-   * A run that never reaches `agent_end` (one that failed in the host before it, like the
-   * Codex handoff error on 2026-09-30) stops counting after the host's own agent timeout
-   * plus a margin (`lostRunMs`), and the map never grows past MAX_RUNS_TRACKED.
+   * Agent runs in progress, as the hooks saw them (`src/runs.ts`): what tells the automatic
+   * update and its restart that the gateway is quiet. A run that never reaches `agent_end`
+   * (one that failed in the host before it, like the Codex handoff error on 2026-09-30)
+   * stops counting after the host's own agent timeout plus a margin (`lostRunMs`).
    */
-  interface RunSeen {
-    since: number;
-    ids: string[];
-  }
-  const running = new Map<string, RunSeen>();
-  const MAX_RUNS_TRACKED = 200;
+  const runs = new Runs();
   const runIds = (ctx: HookContext | undefined): string[] =>
     [ctx?.sessionId, ctx?.sessionKey, ctx?.runId].filter((id): id is string => typeof id === "string" && id.length > 0);
-  const runStarted = (ctx: HookContext | undefined) => {
-    const ids = runIds(ctx);
-    if (ids.length === 0) return;
-    running.delete(ids[0]);
-    running.set(ids[0], { since: Date.now(), ids });
-    while (running.size > MAX_RUNS_TRACKED) running.delete(running.keys().next().value!);
-  };
-  const runEnded = (ctx: HookContext | undefined) => {
-    const ids = new Set(runIds(ctx));
-    for (const [key, seen] of running) if (seen.ids.some((id) => ids.has(id))) running.delete(key);
-  };
+  const runStarted = (ctx: HookContext | undefined) => runs.started(runIds(ctx));
+  const runEnded = (ctx: HookContext | undefined) => runs.ended(runIds(ctx));
   /** The host's agent timeout (`agents.defaults.timeoutSeconds`, 600 s by default in 2026.9.6) and five minutes. */
   const lostRunMs = (): number => {
     if (timing.lostRunMs > 0) return timing.lostRunMs;
@@ -939,14 +883,9 @@ export default function register(api: PluginApi): void {
     return (typeof seconds === "number" && seconds > 0 ? seconds : 600) * 1000 + 5 * 60_000;
   };
   const runsInProgress = (): RunSeen[] => {
-    const cutoff = Date.now() - lostRunMs();
-    for (const [key, seen] of running) {
-      if (seen.since < cutoff) {
-        running.delete(key);
-        log(`run ${key} was counted as in progress for over ${Math.round(lostRunMs() / 60_000)} min without ending: treated as lost`);
-      }
-    }
-    return [...running.values()];
+    const { running, lost } = runs.inProgress(lostRunMs());
+    for (const run of lost) log(`run ${run.ids[0]} was counted as in progress for over ${Math.round(lostRunMs() / 60_000)} min without ending: treated as lost`);
+    return running;
   };
   let quietTimer: ReturnType<typeof setTimeout> | undefined;
   let quietJob: (() => Promise<void>) | undefined;
@@ -1136,7 +1075,7 @@ export default function register(api: PluginApi): void {
     if (storeError) return;
     // `success: false` (2026.9.6 PluginHookAgentEndEvent): the run ended with an error and
     // the user saw no reply (R-live: the Codex handoff error), so its notices are given again.
-    settleNotices(ctx, (event as { success?: boolean } | undefined)?.success !== false);
+    settleNoticesOf(ctx, (event as { success?: boolean } | undefined)?.success !== false);
     // The queue is chained outside the turn's work scope, so the learning work (and
     // its model call) does not run inside a scope the host closes when this returns.
     runOutsideHostWorkScope(() => enqueue(ctx));
