@@ -1,6 +1,6 @@
 # Refine Cycle for OpenClaw
 
-![Refine Cycle for OpenClaw: a red robot crab with a single eye and open claws](docs/media/banner.gif)
+![Refine Cycle for OpenClaw: a red robot crab with a single eye and open claws](https://raw.githubusercontent.com/Bergschloss/Refine-Cycle-for-OpenClaw/main/docs/media/banner.gif)
 
 [![tests](https://github.com/Bergschloss/Refine-Cycle-for-OpenClaw/actions/workflows/tests.yml/badge.svg)](https://github.com/Bergschloss/Refine-Cycle-for-OpenClaw/actions/workflows/tests.yml) ![OpenClaw 2026.9.6](https://img.shields.io/badge/OpenClaw-2026.9.6-blue) ![License: MIT](https://img.shields.io/badge/license-MIT-green)
 
@@ -14,7 +14,7 @@
 
 [**Install on your OpenClaw →**](#install)
 
-![Refine Cycle: a mistake that happens twice or more, the plugin writes a fix, and the loop goes on](docs/media/what-it-does.gif)
+![Refine Cycle: a mistake that happens twice or more, the plugin writes a fix, and the loop goes on](https://raw.githubusercontent.com/Bergschloss/Refine-Cycle-for-OpenClaw/main/docs/media/what-it-does.gif)
 
 ## A simple three-step loop
 
@@ -36,11 +36,11 @@ It looks after itself: a new version installs itself (`autoUpdate: false` to be 
 
 ## How it works
 
-![How the Refine Cycle plugin works on OpenClaw: a session ends, repeated failures are found across sessions, the gate opens only on recurrence, one lesson is proposed, safety checks run, the lesson is journaled and then shown to the agent, and it is checked later, with three exits where the plugin stops, rejects, or you turn the lesson off](docs/media/refine-cycle.gif)
+![How the Refine Cycle plugin works on OpenClaw: a session ends, repeated failures are found across sessions, the gate opens only on recurrence, one lesson is proposed, safety checks run, the lesson is journaled and then shown to the agent, and it is checked later, with three exits where the plugin stops, rejects, or you turn the lesson off](https://raw.githubusercontent.com/Bergschloss/Refine-Cycle-for-OpenClaw/main/docs/media/refine-cycle.gif)
 
 After each turn, the plugin reads the session's failed tool calls and turns each one into a fingerprint, so the same failure with a different id, path or time counts once. Nothing reaches the model until a failure repeats, and network hiccups or rules your own instructions already cover are skipped. Then the model is asked for one short lesson. The lesson must name the failure and the tool, and must not repeat a rule you already wrote. It is recorded before it is shown, so a crash never leaves half a lesson. From the next prompt on, the agent sees its lessons before it starts. The plugin stops early at three points: nothing repeats, a check rejects the lesson, or you turn the lesson off.
 
-Every rule, command and setting: [docs/USAGE.md](docs/USAGE.md).
+Every rule, command and setting: [docs/USAGE.md](https://github.com/Bergschloss/Refine-Cycle-for-OpenClaw/blob/main/docs/USAGE.md).
 
 ## What the testing shows
 
@@ -48,16 +48,16 @@ On 120 new tasks, the agent got the tool call right on the first try 8% of the t
 
 - In all 10 test scenarios where a lesson was possible, the plugin learned one. Two AI graders from different companies rated all 10 useful.
 - The tasks used test tools built to provoke one mistake each, on OpenClaw 2026.9.6 with GPT-6 Luna. In real use the plugin will find fewer lessons.
-- The method and every deviation from the plan: [docs/proof/](docs/proof/).
+- The method and every deviation from the plan: [docs/proof/](https://github.com/Bergschloss/Refine-Cycle-for-OpenClaw/tree/main/docs/proof/).
 
 ## Install
 
 Needs OpenClaw 2026.9.5 or newer (tested on 2026.9.6).
 
-**1. Install and switch it on.** OpenClaw asks you to confirm a source from outside ClawHub; answer `y`. The second line matters when you install it again after removing it: OpenClaw leaves a removed plugin switched off.
+**1. Install it from ClawHub and switch it on.** The second line matters when you install it again after removing it: OpenClaw leaves a removed plugin switched off.
 
 ```bash
-openclaw plugins install git:github.com/Bergschloss/Refine-Cycle-for-OpenClaw --accept-capabilities
+openclaw plugins install clawhub:refine-cycle-openclaw --accept-capabilities
 openclaw plugins enable refine-cycle
 ```
 
@@ -75,7 +75,7 @@ openclaw gateway restart
 
 **4. Check it.** Send `/refine status` in chat.
 
-More on installing, including a gateway you started by hand: [docs/USAGE.md](docs/USAGE.md#install-in-detail).
+More on installing, including a gateway you started by hand: [docs/USAGE.md](https://github.com/Bergschloss/Refine-Cycle-for-OpenClaw/blob/main/docs/USAGE.md#install-in-detail).
 
 ## Commands
 
@@ -87,15 +87,15 @@ More on installing, including a gateway you started by hand: [docs/USAGE.md](doc
 | `/refine delete <id>` | Remove a lesson for good |
 | `/refine update` | Update the plugin |
 
-Every command, the command line and all settings: [docs/USAGE.md](docs/USAGE.md).
+Every command, the command line and all settings: [docs/USAGE.md](https://github.com/Bergschloss/Refine-Cycle-for-OpenClaw/blob/main/docs/USAGE.md).
 
 ## Documentation
 
 | | |
 |---|---|
-| [USAGE.md](docs/USAGE.md) | Commands, settings, messages, and every rule the plugin follows |
-| [DESIGN.md](docs/DESIGN.md) | For maintainers: how it works inside, the OpenClaw host contract, code layout |
-| [MEASUREMENT-2026-09-25.md](docs/MEASUREMENT-2026-09-25.md) | The test above and the replay on real dialogs, with raw data |
+| [USAGE.md](https://github.com/Bergschloss/Refine-Cycle-for-OpenClaw/blob/main/docs/USAGE.md) | Commands, settings, messages, and every rule the plugin follows |
+| [DESIGN.md](https://github.com/Bergschloss/Refine-Cycle-for-OpenClaw/blob/main/docs/DESIGN.md) | For maintainers: how it works inside, the OpenClaw host contract, code layout |
+| [MEASUREMENT-2026-09-25.md](https://github.com/Bergschloss/Refine-Cycle-for-OpenClaw/blob/main/docs/MEASUREMENT-2026-09-25.md) | The test above and the replay on real dialogs, with raw data |
 
 The idea and its first measurement come from [Refine Cycle for Hermes Agent](https://github.com/Bergschloss/Refine-Cycle-for-Hermes-Agent), which adapts the `/refine` concept from [Prime Intellect's Prime Agent](https://www.primeintellect.ai/blog/prime-agent).
 

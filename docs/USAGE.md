@@ -6,19 +6,19 @@ Everything the [README](../README.md) leaves out: every command, every setting, 
 
 Tested on OpenClaw 2026.9.6 (2026.9.5 is supported). The plugin runs inside OpenClaw, so it needs what OpenClaw itself needs: Node 24.16+ or 26.1+.
 
-**1. Install the plugin.** OpenClaw warns that a git source is outside ClawHub review and asks `Install this non-ClawHub plugin source? [y/N]`; review the source, then answer `y`. `--accept-capabilities` accepts what the plugin declares it can do. In a script, with no terminal to answer the question, add `--force` after reviewing the source.
+**1. Install the plugin from ClawHub.** `--accept-capabilities` accepts what the plugin declares it can do.
 
 ```bash
-openclaw plugins install git:github.com/Bergschloss/Refine-Cycle-for-OpenClaw --accept-capabilities
+openclaw plugins install clawhub:refine-cycle-openclaw --accept-capabilities
 openclaw plugins enable refine-cycle
 ```
 
 The second line changes nothing on a first install. It matters when you install again after `openclaw plugins uninstall`: OpenClaw 2026.9.6 keeps a removed plugin switched off, and a new install does not switch it back on.
 
-Once the plugin is published on ClawHub (not yet), it will also install from there, with ClawHub's review and provenance instead of the git warning:
+It also installs straight from GitHub. OpenClaw then warns that a git source is outside ClawHub review and asks `Install this non-ClawHub plugin source? [y/N]`; review the source, then answer `y` (in a script, with no terminal to answer, add `--force` after reviewing it):
 
 ```bash
-openclaw plugins install clawhub:refine-cycle-openclaw --accept-capabilities
+openclaw plugins install git:github.com/Bergschloss/Refine-Cycle-for-OpenClaw --accept-capabilities
 ```
 
 **2. Let it see your sessions.** OpenClaw gives a plugin your conversation only when you allow it. Without this, Refine Cycle stays idle and says so in the log. A running gateway picks this setting up without a restart.
