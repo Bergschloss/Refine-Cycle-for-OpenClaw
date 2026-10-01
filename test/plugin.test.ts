@@ -9,6 +9,15 @@ import { FileStore } from "../src/store.ts";
 import { activate, setStatus } from "../src/lessons.ts";
 import { fingerprint } from "../src/core/fingerprint.ts";
 import { tempDir, Transcript } from "./helpers.ts";
+// The plugin's running version and two releases above it: the update tests hold for any version.
+const V0 = (JSON.parse(fs.readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { version: string }).version;
+const bump = (minor: number) => {
+  const [major, min] = V0.split(".").map(Number);
+  return `${major}.${min + minor}.0`;
+};
+const V1 = bump(1);
+const V2 = bump(2);
+const esc = (v: string) => v.replace(/\./g, "\\.");
 
 // An automatic update waits for a quiet gateway; here a few milliseconds, not ten minutes.
 timing.quietMs = 5;
@@ -900,7 +909,7 @@ function updateSetup(host: HostFake, adapter?: Record<string, unknown>, pluginCo
 }
 
 const gitHost = (over: Partial<HostFake> = {}): HostFake => ({
-  source: "git", installed: "0.1.0", tags: "a\trefs/tags/v0.1.0\nb\trefs/tags/v0.2.0\n", update: { to: "0.2.0" }, runs: [], service: true, ...over,
+  source: "git", installed: `${V0}`, tags: `a\trefs/tags/v${V0}\nb\trefs/tags/v${V1}\n`, update: { to: `${V1}` }, runs: [], service: true, ...over,
 });
 
 /** The version this plugin runs as: what a reloaded instance in these tests is. */
@@ -918,7 +927,7 @@ test("a newer release is announced once, with an Update button that runs the upd
   const setup = updateSetup(gitHost());
   await setup.turn("s1");
   assert.equal(setup.sent.length, 1);
-  assert.equal(setup.sent[0].text, "♾️ Refine Cycle — update available: 0.2.0");
+  assert.equal(setup.sent[0].text, `♾️ Refine Cycle — update available: ${V1}`);
   assert.equal(setup.sent[0].to, "4242");
   assert.deepEqual((setup.sent[0].payload as { presentation: unknown }).presentation, {
     blocks: [{ type: "buttons", buttons: [{ label: "Update", action: { type: "callback", value: "refine-cycle:update" } }] }],
@@ -932,10 +941,10 @@ test("a newer release is announced once, with an Update button that runs the upd
 });
 
 test("a ClawHub install reads the host's dry run, and an answer it cannot read is a failed check, not 'up to date'", async () => {
-  const found = updateSetup(gitHost({ source: "clawhub", dryRun: "Would update refine-cycle: 0.1.0 -> 0.3.0.\n" }));
+  const found = updateSetup(gitHost({ source: "clawhub", dryRun: `Would update refine-cycle: ${V0} -> ${V2}.\n` }));
   await found.turn("s1");
-  assert.equal(found.sent[0]?.text, "♾️ Refine Cycle — update available: 0.3.0");
-  const current = updateSetup(gitHost({ source: "clawhub", dryRun: "refine-cycle already at 0.1.0.\n" }));
+  assert.equal(found.sent[0]?.text, `♾️ Refine Cycle — update available: ${V2}`);
+  const current = updateSetup(gitHost({ source: "clawhub", dryRun: `refine-cycle already at ${V0}.\n` }));
   await current.turn("s1");
   assert.equal(current.sent.length, 0);
   assert.equal(current.store.read<{ ok: boolean }>("update/state.json")!.ok, true);
@@ -978,8 +987,8 @@ test("with no chat on the turn, the update notice goes through the agent, and is
   const setup = updateSetup(gitHost());
   await setup.turn("s1", false);
   assert.equal(setup.sent.length, 0);
-  assert.ok(setup.logs.some((line) => line.includes("update 0.2.0: no chat a plugin can send to")));
-  assert.match(setup.prompt({ sessionId: "s2", agentId: "main", runId: "r2", trigger: "user" }), /0\.2\.0 is available/);
+  assert.ok(setup.logs.some((line) => line.includes(`update ${V1}: no chat a plugin can send to`)));
+  assert.match(setup.prompt({ sessionId: "s2", agentId: "main", runId: "r2", trigger: "user" }), new RegExp(esc(V1) + " is available"));
   await setup.turn("s2", true);
   assert.equal(setup.sent.length, 0, "once: it already went through the agent");
 });
@@ -993,7 +1002,7 @@ test("a channel without buttons gets the command to type instead", async () => {
     presentationCapabilities: { buttons: false },
   });
   await setup.turn("s1");
-  assert.deepEqual(texts, ["♾️ Refine Cycle — update available: 0.2.0\n`/refine update` — installs it."]);
+  assert.deepEqual(texts, [`♾️ Refine Cycle — update available: ${V1}\n\`/refine update\` — installs it.`]);
   assert.equal(payloads.length, 0, "no buttons where the channel says it has none");
 });
 
@@ -1001,9 +1010,9 @@ test("/refine update updates through the host and says to which version; up to d
   const setup = updateSetup(gitHost());
   const refine = setup.commands.get("refine")!;
   assert.equal((await refine({ args: "update", agentId: "main", isAuthorizedSender: false }) as { text: string }).text, "Only an authorized sender may update Refine Cycle.");
-  assert.equal((await refine({ args: "update", agentId: "main", isAuthorizedSender: true }) as { text: string }).text, "♾️ Refine Cycle updated to 0.2.0. OpenClaw restarts to finish it once no conversation is running.");
+  assert.equal((await refine({ args: "update", agentId: "main", isAuthorizedSender: true }) as { text: string }).text, `♾️ Refine Cycle updated to ${V1}. OpenClaw restarts to finish it once no conversation is running.`);
   assert.ok(setup.host.runs.some((argv) => argv.slice(2).join(" ") === "plugins update refine-cycle"), "the host's own update, same entry point");
-  setup.host.update = { to: "0.2.0" };
+  setup.host.update = { to: `${V1}` };
   // The update retired that instance (the host's hot reload): the reloaded one is asked.
   const next = updateSetup(setup.host, undefined, {}, { stateDir: setup.stateDir });
   const again = (await next.commands.get("refine")!({ args: "update", agentId: "main" }) as { text: string }).text;
@@ -1014,7 +1023,7 @@ test("a failed update says why in one line and the installed version stays", asy
   const setup = updateSetup(gitHost({ update: { code: 1, stderr: "Cloning…\nError: git clone failed: could not resolve host github.com\n" } }));
   const text = (await setup.commands.get("refine")!({ args: "update", agentId: "main" }) as { text: string }).text;
   assert.equal(text, "♾️ Refine Cycle update failed. Error: git clone failed: could not resolve host github.com");
-  assert.equal(setup.host.installed, "0.1.0");
+  assert.equal(setup.host.installed, `${V0}`);
 });
 
 test("a plugin loaded from a path is not updated, and says so", async () => {
@@ -1032,7 +1041,7 @@ test("/refine status starts a due update check, and the next status shows a newe
   assert.doesNotMatch((await refine({ args: "status", agentId: "main" }) as { text: string }).text, /is available/);
   for (let i = 0; i < 10; i++) await settle();
   const text = (await refine({ args: "status", agentId: "main" }) as { text: string }).text;
-  assert.match(text, /warnings:\n  ⚠ Refine Cycle 0\.2\.0 is available \(installed 0\.1\.0\): `\/refine update`/);
+  assert.match(text, new RegExp("warnings:\\n  ⚠ Refine Cycle " + esc(V1) + " is available \\(installed " + esc(V0) + "\\): `\\/refine update`"));
   assert.equal(setup.sent.length, 0, "status itself sends nothing");
 });
 
@@ -1226,7 +1235,7 @@ test("/refine update from Telegram, slow, sends 'updated to' to that chat even w
     assert.equal(text, "Updating Refine Cycle; the result follows in this chat.");
     finish();
     for (let i = 0; i < 20 && texts.length === 0; i++) await settle();
-    assert.deepEqual(texts.map((m) => [m.to, m.accountId, m.text]), [["telegram:4242", "default", "♾️ Refine Cycle updated to 0.2.0. OpenClaw restarts to finish it once no conversation is running."]]);
+    assert.deepEqual(texts.map((m) => [m.to, m.accountId, m.text]), [["telegram:4242", "default", `♾️ Refine Cycle updated to ${V1}. OpenClaw restarts to finish it once no conversation is running.`]]);
   } finally {
     timing.chatWaitMs = saved;
   }
@@ -1285,7 +1294,7 @@ test("/refine status offers the Update button in a chat with buttons, and the co
   await refine({ args: "status", agentId: "main", ...telegramCommand });
   for (let i = 0; i < 10; i++) await settle();
   const offered = await refine({ args: "status", agentId: "main", ...telegramCommand }) as { text: string; presentation?: unknown };
-  assert.match(offered.text, /is available \(installed 0\.1\.0\): `\/refine update`/);
+  assert.match(offered.text, new RegExp("is available \\(installed " + esc(V0) + "\\): `\\/refine update`"));
   assert.deepEqual(offered.presentation, {
     blocks: [{ type: "buttons", buttons: [{ label: "Update", action: { type: "callback", value: "refine-cycle:update" } }] }],
   });
@@ -1298,7 +1307,7 @@ test("/refine status offers the Update button in a chat with buttons, and the co
   assert.match(text.text, /`\/refine update`/);
   assert.equal(text.presentation, undefined);
   // No update known: no button, even where the channel has them.
-  const current = updateSetup(gitHost({ tags: "a\trefs/tags/v0.1.0\n" }), { sendText: async () => undefined, sendPayload: async () => undefined });
+  const current = updateSetup(gitHost({ tags: `a\trefs/tags/v${V0}\n` }), { sendText: async () => undefined, sendPayload: async () => undefined });
   await current.commands.get("refine")!({ args: "status", agentId: "main", ...telegramCommand });
   for (let i = 0; i < 10; i++) await settle();
   assert.equal((await current.commands.get("refine")!({ args: "status", agentId: "main", ...telegramCommand }) as { presentation?: unknown }).presentation, undefined);
@@ -1392,9 +1401,9 @@ test("the update notice goes to Telegram with its button, or to the agent in web
   const web = updateSetup(gitHost(), { sendText: async () => undefined });
   await web.turn("s1", webchatTurn("s1"));
   assert.equal(web.sent.length, 0);
-  assert.deepEqual(web.store.read<{ announced: string[] }>("update/state.json")!.announced, ["0.2.0"]);
+  assert.deepEqual(web.store.read<{ announced: string[] }>("update/state.json")!.announced, [`${V1}`]);
   const first = web.prompt(webchatTurn("s2"));
-  assert.match(first, /Refine Cycle 0\.2\.0 is available; sending \/refine update installs it\.$/);
+  assert.match(first, new RegExp("Refine Cycle " + esc(V1) + " is available; sending \\/refine update installs it\\.$"));
   web.end(webchatTurn("s2"));
   const state = web.store.read<Record<string, unknown>>("update/state.json")!;
   web.store.write("update/state.json", { ...state, checkedAt: "2026-01-01T00:00:00Z" });
@@ -1417,10 +1426,10 @@ test("with autoUpdate on, a newer release is installed once by the host's own up
   await setup.turn("s1");
   const updates = () => setup.host.runs.filter((argv) => argv.slice(2).join(" ") === "plugins update refine-cycle").length;
   assert.equal(updates(), 1);
-  assert.equal(setup.host.installed, "0.2.0");
-  assert.deepEqual(setup.sent.map((m) => m.text), ["♾️ Refine Cycle — updated to 0.2.0."]);
+  assert.equal(setup.host.installed, `${V1}`);
+  assert.deepEqual(setup.sent.map((m) => m.text), [`♾️ Refine Cycle — updated to ${V1}.`]);
   const state = setup.store.read<Record<string, unknown>>("update/state.json")!;
-  assert.deepEqual(state.attempted, ["0.2.0"]);
+  assert.deepEqual(state.attempted, [`${V1}`]);
   setup.store.write("update/state.json", { ...state, checkedAt: "2026-01-01T00:00:00Z" });
   await setup.turn("s2");
   assert.equal(updates(), 1);
@@ -1433,29 +1442,29 @@ test("a failed automatic update is said once and that version is not tried again
   const updates = () => host.runs.filter((argv) => argv.slice(2).join(" ") === "plugins update refine-cycle").length;
   await setup.turn("s1");
   assert.equal(updates(), 1);
-  assert.deepEqual(setup.sent.map((m) => m.text), ["♾️ Refine Cycle — update to 0.2.0 failed: Error: git clone failed: could not resolve host github.com"]);
-  assert.equal(host.installed, "0.1.0");
+  assert.deepEqual(setup.sent.map((m) => m.text), [`♾️ Refine Cycle — update to ${V1} failed: Error: git clone failed: could not resolve host github.com`]);
+  assert.equal(host.installed, `${V0}`);
   const recheck = () => {
     const state = setup.store.read<Record<string, unknown>>("update/state.json")!;
     setup.store.write("update/state.json", { ...state, checkedAt: "2026-01-01T00:00:00Z" });
   };
   recheck();
   await setup.turn("s2");
-  assert.equal(updates(), 1, "0.2.0 is not tried again");
+  assert.equal(updates(), 1, `${V1} is not tried again`);
   assert.equal(setup.sent.length, 1);
   // A newer release is.
-  host.tags += "c\trefs/tags/v0.3.0\n";
-  host.update = { to: "0.3.0" };
+  host.tags += `c\trefs/tags/v${V2}\n`;
+  host.update = { to: `${V2}` };
   recheck();
   await setup.turn("s1");
   assert.equal(updates(), 2);
-  assert.equal(setup.sent[1].text, "♾️ Refine Cycle — updated to 0.3.0.");
+  assert.equal(setup.sent[1].text, `♾️ Refine Cycle — updated to ${V2}.`);
 });
 
 test("with autoUpdate off, the notice with the button, and nothing is installed", async () => {
   const setup = updateSetup(gitHost(), undefined, { autoUpdate: false });
   await setup.turn("s1");
-  assert.equal(setup.sent[0].text, "♾️ Refine Cycle — update available: 0.2.0");
+  assert.equal(setup.sent[0].text, `♾️ Refine Cycle — update available: ${V1}`);
   assert.ok(!setup.host.runs.some((argv) => argv.slice(2).join(" ") === "plugins update refine-cycle"));
 });
 
@@ -1468,12 +1477,12 @@ test("a plugin loaded from a path is never updated by itself", async () => {
 
 test("a ClawHub install is updated when the host's dry run says 'Would update', and left alone on 'is up to date' or a pin", async () => {
   // The host's own words, 2026.9.6 update-attempt: buildDryRunPluginUpdateOutcome and formatNewerExactPinnedClawHubDefaultLineMessage.
-  const found = updateSetup(gitHost({ source: "clawhub", dryRun: "Would update refine-cycle: 0.1.0 -> 0.3.0.\n", update: { to: "0.3.0" } }), { sendText: async (ctx: Record<string, unknown>) => void found.sent.push(ctx) }, autoOn);
+  const found = updateSetup(gitHost({ source: "clawhub", dryRun: `Would update refine-cycle: ${V0} -> ${V2}.\n`, update: { to: `${V2}` } }), { sendText: async (ctx: Record<string, unknown>) => void found.sent.push(ctx) }, autoOn);
   await found.turn("s1");
   assert.equal(found.host.runs.filter((argv) => argv.slice(2).join(" ") === "plugins update refine-cycle").length, 1);
-  assert.deepEqual(found.sent.map((m) => m.text), ["♾️ Refine Cycle — updated to 0.3.0."]);
+  assert.deepEqual(found.sent.map((m) => m.text), [`♾️ Refine Cycle — updated to ${V2}.`]);
 
-  const current = updateSetup(gitHost({ source: "clawhub", dryRun: "refine-cycle is up to date (0.1.0).\n" }), { sendText: async (ctx: Record<string, unknown>) => void current.sent.push(ctx) }, autoOn);
+  const current = updateSetup(gitHost({ source: "clawhub", dryRun: `refine-cycle is up to date (${V0}).\n` }), { sendText: async (ctx: Record<string, unknown>) => void current.sent.push(ctx) }, autoOn);
   await current.turn("s1");
   assert.equal(current.store.read<{ ok: boolean; latest: string }>("update/state.json")!.ok, true);
   assert.ok(!current.host.runs.some((argv) => argv.slice(2).join(" ") === "plugins update refine-cycle"));
@@ -1481,12 +1490,12 @@ test("a ClawHub install is updated when the host's dry run says 'Would update', 
 
   const pinned = updateSetup(gitHost({
     source: "clawhub",
-    dryRun: "refine-cycle is pinned to clawhub:refine-cycle-openclaw@0.1.0 (installed 0.1.0); ClawHub latest resolves to 0.3.0. Pass `openclaw plugins install clawhub:refine-cycle-openclaw --force` to replace this version pin.\n",
+    dryRun: `refine-cycle is pinned to clawhub:refine-cycle-openclaw@${V0} (installed ${V0}); ClawHub latest resolves to ${V2}. Pass \`openclaw plugins install clawhub:refine-cycle-openclaw --force\` to replace this version pin.\n`,
   }), { sendText: async (ctx: Record<string, unknown>) => void pinned.sent.push(ctx) }, autoOn);
   await pinned.turn("s1");
   assert.equal(pinned.store.read<{ ok: boolean }>("update/state.json")!.ok, true, "a pin is read, not a failed check");
   assert.ok(!pinned.host.runs.some((argv) => argv.slice(2).join(" ") === "plugins update refine-cycle"));
-  assert.ok(pinned.logs.some((line) => line.includes("is pinned to clawhub:refine-cycle-openclaw@0.1.0")));
+  assert.ok(pinned.logs.some((line) => line.includes(`is pinned to clawhub:refine-cycle-openclaw@${V0}`)));
 });
 
 test("a git install with no release tags says so in the log, not 'loaded from a path'", async () => {
@@ -1592,7 +1601,7 @@ test("L3: the automatic update waits for a quiet gateway, and every run postpone
     assert.equal(updates(), 0, "the quiet period starts again when the run ends");
     await pause(250);
     assert.equal(updates(), 1);
-    assert.deepEqual(setup.sent.map((m) => m.text), ["♾️ Refine Cycle — updated to 0.2.0."]);
+    assert.deepEqual(setup.sent.map((m) => m.text), [`♾️ Refine Cycle — updated to ${V1}.`]);
   } finally {
     timing.quietMs = saved;
   }
@@ -1714,8 +1723,8 @@ test("after an automatic update the old instance does not restart: it leaves the
   await setup.turn("s1");
   const steps = setup.host.runs.map((argv) => argv.slice(2).join(" ")).filter((step) => /^(plugins update refine-cycle|gateway )/.test(step));
   assert.deepEqual(steps, ["gateway status --json", "plugins update refine-cycle"], "no restart from the retired instance");
-  assert.deepEqual(setup.sent.map((m) => m.text), ["♾️ Refine Cycle — updated to 0.2.0."]);
-  assert.deepEqual(pendingOf(setup), { from: PKG_VERSION, to: "0.2.0", pid: process.pid, agentId: "main" });
+  assert.deepEqual(setup.sent.map((m) => m.text), [`♾️ Refine Cycle — updated to ${V1}.`]);
+  assert.deepEqual(pendingOf(setup), { from: PKG_VERSION, to: `${V1}`, pid: process.pid, agentId: "main" });
   assert.ok(!setup.logs.some((line) => line.includes("restart after the update failed")), setup.logs.join("\n"));
 });
 
@@ -1724,7 +1733,7 @@ test("without a service to restart, the update is offered, not installed: a relo
   await setup.turn("s1");
   assert.ok(!setup.host.runs.some((argv) => argv.slice(2).join(" ") === "plugins update refine-cycle"), "not installed");
   assert.ok(!setup.host.runs.some((argv) => argv.slice(2).join(" ").startsWith("gateway restart")));
-  assert.deepEqual(setup.sent.map((m) => m.text), ["♾️ Refine Cycle — update available: 0.2.0\n`/refine update` — installs it."]);
+  assert.deepEqual(setup.sent.map((m) => m.text), [`♾️ Refine Cycle — update available: ${V1}\n\`/refine update\` — installs it.`]);
 });
 
 // -- A1/A2: right after the update the host is reloading (live, 2026-10-01) --
@@ -1739,8 +1748,8 @@ test("A1: a gateway status refused once while the host is busy is asked again: t
   await setup.turn("s1");
   await until(() => setup.sent.length > 0);
   assert.deepEqual(updateSteps(setup.host), ["gateway status --json", "gateway status --json", "plugins update refine-cycle"]);
-  assert.deepEqual(setup.sent.map((m) => m.text), ["♾️ Refine Cycle — updated to 0.2.0."]);
-  assert.equal(pendingOf(setup)?.to, "0.2.0", "the restart is left to the reloaded instance");
+  assert.deepEqual(setup.sent.map((m) => m.text), [`♾️ Refine Cycle — updated to ${V1}.`]);
+  assert.equal(pendingOf(setup)?.to, `${V1}`, "the restart is left to the reloaded instance");
 });
 
 test("A1: a gateway status refused every time is not taken for a service, and the log says why", async () => {
@@ -1749,7 +1758,7 @@ test("A1: a gateway status refused every time is not taken for a service, and th
   await until(() => setup.sent.length > 0);
   assert.equal(updateSteps(setup.host).filter((step) => step === "gateway status --json").length, timing.serviceTries);
   assert.ok(!updateSteps(setup.host).includes("plugins update refine-cycle"), "not installed");
-  assert.deepEqual(setup.sent.map((m) => m.text), ["♾️ Refine Cycle — update available: 0.2.0\n`/refine update` — installs it."]);
+  assert.deepEqual(setup.sent.map((m) => m.text), [`♾️ Refine Cycle — update available: ${V1}\n\`/refine update\` — installs it.`]);
   assert.ok(setup.logs.some((line) => /^WARN .*could not tell whether OpenClaw runs as a service.*another OpenClaw process owns state-lifecycle/.test(line)), setup.logs.join("\n"));
 });
 
@@ -1763,8 +1772,8 @@ test("A1: the service environment OpenClaw sets is trusted: updated with no gate
     await setup.turn("s1");
     await until(() => setup.sent.length > 0);
     assert.deepEqual(updateSteps(setup.host), ["plugins update refine-cycle"]);
-    assert.deepEqual(setup.sent.map((m) => m.text), ["♾️ Refine Cycle — updated to 0.2.0."]);
-    assert.equal(pendingOf(setup)?.to, "0.2.0");
+    assert.deepEqual(setup.sent.map((m) => m.text), [`♾️ Refine Cycle — updated to ${V1}.`]);
+    assert.equal(pendingOf(setup)?.to, `${V1}`);
   } finally {
     for (const name of SERVICE_ENV) {
       if (saved[name] === undefined) delete process.env[name];
@@ -1778,7 +1787,7 @@ test("A2: Telegram's adapter missing twice right after the update: 'updated to' 
   await setup.turn("s1");
   await until(() => setup.sent.length > 0);
   assert.equal(setup.host.adapterMisses, 0, "both misses were met");
-  assert.deepEqual(setup.sent.map((m) => [m.to, m.text]), [["4242", "♾️ Refine Cycle — updated to 0.2.0."]]);
+  assert.deepEqual(setup.sent.map((m) => [m.to, m.text]), [["4242", `♾️ Refine Cycle — updated to ${V1}.`]]);
   assert.equal(setup.store.read("notices/main.json"), undefined, "nothing waits for the agent");
 });
 
@@ -1797,7 +1806,7 @@ test("A2: the late result of /refine update survives an adapter that is missing 
     setup.host.adapterMisses = 2; // the update reloads the channels now
     finish();
     await until(() => texts.length > 0);
-    assert.deepEqual(texts.map((m) => [m.to, m.text]), [["telegram:4242", "♾️ Refine Cycle updated to 0.2.0. OpenClaw restarts to finish it once no conversation is running."]]);
+    assert.deepEqual(texts.map((m) => [m.to, m.text]), [["telegram:4242", `♾️ Refine Cycle updated to ${V1}. OpenClaw restarts to finish it once no conversation is running.`]]);
     assert.equal(setup.store.read("notices/main.json"), undefined);
   } finally {
     timing.chatWaitMs = saved;
@@ -1828,14 +1837,14 @@ test("A3: after a restart, the kept notice asking for that restart is dropped; o
 test("/refine update leaves the restart to the reloaded instance, or asks for a restart without a service", async () => {
   const service = updateSetup(gitHost({ service: true }));
   const text = ((await service.commands.get("refine")!({ args: "update", agentId: "main", isAuthorizedSender: true })) as { text: string }).text;
-  assert.equal(text, "♾️ Refine Cycle updated to 0.2.0. OpenClaw restarts to finish it once no conversation is running.");
+  assert.equal(text, `♾️ Refine Cycle updated to ${V1}. OpenClaw restarts to finish it once no conversation is running.`);
   await new Promise((resolve) => setTimeout(resolve, 50));
   assert.equal(restartsOf(service.host), 0, "the retired instance cannot restart");
-  assert.deepEqual(pendingOf(service), { from: PKG_VERSION, to: "0.2.0", pid: process.pid, agentId: "main" });
+  assert.deepEqual(pendingOf(service), { from: PKG_VERSION, to: `${V1}`, pid: process.pid, agentId: "main" });
 
   const plain = updateSetup(gitHost({ service: false }));
   const answer = ((await plain.commands.get("refine")!({ args: "update", agentId: "main", isAuthorizedSender: true })) as { text: string }).text;
-  assert.equal(answer, "♾️ Refine Cycle — updated to 0.2.0; restart OpenClaw to finish.");
+  assert.equal(answer, `♾️ Refine Cycle — updated to ${V1}; restart OpenClaw to finish.`);
   assert.equal(pendingOf(plain), undefined, "nothing to restart without a service");
 });
 
@@ -1863,7 +1872,7 @@ test("K1: the restart is recorded before `plugins update` starts: the reload reg
   assert.deepEqual(pendingOf(setup), { from: PKG_VERSION, pid: process.pid, agentId: "main" }, "already there while the update runs");
   finish();
   await until(() => pendingOf(setup)?.to !== undefined);
-  assert.equal(pendingOf(setup)?.to, "0.2.0");
+  assert.equal(pendingOf(setup)?.to, `${V1}`);
 });
 
 test("K1: a failed update leaves no restart behind", async () => {
@@ -1990,7 +1999,7 @@ const pressed = (payload: string, replies: string[], authorized = true) => ({
   isForum: false,
   auth: { isAuthorizedSender: authorized },
   channel: "telegram",
-  callback: { messageId: 74, chatId: "4242", messageText: "♾️ Refine Cycle — update available: 0.2.0", data: `refine-cycle:${payload}`, namespace: "refine-cycle", payload },
+  callback: { messageId: 74, chatId: "4242", messageText: `♾️ Refine Cycle — update available: ${V1}`, data: `refine-cycle:${payload}`, namespace: "refine-cycle", payload },
   respond: { reply: async ({ text }: { text: string }) => void replies.push(text), clearButtons: async () => void replies.push("(buttons cleared)") },
 });
 
@@ -2011,7 +2020,7 @@ test("K2: pressing Update runs the update for that chat and answers in it", asyn
   const result = await setup.interactive[0].handler(pressed("update", replies));
   assert.deepEqual(result, { handled: true });
   assert.ok(setup.host.runs.some((argv) => argv.slice(2).join(" ") === "plugins update refine-cycle"), "the host's update ran");
-  assert.deepEqual(replies, ["(buttons cleared)", "♾️ Refine Cycle — updated to 0.2.0; restart OpenClaw to finish."]);
+  assert.deepEqual(replies, ["(buttons cleared)", `♾️ Refine Cycle — updated to ${V1}; restart OpenClaw to finish.`]);
 });
 
 test("K2: a press from a sender off the allowlist, or an unknown payload, updates nothing", async () => {
@@ -2083,7 +2092,7 @@ test("a late /refine update result for webchat, with no chat a plugin can reach,
     assert.equal(text, "Updating Refine Cycle; the result follows in my next reply to you.");
     finish();
     for (let i = 0; i < 20; i++) await settle();
-    assert.match(setup.prompt({ sessionId: "s2", agentId: "main", runId: "r2", trigger: "user" }), /Refine Cycle — updated to 0\.2\.0; restart OpenClaw to finish\.$/);
+    assert.match(setup.prompt({ sessionId: "s2", agentId: "main", runId: "r2", trigger: "user" }), new RegExp("Refine Cycle — updated to " + esc(V1) + "; restart OpenClaw to finish\\.$"));
   } finally {
     Object.assign(timing, saved);
   }
