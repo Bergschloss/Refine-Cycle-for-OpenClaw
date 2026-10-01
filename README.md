@@ -57,7 +57,7 @@ Needs OpenClaw 2026.9.5 or newer (tested on 2026.9.6).
 **1. Install it from ClawHub and switch it on.** The second line matters when you install it again after removing it: OpenClaw leaves a removed plugin switched off.
 
 ```bash
-openclaw plugins install clawhub:refine-cycle-openclaw --accept-capabilities
+openclaw plugins install clawhub:refine-cycle --accept-capabilities
 openclaw plugins enable refine-cycle
 ```
 

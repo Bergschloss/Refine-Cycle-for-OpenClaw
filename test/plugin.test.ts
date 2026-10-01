@@ -1490,12 +1490,12 @@ test("a ClawHub install is updated when the host's dry run says 'Would update', 
 
   const pinned = updateSetup(gitHost({
     source: "clawhub",
-    dryRun: `refine-cycle is pinned to clawhub:refine-cycle-openclaw@${V0} (installed ${V0}); ClawHub latest resolves to ${V2}. Pass \`openclaw plugins install clawhub:refine-cycle-openclaw --force\` to replace this version pin.\n`,
+    dryRun: `refine-cycle is pinned to clawhub:refine-cycle@${V0} (installed ${V0}); ClawHub latest resolves to ${V2}. Pass \`openclaw plugins install clawhub:refine-cycle --force\` to replace this version pin.\n`,
   }), { sendText: async (ctx: Record<string, unknown>) => void pinned.sent.push(ctx) }, autoOn);
   await pinned.turn("s1");
   assert.equal(pinned.store.read<{ ok: boolean }>("update/state.json")!.ok, true, "a pin is read, not a failed check");
   assert.ok(!pinned.host.runs.some((argv) => argv.slice(2).join(" ") === "plugins update refine-cycle"));
-  assert.ok(pinned.logs.some((line) => line.includes(`is pinned to clawhub:refine-cycle-openclaw@${V0}`)));
+  assert.ok(pinned.logs.some((line) => line.includes(`is pinned to clawhub:refine-cycle@${V0}`)));
 });
 
 test("a git install with no release tags says so in the log, not 'loaded from a path'", async () => {

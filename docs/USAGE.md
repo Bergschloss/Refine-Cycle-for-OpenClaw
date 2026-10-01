@@ -9,7 +9,7 @@ Tested on OpenClaw 2026.9.6 (2026.9.5 is supported). The plugin runs inside Open
 **1. Install the plugin from ClawHub.** `--accept-capabilities` accepts what the plugin declares it can do.
 
 ```bash
-openclaw plugins install clawhub:refine-cycle-openclaw --accept-capabilities
+openclaw plugins install clawhub:refine-cycle --accept-capabilities
 openclaw plugins enable refine-cycle
 ```
 

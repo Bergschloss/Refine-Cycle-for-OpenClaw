@@ -1,5 +1,5 @@
 {
-  "name": "refine-cycle-openclaw",
+  "name": "refine-cycle",
   "version": "1.0.0",
   "type": "module",
   "description": "An OpenClaw plugin that learns from the agent's own repeated failures.",
