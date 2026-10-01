@@ -12,6 +12,12 @@ import { tempDir, Transcript } from "./helpers.ts";
 
 // An automatic update waits for a quiet gateway; here a few milliseconds, not ten minutes.
 timing.quietMs = 5;
+// A busy `gateway status` and an empty adapter lookup are retried; here milliseconds apart.
+timing.serviceRetryMs = 2;
+timing.adapterRetryMs = 2;
+// The environment OpenClaw sets in a gateway it runs as a service: not this test run's.
+const SERVICE_ENV = ["OPENCLAW_SERVICE_KIND", "OPENCLAW_SYSTEMD_UNIT", "OPENCLAW_WINDOWS_TASK_NAME", "OPENCLAW_SERVICE_MARKER"];
+for (const name of SERVICE_ENV) delete process.env[name];
 
 type Handler = (event: unknown, ctx: Record<string, unknown>) => unknown;
 
@@ -789,6 +795,10 @@ interface HostFake {
   slow?: Promise<unknown>;
   /** OpenClaw runs as a service the host can restart (`gateway status --json`: service.loaded). */
   service?: boolean;
+  /** The first this many `gateway status` calls are refused, as while the host reloads. */
+  statusBusy?: number;
+  /** After `plugins update`, the first this many Telegram adapter lookups come back empty (channels reloading). */
+  adapterMisses?: number;
 }
 
 function updateSetup(host: HostFake, adapter?: Record<string, unknown>, pluginConfig: Record<string, unknown> = {}) {
@@ -804,7 +814,13 @@ function updateSetup(host: HostFake, adapter?: Record<string, unknown>, pluginCo
       return host.gitCode ? { stdout: "", stderr: "fatal: unable to access: Could not resolve host: github.com\n", code: host.gitCode } : { stdout: host.tags, stderr: "", code: 0 };
     }
     const args = argv.slice(2);
-    if (args[0] === "gateway" && args[1] === "status") return { stdout: JSON.stringify({ service: { loaded: host.service === true } }), stderr: "", code: 0 };
+    if (args[0] === "gateway" && args[1] === "status") {
+      if (host.statusBusy) {
+        host.statusBusy--;
+        return { stdout: "", stderr: "Error: another OpenClaw process owns state-lifecycle\n", code: 1 };
+      }
+      return { stdout: JSON.stringify({ service: { loaded: host.service === true } }), stderr: "", code: 0 };
+    }
     if (args[0] === "gateway" && args[1] === "restart") return host.service ? { stdout: "{}", stderr: "", code: 0 } : { stdout: "", stderr: "Gateway service not loaded.", code: 1 };
     if (args[1] === "inspect") {
       const install = host.source === "git" ? { source: "git", version: host.installed, gitUrl: "file:///repo", gitCommit: `c-${host.installed}` } : host.source === "clawhub" ? { source: "clawhub", version: host.installed } : undefined;
@@ -831,7 +847,19 @@ function updateSetup(host: HostFake, adapter?: Record<string, unknown>, pluginCo
     runtime: {
       state: { resolveStateDir: () => stateDir },
       system: { runCommandWithTimeout },
-      channel: { outbound: { loadAdapter: async (id: string) => (id === "telegram" ? (adapter ?? { sendPayload: async (ctx: Record<string, unknown>) => void sent.push(ctx) }) : undefined) } },
+      channel: {
+        outbound: {
+          loadAdapter: async (id: string) => {
+            if (id !== "telegram") return undefined;
+            const updated = host.runs.some((argv) => argv.slice(2).join(" ") === `plugins update refine-cycle`);
+            if (updated && host.adapterMisses) {
+              host.adapterMisses--;
+              return undefined;
+            }
+            return adapter ?? { sendPayload: async (ctx: Record<string, unknown>) => void sent.push(ctx) };
+          },
+        },
+      },
     },
     on: (hook, handler) => hooks.set(hook, handler as Handler),
     registerCommand: (command) => commands.set(command.name, command.handler as never),
@@ -1664,6 +1692,102 @@ test("without a service to restart, the update is offered, not installed: a relo
   assert.ok(!setup.host.runs.some((argv) => argv.slice(2).join(" ") === "plugins update refine-cycle"), "not installed");
   assert.ok(!setup.host.runs.some((argv) => argv.slice(2).join(" ").startsWith("gateway restart")));
   assert.deepEqual(setup.sent.map((m) => m.text), ["♾️ Refine Cycle — update available: 0.2.0\n`/refine update` — installs it."]);
+});
+
+// -- A1/A2: right after the update the host is reloading (live, 2026-10-01) --
+
+const updateSteps = (host: HostFake) => host.runs.map((argv) => argv.slice(2).join(" ")).filter((step) => /^(plugins update refine-cycle|gateway )/.test(step));
+const until = async (done: () => boolean) => {
+  for (let i = 0; i < 200 && !done(); i++) await new Promise((resolve) => setTimeout(resolve, 2));
+};
+
+test("A1: a gateway status refused once while the host is busy is asked again: the service is updated and restarted", async () => {
+  const setup = updateSetup(gitHost({ service: true, statusBusy: 1 }), { sendText: async (ctx: Record<string, unknown>) => void setup.sent.push(ctx) }, autoOn);
+  await setup.turn("s1");
+  await until(() => updateSteps(setup.host).includes("gateway restart --safe --json"));
+  assert.deepEqual(updateSteps(setup.host), ["gateway status --json", "gateway status --json", "plugins update refine-cycle", "gateway restart --safe --json"]);
+  assert.deepEqual(setup.sent.map((m) => m.text), ["♾️ Refine Cycle — updated to 0.2.0."]);
+});
+
+test("A1: a gateway status refused every time is not taken for a service, and the log says why", async () => {
+  const setup = updateSetup(gitHost({ service: true, statusBusy: 99 }), { sendText: async (ctx: Record<string, unknown>) => void setup.sent.push(ctx) }, autoOn);
+  await setup.turn("s1");
+  await until(() => setup.sent.length > 0);
+  assert.equal(updateSteps(setup.host).filter((step) => step === "gateway status --json").length, timing.serviceTries);
+  assert.ok(!updateSteps(setup.host).includes("plugins update refine-cycle"), "not installed");
+  assert.deepEqual(setup.sent.map((m) => m.text), ["♾️ Refine Cycle — update available: 0.2.0\n`/refine update` — installs it."]);
+  assert.ok(setup.logs.some((line) => /^WARN .*could not tell whether OpenClaw runs as a service.*another OpenClaw process owns state-lifecycle/.test(line)), setup.logs.join("\n"));
+});
+
+test("A1: the service environment OpenClaw sets is trusted: updated and restarted with no gateway status call", async () => {
+  const saved = Object.fromEntries(SERVICE_ENV.map((name) => [name, process.env[name]]));
+  process.env.OPENCLAW_SERVICE_KIND = "gateway";
+  process.env.OPENCLAW_SYSTEMD_UNIT = "openclaw-gateway.service";
+  try {
+    // The CLI check would say "not loaded": it must not be asked.
+    const setup = updateSetup(gitHost({ service: true, statusBusy: 99 }), { sendText: async (ctx: Record<string, unknown>) => void setup.sent.push(ctx) }, autoOn);
+    await setup.turn("s1");
+    await until(() => updateSteps(setup.host).includes("gateway restart --safe --json"));
+    assert.deepEqual(updateSteps(setup.host), ["plugins update refine-cycle", "gateway restart --safe --json"]);
+    assert.deepEqual(setup.sent.map((m) => m.text), ["♾️ Refine Cycle — updated to 0.2.0."]);
+  } finally {
+    for (const name of SERVICE_ENV) {
+      if (saved[name] === undefined) delete process.env[name];
+      else process.env[name] = saved[name];
+    }
+  }
+});
+
+test("A2: Telegram's adapter missing twice right after the update: 'updated to' is still sent to the chat, not kept for the agent", async () => {
+  const setup = updateSetup(gitHost({ service: true, adapterMisses: 2 }), { sendText: async (ctx: Record<string, unknown>) => void setup.sent.push(ctx) }, autoOn);
+  await setup.turn("s1");
+  await until(() => setup.sent.length > 0);
+  assert.equal(setup.host.adapterMisses, 0, "both misses were met");
+  assert.deepEqual(setup.sent.map((m) => [m.to, m.text]), [["4242", "♾️ Refine Cycle — updated to 0.2.0."]]);
+  assert.equal(setup.store.read("notices/main.json"), undefined, "nothing waits for the agent");
+});
+
+test("A2: the late result of /refine update survives an adapter that is missing while the host reloads", async () => {
+  const saved = timing.chatWaitMs;
+  timing.chatWaitMs = 20;
+  try {
+    let finish: () => void = () => {};
+    const texts: Array<Record<string, unknown>> = [];
+    const setup = updateSetup(gitHost({ slow: new Promise<void>((resolve) => (finish = resolve)) }), {
+      sendText: async (ctx: Record<string, unknown>) => void texts.push(ctx),
+    });
+    const refine = setup.commands.get("refine")!;
+    const text = (await refine({ args: "update", agentId: "main", isAuthorizedSender: true, ...telegramCommand }) as { text: string }).text;
+    assert.equal(text, "Updating Refine Cycle; the result follows in this chat.");
+    setup.host.adapterMisses = 2; // the update reloads the channels now
+    finish();
+    await until(() => texts.length > 0);
+    assert.deepEqual(texts.map((m) => [m.to, m.text]), [["telegram:4242", "♾️ Refine Cycle updated to 0.2.0. OpenClaw restarts to finish it once no conversation is running."]]);
+    assert.equal(setup.store.read("notices/main.json"), undefined);
+  } finally {
+    timing.chatWaitMs = saved;
+  }
+});
+
+test("A3: after a restart, the kept notice asking for that restart is dropped; one kept in this process is not", async () => {
+  const pkg = JSON.parse(fs.readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { version: string };
+  const setup = updateSetup(gitHost());
+  const ask = `Refine Cycle updated itself to ${pkg.version}; OpenClaw needs a restart to finish it.`;
+  setup.store.write("notices/main.json", {
+    notices: [
+      { what: `restart ${pkg.version}`, sentence: ask, at: "2020-01-01T00:00:00.000Z" },
+      { what: `update ${pkg.version}`, sentence: `Refine Cycle updated itself to ${pkg.version}.`, at: "2020-01-01T00:00:00.000Z" },
+    ],
+  });
+  const given = setup.prompt(webchatTurn("s2"));
+  assert.ok(!given.includes("needs a restart"), "the restart has happened");
+  assert.ok(given.includes(`updated itself to ${pkg.version}.`), "what is still true is passed on");
+  assert.ok(setup.logs.some((line) => line.includes("notice asking for it is dropped")));
+
+  // A notice kept by this process (a hot reload, no restart yet) stays.
+  const again = updateSetup(gitHost());
+  again.store.write("notices/main.json", { notices: [{ what: `restart ${pkg.version}`, sentence: ask, at: new Date().toISOString() }] });
+  assert.ok(again.prompt(webchatTurn("s2")).includes("needs a restart"));
 });
 
 test("/refine update restarts OpenClaw once no run is in progress, or asks for a restart without a service", async () => {

@@ -28,7 +28,7 @@ import { replay } from "./replay.js";
 import { readSettings } from "./settings.js";
 import { agentNotices, lessonNotice, overLimitNotice, overLimitSentence, plainSentence, lessonSentence, storeErrorSentence, storeErrorText, tidyNotice, tidySentence } from "./core/notice.js";
 import { actionLine, autoFailedText, autoUpdatedText, availableText, restartNeededText, checkDue, failedText, failureReason, hostUpdateLine, isNewer, latestTag, parseVersion, toAnnounce, toInstall, UPDATE_COMMAND, updatedText, upToDateText, } from "./core/update.js";
-import { handNotices, keepNotice, settleNotices } from "./notices.js";
+import { dropNotice, handNotices, keepNotice, settleNotices } from "./notices.js";
 import { Runs } from "./runs.js";
 import { FileStore, StoreError } from "./store.js";
 /** Runs no person started: their session is not where the user reads a reply. */
@@ -52,9 +52,27 @@ const PLUGIN_DIR = "refine-cycle";
  * 0 means the host's own agent timeout plus five minutes. `restartPollMs`: after `/refine update`,
  * how often the restart looks again for a moment with no run in progress, and `restartMaxWaitMs`
  * how long at most before it restarts anyway (with `--safe`, which drains admitted work).
+ * `serviceTries`/`serviceRetryMs` and `adapterTries`/`adapterRetryMs`: right after `plugins
+ * update` the host is still reloading, and a `gateway status` call or a channel adapter lookup
+ * made then can fail (live, 2026-10-01: a systemd service taken for none, a Telegram chat taken
+ * for one that cannot be sent to); they are tried again this many times, this far apart.
  * Tests shorten them.
  */
-export const timing = { chatWaitMs: 10_000, quietMs: 10 * 60_000, lostRunMs: 0, restartPollMs: 5_000, restartMaxWaitMs: 30 * 60_000 };
+export const timing = {
+    chatWaitMs: 10_000,
+    quietMs: 10 * 60_000,
+    lostRunMs: 0,
+    restartPollMs: 5_000,
+    restartMaxWaitMs: 30 * 60_000,
+    serviceTries: 3,
+    serviceRetryMs: 5_000,
+    adapterTries: 5,
+    adapterRetryMs: 3_000,
+};
+const pause = (ms) => new Promise((resolve) => {
+    const timer = setTimeout(resolve, ms);
+    timer.unref?.();
+});
 /**
  * When a started gateway warms the error normalizer up: the first Unicode-aware match
  * costs V8 ~200 ms once per process (measured on 2026.9.6, Node 26), and it should not
@@ -213,6 +231,23 @@ export default function register(api) {
             injected.delete(injected.keys().next().value);
     };
     /**
+     * A notice asking for a restart to finish the update to the version running now, kept by
+     * an earlier process: the restart has happened (live, 2026-10-01: after a manual restart the
+     * agent still asked for one). Done here, in the first prompt hook per agent, not at
+     * registration: the command line (`openclaw refine-cycle ...`) registers the plugin in its
+     * own new process too, and the gateway there may still need its restart. A hot reload keeps
+     * the process, so a notice kept since it is not dropped.
+     */
+    const processStart = new Date(Date.now() - process.uptime() * 1000);
+    const restartChecked = new Set();
+    const dropRestartNotice = (agentId) => {
+        if (restartChecked.has(agentId))
+            return;
+        restartChecked.add(agentId);
+        if (dropNotice(store, agentId, `restart ${version}`, processStart))
+            log(`restart ${version}: OpenClaw was restarted since; the notice asking for it is dropped`);
+    };
+    /**
      * Notices waiting for the agent, handed to this run when a person started it (not the
      * heartbeat, a cron job, memory or overflow: nobody reads those replies). Never throws.
      */
@@ -220,6 +255,7 @@ export default function register(api) {
         if (BACKGROUND_TRIGGERS.has(ctx?.trigger ?? ""))
             return null;
         try {
+            dropRestartNotice(ctx?.agentId || DEFAULT_AGENT);
             const inProgress = (holder) => runsInProgress().some((run) => run.ids.some((id) => holder.includes(id)));
             const sentences = handNotices(store, ctx?.agentId || DEFAULT_AGENT, runIds(ctx), inProgress, new Date());
             return sentences ? agentNotices(sentences) : null;
@@ -329,15 +365,28 @@ export default function register(api) {
         try {
             return await api.runtime?.channel?.outbound?.loadAdapter?.(channel);
         }
-        catch {
+        catch (error) {
+            log(`channel ${channel}: the host did not load its adapter: ${String(error).slice(0, 200)}`);
             return undefined;
         }
     };
+    /**
+     * The adapter of a chat known to take messages, looked up again while the host is still
+     * reloading after an update (`settle`): a lookup made then can come back empty.
+     */
+    const settledAdapter = async (channel, settle) => {
+        for (let attempt = 1;; attempt++) {
+            const adapter = await adapterFor(channel);
+            if (adapter?.sendText || adapter?.sendPayload || !settle || attempt >= timing.adapterTries)
+                return adapter;
+            await pause(timing.adapterRetryMs);
+        }
+    };
     /** Can a plugin send to this chat? The web UI, gateway `chat.send` and the heartbeat's channel cannot. */
-    const reachable = async (chat) => {
+    const reachable = async (chat, settle = false) => {
         if (!chat)
             return false;
-        const adapter = await adapterFor(chat.channel);
+        const adapter = await settledAdapter(chat.channel, settle);
         return !!(adapter?.sendText || adapter?.sendPayload);
     };
     /**
@@ -373,21 +422,22 @@ export default function register(api) {
     /**
      * A command's late result: to the chat it is for, and when there is none a plugin can send
      * to (webchat, the Tray) or the send fails, through the agent's next reply. Never lost to
-     * the log alone.
+     * the log alone. The chat's adapter is looked up again while it comes back empty: the
+     * result of an update arrives while the host is reloading its channels.
      */
     const sayLate = async (agentId, target, text, what) => {
-        if (target && (await say(target, text, what)))
+        if (target && (await say(target, text, what, true)))
             return;
         tellThroughAgent(agentId, plainSentence(text), what);
     };
     /** Send one message to a chat; false (and a log line) when there is no chat or the channel takes none. */
-    const say = async (chat, text, what) => {
+    const say = async (chat, text, what, settle = false) => {
         if (!chat) {
             log(`${what}: no chat to tell (the agent has not yet been talked to from a channel a plugin can send to; webchat and the heartbeat cannot take one)`);
             return false;
         }
         try {
-            const adapter = await api.runtime?.channel?.outbound?.loadAdapter?.(chat.channel);
+            const adapter = await settledAdapter(chat.channel, settle);
             if (!adapter?.sendText) {
                 log(`${what}: channel ${chat.channel} cannot take a message from a plugin`);
                 return false;
@@ -433,8 +483,8 @@ export default function register(api) {
      * next turn the user starts. A direct send that fails goes through the agent instead, so
      * it is not lost; never both. True when it was sent or kept for the agent.
      */
-    const notify = async (agentId, chat, text, sentence, what) => {
-        if ((await reachable(chat)) && (await say(chat, text, what)))
+    const notify = async (agentId, chat, text, sentence, what, settle = false) => {
+        if ((await reachable(chat, settle)) && (await say(chat, text, what, settle)))
             return true;
         return tellThroughAgent(agentId, sentence, what);
     };
@@ -710,18 +760,19 @@ export default function register(api) {
         const to = result.to ?? latest;
         if (!result.ok) {
             const reason = result.reason ?? "no reason given";
-            const told = await notify(agentId, chat, autoFailedText(latest, reason), `Refine Cycle could not update itself to ${latest}: ${reason}.`, `update ${latest}`);
+            const told = await notify(agentId, chat, autoFailedText(latest, reason), `Refine Cycle could not update itself to ${latest}: ${reason}.`, `update ${latest}`, true);
             markAnnounced(latest, told);
             return;
         }
         // Updated: the hot reload alone is not enough (the Codex harness), so a full restart
         // finishes it, here in the same quiet window. The service was checked before the update.
-        const told = await notify(agentId, chat, autoUpdatedText(to), `Refine Cycle updated itself to ${to}.`, `update ${latest}`);
+        // The host is reloading plugins and channels now: the chat's adapter is looked up again.
+        const told = await notify(agentId, chat, autoUpdatedText(to), `Refine Cycle updated itself to ${to}.`, `update ${latest}`, true);
         markAnnounced(latest, told);
         const restart = await restartGateway(true);
         if (!restart.ok) {
             warn(`restart after the update failed: ${restart.reason}`);
-            await notify(agentId, chat, restartNeededText(to), `Refine Cycle updated itself to ${to}; OpenClaw needs a restart to finish it.`, `restart ${to}`);
+            await notify(agentId, chat, restartNeededText(to), `Refine Cycle updated itself to ${to}; OpenClaw needs a restart to finish it.`, `restart ${to}`, true);
         }
     };
     const markAnnounced = (version, told) => {
@@ -822,15 +873,33 @@ export default function register(api) {
      * --json`: `service.loaded`); otherwise `ok` is false and the user is told to restart.
      */
     const serviceLoaded = async () => {
-        try {
-            const status = await hostCli(["gateway", "status", "--json"], 60_000);
-            const start = status.stdout.indexOf("{");
-            const data = start >= 0 ? JSON.parse(status.stdout.slice(start)) : undefined;
-            return data?.service?.loaded === true;
+        // OpenClaw sets these in the environment of a gateway it runs as a service (2026.9.6:
+        // a systemd unit, a Windows task, a launchd marker): no CLI call, which can be refused
+        // while the host is busy (live, 2026-10-01: a systemd service taken for none).
+        const env = process.env;
+        if (env.OPENCLAW_SERVICE_KIND === "gateway" && (env.OPENCLAW_SYSTEMD_UNIT || env.OPENCLAW_WINDOWS_TASK_NAME || env.OPENCLAW_SERVICE_MARKER))
+            return true;
+        let reason = "";
+        for (let attempt = 1; attempt <= timing.serviceTries; attempt++) {
+            try {
+                const status = await hostCli(["gateway", "status", "--json"], 60_000);
+                const start = status.stdout.indexOf("{");
+                const data = start >= 0 ? JSON.parse(status.stdout.slice(start)) : undefined;
+                if (data?.service) {
+                    if (data.service.loaded !== true)
+                        log("OpenClaw does not run as a service (gateway status: not loaded)");
+                    return data.service.loaded === true;
+                }
+                reason = `gateway status exited ${status.code}: ${failureReason(status.stdout, status.stderr)}`;
+            }
+            catch (error) {
+                reason = String(error).replace(/^Error: /, "").slice(0, 200);
+            }
+            if (attempt < timing.serviceTries)
+                await pause(timing.serviceRetryMs);
         }
-        catch {
-            return false;
-        }
+        warn(`could not tell whether OpenClaw runs as a service, so it is taken for none: ${reason}`);
+        return false;
     };
     const restartGateway = async (serviceKnown = false) => {
         try {

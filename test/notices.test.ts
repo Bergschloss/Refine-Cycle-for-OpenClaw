@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { FileStore } from "../src/store.ts";
-import { handNotices, keepNotice, MAX_NOTICES, settleNotices, type NoticeBox } from "../src/notices.ts";
+import { dropNotice, handNotices, keepNotice, MAX_NOTICES, settleNotices, type NoticeBox } from "../src/notices.ts";
 import { tempDir } from "./helpers.ts";
 
 const T0 = new Date("2026-10-01T00:00:00.000Z");
@@ -67,4 +67,18 @@ test("one notice per subject, the newest; at most MAX_NOTICES wait; a run with n
   assert.equal(box(s)!.notices[0].sentence, "N3.");
   assert.equal(handNotices(s, "main", [], never, at(30)), null);
   assert.equal(settleNotices(s, "main", [], true), null);
+});
+
+
+test("dropNotice drops only that notice, and only when an earlier process kept it", () => {
+  const s = store();
+  keepNotice(s, "main", "restart 0.2.0", "Restart.", at(0));
+  keepNotice(s, "main", "update 0.2.0", "Updated.", at(1));
+  assert.equal(dropNotice(s, "main", "restart 0.2.0", at(0)), false, "kept at the start of this process, not before it");
+  assert.equal(dropNotice(s, "main", "restart 0.1.0", at(10)), false, "another version");
+  assert.equal(dropNotice(s, "main", "restart 0.2.0", at(10)), true);
+  assert.deepEqual(box(s)?.notices.map((n) => n.what), ["update 0.2.0"]);
+  assert.equal(dropNotice(s, "main", "update 0.2.0", at(10)), true);
+  assert.equal(box(s), undefined, "an empty box is removed");
+  assert.equal(dropNotice(s, "other", "restart 0.2.0", at(10)), false, "no box");
 });

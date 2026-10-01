@@ -84,3 +84,20 @@ export function settleNotices(store: FileStore, agentId: string, runIds: string[
   else store.write(path, { notices: left });
   return replied ? "passed" : "kept";
 }
+
+
+/**
+ * Drop the waiting notice about `what` when it was kept before `keptBefore` (by an earlier
+ * process): what it says is no longer true. The hand-over record stays for the rest, which
+ * a run in progress still settles by id. True when one was dropped.
+ */
+export function dropNotice(store: FileStore, agentId: string, what: string, keptBefore: Date): boolean {
+  const path = noticesPath(agentId);
+  const box = store.read<NoticeBox>(path);
+  if (!box?.notices?.length) return false;
+  const left = box.notices.filter((notice) => notice.what !== what || !(Date.parse(notice.at) < keptBefore.getTime()));
+  if (left.length === box.notices.length) return false;
+  if (left.length === 0) store.remove(path);
+  else store.write(path, { ...box, notices: left });
+  return true;
+}
