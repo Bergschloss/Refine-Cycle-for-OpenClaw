@@ -32,7 +32,17 @@ export function lessonNotice(used: number, limit: number): string {
 /** The same, as a sentence the agent can pass on where the plugin cannot send (webchat). */
 export function lessonSentence(used: number, limit: number): string {
   const words = usageNote(used, limit);
-  return `Refine Cycle learned a new lesson; lessons use ${used} of ${limit} characters${words ? ` (${words})` : ""}.`;
+  const advice = used > limit ? `; ${OVER_LIMIT_ADVICE}` : "";
+  return `Refine Cycle learned a new lesson; lessons use ${used} of ${limit} characters${words ? ` (${words}${advice})` : ""}.`;
+}
+
+/** Over the soft limit with nothing the tidy may switch off: said once, not on every turn. */
+export function overLimitNotice(used: number, limit: number): string {
+  return `${BRAND} — lessons use ${used}/${limit} characters, over the soft limit, and none can be switched off yet: ${OVER_LIMIT_ADVICE}`;
+}
+
+export function overLimitSentence(used: number, limit: number): string {
+  return `Refine Cycle's lessons use ${used} of ${limit} characters, over the soft limit, and none can be switched off yet; ${OVER_LIMIT_ADVICE}.`;
 }
 
 /** "2 lessons that did not help and 1 unused lesson", from what the tidy switched off. */
@@ -71,6 +81,14 @@ export function agentNotices(sentences: string[]): string {
   return `[Refine Cycle notice] ${agentNotice(sentences.join(" "))}`;
 }
 
+/**
+ * A chat message as a sentence for the agent to pass on: the brand mark dropped, lines
+ * joined, so a command's late result reads as one notice.
+ */
+export function plainSentence(text: string): string {
+  return text.replace(/^♾️\s*/, "").replace(/:\s*\n+\s*/g, ": ").replace(/\s*\n+\s*/g, "; ").trim();
+}
+
 
 /**
  * What a user reads when the plugin cannot use its store: the folder, the likely cause
@@ -101,4 +119,10 @@ export function storeErrorText(root: string, error: string): string {
     `likely cause: ${cause}`,
     `fix: ${fix}, then restart the gateway. Until then nothing is learned or injected; the agent works as without the plugin.`,
   ].join("\n");
+}
+
+/** The same in one sentence for the agent to pass on: the folder and the likely cause, no stack of details. */
+export function storeErrorSentence(root: string, error: string): string {
+  const [, , cause, fix] = storeErrorText(root, error).split("\n");
+  return `Refine Cycle is switched off because it cannot use its folder ${root} (${cause.replace(/^likely cause: /, "")}); ${fix.replace(/^fix: /, "")}`;
 }

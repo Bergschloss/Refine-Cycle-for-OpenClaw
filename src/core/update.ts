@@ -89,7 +89,7 @@ export function availableText(version: string): string {
  * formatting, so it can be copied whole: Telegram links only `/refine` of it.
  */
 export function actionLine(): string {
-  return `\`${UPDATE_COMMAND}\` — updates the plugin; no restart needed.`;
+  return `\`${UPDATE_COMMAND}\` — installs it.`;
 }
 
 export function updatedText(version: string): string {

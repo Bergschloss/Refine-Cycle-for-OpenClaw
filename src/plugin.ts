@@ -27,7 +27,7 @@ import { activeLessons, allLessons, DEFAULT_AGENT, enable, lessonAgent, recover,
 import { audit, callsToday, describeAudit, describePass, ensureLedger, describeReport, describeStatus, knownAgents, processSession, RAW_FORMAT, recordExposure, report, status, tidy, type Decision, type Deps, type Llm, type PassOptions, type RawLessonStatusLine } from "./pipeline.ts";
 import { replay } from "./replay.ts";
 import { readSettings } from "./settings.ts";
-import { agentNotices, lessonNotice, lessonSentence, storeErrorText, tidyNotice, tidySentence } from "./core/notice.ts";
+import { agentNotices, lessonNotice, overLimitNotice, overLimitSentence, plainSentence, lessonSentence, storeErrorSentence, storeErrorText, tidyNotice, tidySentence } from "./core/notice.ts";
 import {
   actionLine, autoFailedText, autoUpdatedText, availableText, restartNeededText, checkDue, failedText, failureReason, hostUpdateLine, isNewer, latestTag, parseVersion, toAnnounce, toInstall,
   UPDATE_COMMAND, updatedText, upToDateText, type UpdateState,
@@ -181,10 +181,11 @@ const PLUGIN_DIR = "refine-cycle";
  * update, which reloads plugins and would break a conversation in progress. `lostRunMs`: a run
  * not seen to end in this long (one that failed before `agent_end`) no longer holds that update;
  * 0 means the host's own agent timeout plus five minutes. `restartPollMs`: after `/refine update`,
- * how often the restart looks again for a moment with no run in progress.
+ * how often the restart looks again for a moment with no run in progress, and `restartMaxWaitMs`
+ * how long at most before it restarts anyway (with `--safe`, which drains admitted work).
  * Tests shorten them.
  */
-export const timing = { chatWaitMs: 10_000, quietMs: 10 * 60_000, lostRunMs: 0, restartPollMs: 5_000 };
+export const timing = { chatWaitMs: 10_000, quietMs: 10 * 60_000, lostRunMs: 0, restartPollMs: 5_000, restartMaxWaitMs: 30 * 60_000 };
 /**
  * When a started gateway warms the error normalizer up: the first Unicode-aware match
  * costs V8 ~200 ms once per process (measured on 2026.9.6, Node 26), and it should not
@@ -266,6 +267,8 @@ export default function register(api: PluginApi): void {
   const stateDir = resolveStateDir(api);
   const store = new FileStore(path.join(stateDir, "plugin-data", PLUGIN_DIR));
   let storeError: string | null = null;
+  /** The store error was passed to the agent for the user: once per process. */
+  let storeErrorTold = false;
   try {
     store.open();
     if (store.repairedMeta) warn(`meta.json was unreadable; it is kept as ${store.repairedMeta} and a new one was written`);
@@ -389,7 +392,14 @@ export default function register(api: PluginApi): void {
     "before_prompt_build",
     (_event, ctx) => {
       runStarted(ctx);
-      if (storeError || !injectionAllowed) return undefined;
+      if (!injectionAllowed) return undefined;
+      // A store it cannot use leaves the plugin idle (fail open); the user hears it once, from
+      // the agent, since the notice mailbox lives in that store too.
+      if (storeError) {
+        if (storeErrorTold || runIds(ctx).length === 0 || BACKGROUND_TRIGGERS.has(ctx?.trigger ?? "")) return undefined;
+        storeErrorTold = true;
+        return { prependContext: agentNotices([storeErrorSentence(store.root, storeError)]) };
+      }
       try {
         const block = settings.injectEnabled ? formatBlock(activeLessons(store, ctx?.agentId || DEFAULT_AGENT)) : null;
         if (block && ctx?.sessionId) remember(ctx.sessionId, block);
@@ -511,7 +521,17 @@ export default function register(api: PluginApi): void {
       ? "in this chat"
       : target
         ? `in your ${target.channel} chat`
-        : "in the gateway log (no chat a plugin can reach is known yet)";
+        : "in my next reply to you";
+
+  /**
+   * A command's late result: to the chat it is for, and when there is none a plugin can send
+   * to (webchat, the Tray) or the send fails, through the agent's next reply. Never lost to
+   * the log alone.
+   */
+  const sayLate = async (agentId: string, target: Chat | null, text: string, what: string): Promise<void> => {
+    if (target && (await say(target, text, what))) return;
+    tellThroughAgent(agentId, plainSentence(text), what);
+  };
 
   /** Send one message to a chat; false (and a log line) when there is no chat or the channel takes none. */
   const say = async (chat: Chat | null, text: string, what: string): Promise<boolean> => {
@@ -585,10 +605,11 @@ export default function register(api: PluginApi): void {
 
   /**
    * One notice, once: straight to a chat a plugin can send to, else through the agent in the
-   * next turn the user starts. Never both. True when it was sent or kept for the agent.
+   * next turn the user starts. A direct send that fails goes through the agent instead, so
+   * it is not lost; never both. True when it was sent or kept for the agent.
    */
   const notify = async (agentId: string, chat: Chat | null, text: string, sentence: string, what: string): Promise<boolean> => {
-    if (await reachable(chat)) return say(chat, text, what);
+    if ((await reachable(chat)) && (await say(chat, text, what))) return true;
     return tellThroughAgent(agentId, sentence, what);
   };
 
@@ -609,26 +630,32 @@ export default function register(api: PluginApi): void {
 
   /** Whether the last tidy found nothing it may switch off: said once, not on every turn. */
   let tidyStuck = false;
+  /** Marks that the user was told the block is over the limit with nothing to switch off; removed once it fits. */
+  const overLimitPath = (agentId: string) => `tidy/over-limit-${agentId}.json`;
 
   /**
    * Over the soft limit, the tidy (`autoTidy`): switch off lessons the audit judges useless
    * until the block fits, then one line about it. With nothing it may switch off, or with
-   * the setting off, only the warning.
+   * the setting off, the user is told once (not only the log), until the block fits again.
    */
   const tidyUp = async (agentId: string, chat: Chat | null) => {
-    if (!settings.autoTidy) return;
-    const result = tidy(store, agentId, new Date(), settings.maxInjectedChars);
-    if (!result) {
+    const result = settings.autoTidy ? tidy(store, agentId, new Date(), settings.maxInjectedChars) : null;
+    const used = result ? result.after : formatBlock(activeLessons(store, agentId))?.text.length ?? 0;
+    if (used <= settings.maxInjectedChars) {
       tidyStuck = false;
+      if (store.exists(overLimitPath(agentId))) store.remove(overLimitPath(agentId));
+      if (!result?.disabled.length) return;
+    } else if (!result || result.disabled.length === 0) {
+      if (!tidyStuck) warn(`tidy: the lessons block is ${used} characters, over the soft limit of ${settings.maxInjectedChars}, and ${settings.autoTidy ? "no lesson is judged 'did not help' or 'unused'" : "autoTidy is off"}; nothing was switched off`);
+      tidyStuck = true;
+      if (result?.busy) log("tidy: the lesson store is busy; tried again after the next turn");
+      if (!store.exists(overLimitPath(agentId))) {
+        const told = await notify(agentId, chat, overLimitNotice(used, settings.maxInjectedChars), overLimitSentence(used, settings.maxInjectedChars), "over limit");
+        if (told) store.write(overLimitPath(agentId), { at: new Date().toISOString(), used });
+      }
       return;
     }
     if (result.busy) log("tidy: the lesson store is busy; tried again after the next turn");
-    if (result.disabled.length === 0) {
-      if (!tidyStuck) warn(`tidy: the lessons block is ${result.before} characters, over the soft limit of ${result.limit}, and no lesson is judged 'did not help' or 'unused'; nothing was switched off`);
-      tidyStuck = true;
-      return;
-    }
-    tidyStuck = false;
     log(`tidy: switched off ${result.disabled.map((d) => `${d.id} (${d.verdict})`).join(", ")}; lessons ${result.before} -> ${result.after}/${result.limit}`);
     for (const { id, verdict: why } of result.disabled) {
       if (!settings.rawLog) break;
@@ -842,6 +869,12 @@ export default function register(api: PluginApi): void {
   const installByItself = async (agentId: string, state: UpdateState | undefined, chat: Chat | null): Promise<void> => {
     const latest = toInstall(withRunning(state));
     if (!latest || !state) return;
+    // Without a service the host can restart, the hot reload of an update would leave the
+    // Codex harness failing until the user restarts by hand: offer the update instead.
+    if (!(await serviceLoaded())) {
+      log(`update ${latest}: OpenClaw does not run as a service, so it is offered, not installed by itself`);
+      return announceUpdate(agentId, state, chat);
+    }
     store.write(UPDATE_STATE, { ...state, attempted: [...(state.attempted ?? []), latest].slice(-20) });
     const result = await hostUpdate();
     (result.ok ? log : warn)(`automatic update to ${latest}: ${result.text}`);
@@ -854,13 +887,9 @@ export default function register(api: PluginApi): void {
       return;
     }
     // Updated: the hot reload alone is not enough (the Codex harness), so a full restart
-    // finishes it, here in the same quiet window; without a service, the user is asked to.
-    const canRestart = await serviceLoaded();
-    const told = canRestart
-      ? await notify(agentId, chat, autoUpdatedText(to), `Refine Cycle updated itself to ${to}.`, `update ${latest}`)
-      : await notify(agentId, chat, restartNeededText(to), `Refine Cycle updated itself to ${to}; OpenClaw needs a restart to finish it.`, `update ${latest}`);
+    // finishes it, here in the same quiet window. The service was checked before the update.
+    const told = await notify(agentId, chat, autoUpdatedText(to), `Refine Cycle updated itself to ${to}.`, `update ${latest}`);
     markAnnounced(latest, told);
-    if (!canRestart) return;
     const restart = await restartGateway(true);
     if (!restart.ok) {
       warn(`restart after the update failed: ${restart.reason}`);
@@ -1004,10 +1033,15 @@ export default function register(api: PluginApi): void {
     }
   };
 
-  /** Restart once no run is in progress: a restart mid-run would cut that conversation off. */
+  /**
+   * Restart once no run is in progress: a restart mid-run would cut that conversation off.
+   * An agent that is never idle gets the restart after `restartMaxWaitMs` anyway: the
+   * host's `--safe` drains its admitted work first, and a broken harness is worse.
+   */
   const restartWhenIdle = (then: (result: { ok: boolean; reason?: string }) => void) => {
+    const giveUpAt = Date.now() + timing.restartMaxWaitMs;
     const tick = () => {
-      if (runsInProgress().length > 0) {
+      if (runsInProgress().length > 0 && Date.now() < giveUpAt) {
         const timer = setTimeout(tick, timing.restartPollMs);
         timer.unref?.();
         return;
@@ -1322,7 +1356,7 @@ export default function register(api: PluginApi): void {
       clearTimeout(timer);
       if (first) return first;
       const target = await replyChat(agentId, scope.chat ?? null);
-      void update.then((result) => say(target, result.text, "update"));
+      void update.then((result) => sayLate(agentId, target, result.text, "update"));
       return { text: `Updating Refine Cycle; the result follows ${followsIn(target, scope.chat ?? null)}.`, ok: true };
     }
     return { text: USAGE, ok: false };
@@ -1388,8 +1422,8 @@ export default function register(api: PluginApi): void {
     if (first) return { text: answer(first), ok: true };
     const target = await replyChat(owner, scope.chat ?? null);
     void pass.then(
-      (decision) => say(target, answer(decision), `pass over ${sessionId}`),
-      (error: unknown) => say(target, `The pass over session ${sessionId} failed: ${String(error)}`, `pass over ${sessionId}`),
+      (decision) => sayLate(owner, target, answer(decision), `pass over ${sessionId}`),
+      (error: unknown) => sayLate(owner, target, `The pass over session ${sessionId} failed: ${String(error)}`, `pass over ${sessionId}`),
     );
     return { text: `${dryRun ? "Dry run" : "Pass"} over session ${sessionId} started; the result follows ${followsIn(target, scope.chat ?? null)} when the model has answered.`, ok: true };
   };

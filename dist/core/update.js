@@ -70,7 +70,7 @@ export function availableText(version) {
  * formatting, so it can be copied whole: Telegram links only `/refine` of it.
  */
 export function actionLine() {
-    return `\`${UPDATE_COMMAND}\` — updates the plugin; no restart needed.`;
+    return `\`${UPDATE_COMMAND}\` — installs it.`;
 }
 export function updatedText(version) {
     return `${BRAND} updated to ${version}.`;

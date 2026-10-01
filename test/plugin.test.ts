@@ -89,14 +89,17 @@ test("without the conversation-access grant the log says why nothing happens", (
   assert.ok(without.logs.some((line) => line.startsWith("WARN") && line.includes("allowConversationAccess")));
 });
 
-test("an unusable store means no injection, no learning, and no thrown error", async () => {
+test("an unusable store means no injection, no learning, no thrown error, and the user told once through the agent", async () => {
   const stateDir = tempDir();
   const root = path.join(stateDir, "plugin-data", "refine-cycle");
   fs.mkdirSync(root, { recursive: true });
   // A store of another schema: not this version's to read.
   fs.writeFileSync(path.join(root, "meta.json"), JSON.stringify({ schema: 99, $v: 99 }));
   const { hooks, commands, logs } = fakeApi(stateDir);
-  assert.equal(hooks.get("before_prompt_build")!.handler({}, { sessionId: "s1" }), undefined);
+  // No lessons; one notice, for the agent to pass on: the folder and the likely cause.
+  const first = hooks.get("before_prompt_build")!.handler({}, { sessionId: "s1" }) as { prependContext: string };
+  assert.match(first.prependContext, /^\[Refine Cycle notice\] .*Refine Cycle is switched off because it cannot use its folder .* \(the folder was written by another version of Refine Cycle\)/);
+  assert.equal(hooks.get("before_prompt_build")!.handler({}, { sessionId: "s2" }), undefined, "once");
   assert.equal(hooks.get("agent_end")!.handler({}, { sessionId: "s1" }), undefined);
   const listed = String((await commands.get("refine")!({ args: "list" }) as { text: string }).text);
   assert.match(listed, /cannot use its store/);
@@ -933,7 +936,7 @@ test("a channel without buttons gets the command to type instead", async () => {
     presentationCapabilities: { buttons: false },
   });
   await setup.turn("s1");
-  assert.deepEqual(texts, ["♾️ Refine Cycle — update available: 0.2.0\n`/refine update` — updates the plugin; no restart needed."]);
+  assert.deepEqual(texts, ["♾️ Refine Cycle — update available: 0.2.0\n`/refine update` — installs it."]);
   assert.equal(payloads.length, 0, "no buttons where the channel says it has none");
 });
 
@@ -1466,7 +1469,7 @@ test("after a turn over the soft limit, lessons that did not help are switched o
   assert.equal(sent.length, 1, "once per tidy");
 });
 
-test("with autoTidy off, over the soft limit nothing is switched off", async () => {
+test("with autoTidy off, over the soft limit nothing is switched off; the user is told once", async () => {
   const stateDir = tempDir();
   writeAgentDb(stateDir, { s1: new Transcript().user("hi").say("hello") });
   seedJudged(stateDir, "helps", "did not help", 30);
@@ -1478,7 +1481,11 @@ test("with autoTidy off, over the soft limit nothing is switched off", async () 
   await settle();
   const store = new FileStore(path.join(stateDir, "plugin-data", "refine-cycle"));
   assert.deepEqual(allLessonsOf(store).map((row) => row[1]), ["active", "active"]);
-  assert.equal(sent.length, 0);
+  assert.equal(sent.length, 1);
+  assert.match(String(sent[0].text), /^♾️ Refine Cycle — lessons use \d+\/300 characters, over the soft limit, and none can be switched off yet: .*\/refine audit/);
+  hooks.get("agent_end")!.handler({}, telegramTurn("s2"));
+  await settle();
+  assert.equal(sent.length, 1, "once, until the block fits again");
 });
 
 function allLessonsOf(store: FileStore): Array<[string, string, string | undefined]> {
@@ -1569,7 +1576,11 @@ test("L4: the tidy never switches off again a lesson the user enabled", async ()
   hooks.get("agent_end")!.handler({}, telegramTurn("s2"));
   await settle();
   assert.deepEqual(allLessonsOf(store), [["helps", "active", undefined], ["works", "active", undefined]], "still over the limit, but the user's choice stands");
-  assert.equal(sent.length, 1, "one tidy line, from the first tidy only");
+  // One tidy line from the first tidy; then, still over with nothing it may switch off, one over-limit line.
+  assert.deepEqual(sent.map((m) => String(m.text).replace(/\d+\/300/, "N/300")), [
+    "♾️ Refine Cycle — switched off 1 lesson that did not help, lessons now N/300",
+    "♾️ Refine Cycle — lessons use N/300 characters, over the soft limit, and none can be switched off yet: every turn now costs more tokens; /refine audit shows which lessons to turn off",
+  ]);
 });
 
 
@@ -1643,15 +1654,16 @@ test("after an automatic update OpenClaw is restarted in the same quiet window, 
   const setup = updateSetup(gitHost({ service: true }), { sendText: async (ctx: Record<string, unknown>) => void setup.sent.push(ctx) }, { autoUpdate: true });
   await setup.turn("s1");
   const steps = setup.host.runs.map((argv) => argv.slice(2).join(" ")).filter((step) => /^(plugins update refine-cycle|gateway )/.test(step));
-  assert.deepEqual(steps, ["plugins update refine-cycle", "gateway status --json", "gateway restart --safe --json"]);
+  assert.deepEqual(steps, ["gateway status --json", "plugins update refine-cycle", "gateway restart --safe --json"]);
   assert.deepEqual(setup.sent.map((m) => m.text), ["♾️ Refine Cycle — updated to 0.2.0."], "said before the restart stops this process");
 });
 
-test("without a service to restart, an automatic update tells the user to restart OpenClaw, once", async () => {
+test("without a service to restart, the update is offered, not installed: a reload alone would break the Codex harness", async () => {
   const setup = updateSetup(gitHost({ service: false }), { sendText: async (ctx: Record<string, unknown>) => void setup.sent.push(ctx) }, { autoUpdate: true });
   await setup.turn("s1");
+  assert.ok(!setup.host.runs.some((argv) => argv.slice(2).join(" ") === "plugins update refine-cycle"), "not installed");
   assert.ok(!setup.host.runs.some((argv) => argv.slice(2).join(" ").startsWith("gateway restart")));
-  assert.deepEqual(setup.sent.map((m) => m.text), ["♾️ Refine Cycle — updated to 0.2.0; restart OpenClaw to finish."]);
+  assert.deepEqual(setup.sent.map((m) => m.text), ["♾️ Refine Cycle — update available: 0.2.0\n`/refine update` — installs it."]);
 });
 
 test("/refine update restarts OpenClaw once no run is in progress, or asks for a restart without a service", async () => {
@@ -1722,4 +1734,53 @@ test("openclaw refine-cycle enable exits 1 when it did not enable: a deleted les
   assert.deepEqual(await run("nope"), { text: "No lesson nope.", code: 1 });
   assert.deepEqual(await run("off"), { text: "Lesson off enabled. The tidy will not switch it off again.", code: 0 });
   assert.deepEqual(await run("off"), { text: "Lesson off is active; only a disabled lesson can be enabled.", code: 1 });
+});
+
+
+// -- product-ux-audit 2026-10-01: nothing the user must hear is left in the log alone --
+
+test("a late /refine update result for webchat, with no chat a plugin can reach, comes through the agent", async () => {
+  const saved = { ...timing };
+  timing.chatWaitMs = 20;
+  try {
+    let finish: () => void = () => {};
+    const setup = updateSetup(gitHost({ service: false, slow: new Promise<void>((resolve) => (finish = resolve)) }), { sendText: async () => undefined });
+    const text = (await setup.commands.get("refine")!({ args: "update", agentId: "main", channel: "webchat", to: "agent:main:tray" }) as { text: string }).text;
+    assert.equal(text, "Updating Refine Cycle; the result follows in my next reply to you.");
+    finish();
+    for (let i = 0; i < 20; i++) await settle();
+    assert.match(setup.prompt({ sessionId: "s2", agentId: "main", runId: "r2", trigger: "user" }), /Refine Cycle — updated to 0\.2\.0; restart OpenClaw to finish\.$/);
+  } finally {
+    Object.assign(timing, saved);
+  }
+});
+
+test("a late /refine session result for webchat comes through the agent, not only the log", async () => {
+  const saved = timing.chatWaitMs;
+  timing.chatWaitMs = 20;
+  try {
+    const answers: Array<(value: { text: string }) => void> = [];
+    const setup = passSetup(() => new Promise((resolve) => answers.push(resolve)));
+    const refine = setup.commands.get("refine")!;
+    const started = (await refine({ args: "session s1", agentId: "main", channel: "webchat", to: "agent:main:tray" }) as { text: string }).text;
+    assert.equal(started, "Pass over session s1 started; the result follows in my next reply to you when the model has answered.");
+    for (let i = 0; i < 50 && answers.length < 1; i++) await settle();
+    answers[0]({ text: lessonJson(setup.fp, setup.lessonText) });
+    for (let i = 0; i < 20; i++) await settle();
+    const prompt = setup.hooks.get("before_prompt_build")!.handler({}, { sessionId: "s9", agentId: "main", runId: "r9", trigger: "user" }) as { prependContext: string };
+    assert.match(prompt.prependContext, /\[Refine Cycle notice\].*pass over session s1: .*lesson learned/);
+  } finally {
+    timing.chatWaitMs = saved;
+  }
+});
+
+test("a direct send that fails goes through the agent instead of being lost", async () => {
+  const { hooks, sent } = learningSetup({}, async () => {
+    throw new Error("Telegram: chat not found");
+  });
+  hooks.get("agent_end")!.handler({}, telegramTurn("s1"));
+  await settle();
+  assert.equal(sent.length, 1, "the send was tried");
+  const prompt = hooks.get("before_prompt_build")!.handler({}, { sessionId: "s2", agentId: "main", runId: "r2", trigger: "user" }) as { prependContext: string };
+  assert.match(prompt.prependContext, /\[Refine Cycle notice\].*learned a new lesson/);
 });
