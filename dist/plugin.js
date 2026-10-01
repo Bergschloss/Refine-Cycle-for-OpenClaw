@@ -33,8 +33,20 @@ import { Runs } from "./runs.js";
 import { FileStore, StoreError } from "./store.js";
 /** Runs no person started: their session is not where the user reads a reply. */
 const BACKGROUND_TRIGGERS = new Set(["heartbeat", "cron", "memory", "overflow"]);
-/** The Update button: it runs `/refine update` in the chat it is pressed in. */
-const UPDATE_BUTTON = { blocks: [{ type: "buttons", buttons: [{ label: "Update", action: { type: "command", command: UPDATE_COMMAND } }] }] };
+/**
+ * The Update button. On Telegram it is a callback this plugin answers itself (see
+ * `registerInteractiveHandler` below): OpenClaw 2026.9.6 sends a `command` button there as
+ * `tgcmd:/refine update`, and its native-command dispatcher runs only `/login` from a button
+ * (telegram-ingress-drain-factory, nativeCommandCallbackDispatcher); every other command is
+ * replayed as a message with `CommandSource: "native"`, and the Telegram message pipeline then
+ * marks the turn `non-plugin` (bot-message, PLUGIN_COMMAND_DISPATCH), so the text went to the
+ * agent (live, 2026-10-01). Elsewhere it stays the command, as the presentation docs describe.
+ */
+const UPDATE_CALLBACK = "update";
+function updateButton(channel, namespace) {
+    const action = channel === "telegram" ? { type: "callback", value: `${namespace}:${UPDATE_CALLBACK}` } : { type: "command", command: UPDATE_COMMAND };
+    return { blocks: [{ type: "buttons", buttons: [{ label: "Update", action }] }] };
+}
 /** The chat a command came from, when its context names one. */
 function commandChat(ctx) {
     return ctx?.channel && ctx.to ? { channel: ctx.channel, to: ctx.to, ...(ctx.accountId ? { accountId: ctx.accountId } : {}) } : null;
@@ -49,8 +61,8 @@ const PLUGIN_DIR = "refine-cycle";
  * `quietMs`: how long the gateway must be quiet (no run, no turn) before an automatic
  * update, which reloads plugins and would break a conversation in progress. `lostRunMs`: a run
  * not seen to end in this long (one that failed before `agent_end`) no longer holds that update;
- * 0 means the host's own agent timeout plus five minutes. `restartPollMs`: after `/refine update`,
- * how often the restart looks again for a moment with no run in progress, and `restartMaxWaitMs`
+ * 0 means the host's own agent timeout plus five minutes. `restartPollMs`: after an update, how
+ * often the reloaded instance looks for a moment with no run in progress to restart, and `restartMaxWaitMs`
  * how long at most before it restarts anyway (with `--safe`, which drains admitted work).
  * `serviceTries`/`serviceRetryMs` and `adapterTries`/`adapterRetryMs`: right after `plugins
  * update` the host is still reloading, and a `gateway status` call or a channel adapter lookup
@@ -713,7 +725,7 @@ export default function register(api) {
                     to: chat.to,
                     text,
                     accountId: chat.accountId ?? null,
-                    payload: { text, presentation: UPDATE_BUTTON },
+                    payload: { text, presentation: updateButton(chat.channel, api.id) },
                 });
                 sent = true;
                 log(`update ${latest}: told the user on ${chat.channel}, with the Update button`);
@@ -753,7 +765,9 @@ export default function register(api) {
             return announceUpdate(agentId, state, chat);
         }
         store.write(UPDATE_STATE, { ...state, attempted: [...(state.attempted ?? []), latest].slice(-20) });
+        leaveRestart(agentId);
         const result = await hostUpdate();
+        settleLeftRestart(result);
         (result.ok ? log : warn)(`automatic update to ${latest}: ${result.text}`);
         if (result.ok && !result.to)
             return; // the host found nothing newer after all: nothing to say
@@ -764,16 +778,97 @@ export default function register(api) {
             markAnnounced(latest, told);
             return;
         }
-        // Updated: the hot reload alone is not enough (the Codex harness), so a full restart
-        // finishes it, here in the same quiet window. The service was checked before the update.
-        // The host is reloading plugins and channels now: the chat's adapter is looked up again.
+        // Updated. The hot reload alone is not enough (the Codex harness): a full restart finishes
+        // it, but not from here. The host has retired this instance by now, and its runtime refuses
+        // the call (live, 2026-10-01: "runtime is no longer active"); the reloaded instance restarts
+        // (`pickUpRestart`). The host is reloading channels too: the chat's adapter is looked up again.
         const told = await notify(agentId, chat, autoUpdatedText(to), `Refine Cycle updated itself to ${to}.`, `update ${latest}`, true);
         markAnnounced(latest, told);
-        const restart = await restartGateway(true);
-        if (!restart.ok) {
-            warn(`restart after the update failed: ${restart.reason}`);
-            await notify(agentId, chat, restartNeededText(to), `Refine Cycle updated itself to ${to}; OpenClaw needs a restart to finish it.`, `restart ${to}`, true);
+    };
+    /**
+     * The restart that finishes an update, left by the instance that ran it for the one the
+     * host's hot reload registers next in the same gateway process. Written before `plugins
+     * update` starts, because the reload registers the new version while the old instance still
+     * waits for the update's answer (live, 2026-10-01: "ready" 6 s before the answer); `to` is
+     * added once the answer names the version. `pid` keeps it for this process: the command line
+     * registers the plugin in its own process too, and must not restart the gateway.
+     */
+    const RESTART_PENDING = "update/restart.json";
+    const leaveRestart = (agentId) => {
+        try {
+            store.write(RESTART_PENDING, { from: version, pid: process.pid, agentId, at: new Date().toISOString() });
         }
+        catch (error) {
+            warn(`could not record the restart the update needs: ${String(error)}`);
+        }
+    };
+    const settleLeftRestart = (result) => {
+        try {
+            const pending = store.read(RESTART_PENDING);
+            if (result.ok && result.to) {
+                if (pending)
+                    store.write(RESTART_PENDING, { ...pending, to: result.to });
+                log(`update to ${result.to}: the reloaded instance restarts OpenClaw to finish it`);
+            }
+            else {
+                store.remove(RESTART_PENDING);
+            }
+        }
+        catch (error) {
+            warn(`could not record the restart the update needs: ${String(error)}`);
+        }
+    };
+    /** Left by an update that replaced this version, in this process: not by this version, nor by another process. */
+    const restartIsMine = (pending) => !!pending && pending.pid === process.pid && (pending.to ? pending.to === version : pending.from !== version);
+    const instanceId = `${process.pid}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    /**
+     * At registration: take the restart an update left for this version, and run it once no run
+     * is in progress (`restartMaxWaitMs` at most: the host's `--safe` drains admitted work, and a
+     * broken harness is worse). The record is removed before the call, so a restart that fails
+     * is said, never tried again in a loop.
+     */
+    const pickUpRestart = () => {
+        let pending;
+        try {
+            pending = store.read(RESTART_PENDING);
+            if (!restartIsMine(pending))
+                return;
+            store.write(RESTART_PENDING, { ...pending, owner: instanceId });
+        }
+        catch (error) {
+            warn(`could not read the restart an update left: ${String(error)}`);
+            return;
+        }
+        const agentId = pending.agentId || DEFAULT_AGENT;
+        log(`update to ${version}: OpenClaw restarts to finish it once no run is in progress`);
+        const giveUpAt = Date.now() + timing.restartMaxWaitMs;
+        const tick = () => {
+            let current;
+            try {
+                current = store.read(RESTART_PENDING);
+                // Taken by an instance registered later, or no longer for this version.
+                if (!restartIsMine(current) || current.owner !== instanceId)
+                    return;
+                if (runsInProgress().length > 0 && Date.now() < giveUpAt) {
+                    const again = setTimeout(tick, timing.restartPollMs);
+                    again.unref?.();
+                    return;
+                }
+                store.remove(RESTART_PENDING);
+            }
+            catch (error) {
+                warn(`restart after the update to ${version} skipped: ${String(error)}`);
+                return;
+            }
+            void restartGateway(true).then(async (restart) => {
+                if (restart.ok)
+                    return;
+                warn(`restart after the update to ${version} failed: ${restart.reason}`);
+                await notify(agentId, await currentChat(agentId, null), restartNeededText(version), `Refine Cycle updated itself to ${version}; OpenClaw needs a restart to finish it.`, `restart ${version}`, true);
+            });
+        };
+        const timer = runOutsideHostWorkScope(() => setTimeout(tick, timing.restartPollMs));
+        timer.unref?.();
     };
     const markAnnounced = (version, told) => {
         if (!told)
@@ -914,45 +1009,30 @@ export default function register(api) {
             return { ok: false, reason: String(error).replace(/^Error: /, "").slice(0, 200) };
         }
     };
-    /**
-     * Restart once no run is in progress: a restart mid-run would cut that conversation off.
-     * An agent that is never idle gets the restart after `restartMaxWaitMs` anyway: the
-     * host's `--safe` drains its admitted work first, and a broken harness is worse.
-     */
-    const restartWhenIdle = (then) => {
-        const giveUpAt = Date.now() + timing.restartMaxWaitMs;
-        const tick = () => {
-            if (runsInProgress().length > 0 && Date.now() < giveUpAt) {
-                const timer = setTimeout(tick, timing.restartPollMs);
-                timer.unref?.();
-                return;
-            }
-            void restartGateway().then(then);
-        };
-        // First the answer that says so reaches the chat.
-        const timer = runOutsideHostWorkScope(() => setTimeout(tick, timing.restartPollMs));
-        timer.unref?.();
-    };
     let updating = false;
     /**
      * The host's own update of this plugin, as a user would run it: `openclaw plugins
      * update <id>`. With a running gateway the host applies it without a restart. A failure
      * leaves the installed version in place (the host rolls back) and is said in one line.
+     * From a chat (`agentId`), the update runs inside the gateway, whose hot reload retires this
+     * instance: the restart that finishes it is left to the reloaded one (`leaveRestart`).
      */
-    const runUpdate = async (fromChat) => {
+    const runUpdate = async (agentId) => {
+        // Asked before the update: afterwards this instance's runtime refuses every call.
+        const service = agentId === undefined ? undefined : await serviceLoaded();
+        if (service)
+            leaveRestart(agentId);
         const result = await hostUpdate();
+        if (service)
+            settleLeftRestart(result);
         if (result.ok && result.to) {
             // The hot reload alone leaves the Codex harness broken (2026.9.6): a full restart
             // finishes the update, or the user is told to restart.
-            if (!(await serviceLoaded())) {
+            if (service === false) {
                 result.text = restartNeededText(result.to);
             }
-            else if (fromChat) {
+            else if (service) {
                 result.text = `${result.text} OpenClaw restarts to finish it once no conversation is running.`;
-                restartWhenIdle((restart) => {
-                    if (!restart.ok)
-                        warn(`restart after /refine update failed: ${restart.reason}`);
-                });
             }
             else {
                 // The command line is its own process: the gateway's drain (--safe) is the wait.
@@ -1029,6 +1109,9 @@ export default function register(api) {
             return "unknown";
         }
     })();
+    // Registered by the host's hot reload after an update: finish it with the restart it needs.
+    if (!storeError)
+        pickUpRestart();
     /** The model lessons are written with, in words. */
     const modelRoute = () => {
         const target = effectiveModel();
@@ -1219,7 +1302,7 @@ export default function register(api) {
             const text = describeStatus(s, agentId !== undefined);
             // In a chat with buttons, the update the status names is one tap away.
             if (agentId !== undefined && updateKnown() && (await hasButtons(scope.chat)))
-                return { text, ok: true, presentation: UPDATE_BUTTON };
+                return { text, ok: true, presentation: updateButton(scope.chat?.channel, api.id) };
             return { text, ok: true };
         }
         if (verb === "run" || verb === "session" || verb === "dry-run") {
@@ -1229,11 +1312,11 @@ export default function register(api) {
             return modelCommand(args.trim().split(/\s+/).slice(1).join(" "), scope);
         if (verb === "update") {
             if (agentId === undefined)
-                return runUpdate(false);
+                return runUpdate();
             // The host already refuses senders off the allowlist; this holds if a host lets one through.
             if (scope.authorized === false)
                 return { text: "Only an authorized sender may update Refine Cycle.", ok: false };
-            const update = runUpdate(true);
+            const update = runUpdate(agentId);
             let timer;
             const late = new Promise((resolve) => {
                 timer = setTimeout(() => resolve(null), timing.chatWaitMs);
@@ -1334,6 +1417,50 @@ export default function register(api) {
                 chat: commandChat(ctx),
             });
             return { text: result.text, ...(result.presentation ? { presentation: result.presentation } : {}) };
+        },
+    });
+    /**
+     * The Telegram Update button (`updateButton`): a callback in this plugin's namespace, run
+     * here as `/refine update` would run from that chat. The host has already checked the sender
+     * against the callback allowlist; its answer is checked again, as the command does. The agent
+     * is the one whose remembered chat this is: a callback carries no agent (2026.9.6).
+     */
+    const chatAgent = (chat) => {
+        const id = (to) => to.replace(/^telegram:/, "");
+        for (const agent of store.list("chats")) {
+            const known = store.read(`chats/${agent}.json`);
+            if (known?.channel === chat.channel && id(known.to) === id(chat.to))
+                return agent;
+        }
+        return DEFAULT_AGENT;
+    };
+    api.registerInteractiveHandler?.({
+        channel: "telegram",
+        namespace: api.id,
+        handler: async (ctx) => {
+            const reply = async (text) => {
+                try {
+                    await ctx.respond?.reply?.({ text });
+                }
+                catch (error) {
+                    warn(`Update button: could not answer in the chat: ${String(error)}`);
+                }
+            };
+            if (ctx.callback?.payload !== UPDATE_CALLBACK) {
+                await reply("This Refine Cycle button is no longer valid.");
+                return { handled: true };
+            }
+            if (ctx.auth?.isAuthorizedSender === false) {
+                await reply("Only an authorized sender may update Refine Cycle.");
+                return { handled: true };
+            }
+            // One press, one update: the button goes before the update starts.
+            await ctx.respond?.clearButtons?.().catch(() => undefined);
+            const chatId = ctx.callback?.chatId;
+            const chat = chatId ? { channel: "telegram", to: `telegram:${chatId}`, ...(ctx.accountId ? { accountId: ctx.accountId } : {}) } : null;
+            const result = await control("update", { agentId: chat ? chatAgent(chat) : DEFAULT_AGENT, authorized: true, chat });
+            await reply(result.text);
+            return { handled: true };
         },
     });
     /** Print a command-line result; a command that did not do what was asked exits 1, for scripts. */
