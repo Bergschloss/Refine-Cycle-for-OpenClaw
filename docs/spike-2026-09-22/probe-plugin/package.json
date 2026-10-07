@@ -4,6 +4,9 @@
   "type": "module",
   "main": "index.js",
   "openclaw": {
-    "extensions": ["./index.js"]
+    "extensions": ["./index.js"],
+    "compat": {
+      "pluginApi": ">=2026.9.5"
+    }
   }
 }
