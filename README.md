@@ -4,6 +4,8 @@
 
 [![tests](https://github.com/Bergschloss/Refine-Cycle-for-OpenClaw/actions/workflows/tests.yml/badge.svg)](https://github.com/Bergschloss/Refine-Cycle-for-OpenClaw/actions/workflows/tests.yml) ![OpenClaw 2026.9.6](https://img.shields.io/badge/OpenClaw-2026.9.6-blue) ![License: MIT](https://img.shields.io/badge/license-MIT-green)
 
+> **About the ClawHub scan warning** (`manifest-unknown-contracts`): it comes from the scanner, not the plugin. plugin-inspector 0.3.27 can't read the contract list in OpenClaw 2026.10. A fix is submitted upstream ([openclaw/plugin-inspector#102](https://github.com/openclaw/plugin-inspector/pull/102)); the warning goes away once it ships.
+
 **Your agent keeps repeating the same mistake. This makes it stop.**
 
 **Refine Cycle** looks across your OpenClaw agent's recent sessions, finds the mistakes that keep coming back, and writes one short lesson the agent sees from then on. Later, it checks whether the same mistake came back.
