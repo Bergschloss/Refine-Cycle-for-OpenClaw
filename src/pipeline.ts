@@ -132,7 +132,7 @@ export function callsToday(store: FileStore, now: Date): number {
 }
 
 /** Spend one call before making it, and mark its failure proposed. A refusal when the day is spent or its record cannot be trusted. */
-function reserveCall(store: FileStore, now: Date, max: number, sessionId: string, agentId: string, fingerprint: string, passMs: number): Refusal | null {
+function reserveCall(store: FileStore, now: Date, max: number, sessionId: string, agentId: string, fingerprint: string, passMs: number, pending: Decision): Refusal | null {
   let release: () => void;
   try {
     release = store.lock("budget", 0);
@@ -141,10 +141,16 @@ function reserveCall(store: FileStore, now: Date, max: number, sessionId: string
     throw error;
   }
   try {
+    // The initial read preceded async evidence work, possibly across a UTC day change.
+    if (store.read<Decision>(candidatePath(sessionId))?.called) return { rule: "already_called" };
     const refusal = reserveLocked(store, now, max, sessionId, agentId, fingerprint, passMs);
     // Written under the same lock, right after the budget: a call spent is a failure
     // proposed, and the queue never offers it again as a failure nobody has seen.
-    if (!refusal) store.write(proposedPath(agentId, fingerprint), { agentId, fingerprint, sessionId, at: now.toISOString() });
+    if (!refusal) {
+      store.write(proposedPath(agentId, fingerprint), { agentId, fingerprint, sessionId, at: now.toISOString() });
+      // Publish the in-flight decision before another process can reserve this failure.
+      store.write(candidatePath(sessionId), pending);
+    }
     return refusal;
   } finally {
     release();
@@ -1163,6 +1169,29 @@ function rawSessionLine(
 async function processSessionCore(deps: Deps, sessionId: string, agentId: string, options: PassOptions = {}): Promise<Decision> {
   const { store, settings } = deps;
   const now = deps.now();
+  let ownsCall = false;
+  const finish = (decision: Decision): Decision => {
+    let release: (() => void) | undefined;
+    if (!ownsCall) {
+      try {
+        // Serialize the check and write with reservations in other processes too.
+        release = store.lock("budget", 0);
+      } catch (error) {
+        if (!(error instanceof StoreError)) throw error;
+        deps.log(`decision for ${sessionId} not recorded: the budget is busy; a later pass can retry`);
+        const current = store.read<Decision>(candidatePath(sessionId));
+        return current?.called ? { ...current, earlier: true } : decision;
+      }
+    }
+    try {
+      const current = !ownsCall && store.read<Decision>(candidatePath(sessionId));
+      if (current && current.called) return { ...current, earlier: true };
+      store.write(candidatePath(sessionId), decision);
+      return decision;
+    } finally {
+      release?.();
+    }
+  };
   const recovered = recover(store, now);
   if (recovered.finished || recovered.abandoned || recovered.unreadable) {
     deps.log(`journal recovery: ${JSON.stringify(recovered)}`);
@@ -1180,8 +1209,7 @@ async function processSessionCore(deps: Deps, sessionId: string, agentId: string
       sessionId, agentId, at: now.toISOString(), outcome: "history_unreadable", called: false, evaluated: [],
       reply: String(error).slice(0, 300),
     };
-    const prior = store.read<Decision>(candidatePath(sessionId));
-    if (!prior?.called) store.write(candidatePath(sessionId), decision);
+    finish(decision);
     throw error;
   }
   await yieldToHost();
@@ -1206,10 +1234,6 @@ async function processSessionCore(deps: Deps, sessionId: string, agentId: string
   const prior = store.read<Decision>(candidatePath(sessionId));
   // Returned, not stored: the caller learns that this is the session's earlier decision.
   if (prior?.called) return { ...prior, earlier: true };
-  const finish = (decision: Decision): Decision => {
-    store.write(candidatePath(sessionId), decision);
-    return decision;
-  };
 
   if (!settings.learnEnabled) return finish({ ...base, outcome: "learning_disabled" });
 
@@ -1271,14 +1295,15 @@ async function processSessionCore(deps: Deps, sessionId: string, agentId: string
   }
   // A pass makes at most two model calls (the lesson and one shortening), each bounded by the timeout.
   const passMs = 2 * settings.proposalTimeoutMs + 60_000;
-  const budget = reserveCall(store, now, settings.maxModelCallsPerDay, sessionId, agentId, chosen.pattern.fingerprint, passMs);
+  const fp = chosen.pattern.fingerprint;
+  const budget = reserveCall(store, now, settings.maxModelCallsPerDay, sessionId, agentId, fp, passMs,
+    { ...base, evaluated, called: true, outcome: "pending", fingerprint: fp });
   if (budget) {
     last.refusal = budget;
     return finish({ ...base, evaluated, outcome: "all_refused", called: budget.rule === "already_called" });
   }
 
-  const fp = chosen.pattern.fingerprint;
-  finish({ ...base, evaluated, called: true, outcome: "pending", fingerprint: fp });
+  ownsCall = true;
   const answered = (answer: Answer) => markAnswered(deps, agentId, fp, answer, chosen.pattern.sessionIds, now);
   let reply: string;
   try {

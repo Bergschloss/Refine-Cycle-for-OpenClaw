@@ -657,6 +657,9 @@ test("a busy budget lock refuses at once: no wait on the gateway thread, no unlo
   assert.ok(Date.now() - started < 1_000, `waited ${Date.now() - started} ms`);
   assert.equal(decision.evaluated[0].refusal?.rule, "budget_busy");
   assert.equal(llm.calls.length, 0);
+  assert.equal(d.store.read("candidates/s1.json"), undefined, "no unlocked decision write can erase a reservation in another process");
+  assert.ok(d.logs.some((line) => line.includes("decision for s1 not recorded")));
+  assert.equal((await processSession(d, "s1", "main")).outcome, "lesson", "a later pass can retry");
 });
 
 test("a session the budget says was already called is recorded as called", async () => {
@@ -705,6 +708,33 @@ test("two concurrent passes over one failure spend one model call: the second is
   const budget = JSON.parse(fs.readFileSync(path.join(d.store.root, "budget", "2026-09-24.json"), "utf8"));
   assert.equal(budget.calls.length, 1);
   assert.match(describeReport(report(d.store)), /in_flight/);
+});
+
+test("duplicate passes for one session preserve the in-flight decision", { timeout: 10_000 }, async () => {
+  const llm = new GatedLlm();
+  const d = deps(new FakeHistory().add("s1", failing()).add("s2", failing()), llm);
+  // Force evidence scanning to yield after both passes read the earlier decision.
+  for (let i = 0; i < 220; i++) {
+    d.store.write(`sessions/empty-${i}.json`, { sessionId: `empty-${i}`, agentId: "main", patterns: [], lastSeq: 0 });
+  }
+  const first = processSession(d, "s1", "main");
+  const duplicate = processSession(d, "s1", "main");
+  await llm.started(1);
+  try {
+    const earlier = await Promise.race([first, duplicate]);
+    assert.equal(earlier.outcome, "pending");
+    assert.equal(earlier.earlier, true);
+    assert.equal(d.store.read<{ outcome: string }>("candidates/s1.json")?.outcome, "pending");
+    const second = await processSession(d, "s2", "main");
+    assert.equal(second.evaluated.at(-1)?.refusal?.rule, "in_flight");
+    assert.equal(llm.calls, 1);
+  } finally {
+    llm.answer(lessonReply());
+    const completed = await Promise.all([first, duplicate]);
+    assert.equal(completed.filter((decision) => decision.outcome === "lesson").length, 1);
+    assert.equal(activeLessons(d.store).length, 1);
+    assert.equal(d.store.read<{ calls: unknown[] }>("budget/2026-09-24.json")?.calls.length, 1);
+  }
 });
 
 test("a first call that failed leaves the failure eligible for the next session", { timeout: 10_000 }, async () => {
