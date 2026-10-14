@@ -230,7 +230,9 @@
 
 * `REPORT.md`: This comprehensive evaluation document.
 * `plugin/index.js`: The probe plugin implementation.
-* `plugin/openclaw.plugin.json`: Plugin manifest declaring hooks and permissions.
-* `plugin/package.json`: NPM package metadata.
+* `plugin/openclaw.plugin.json.txt`: Plugin manifest declaring hooks and permissions.
+* `plugin/package.json.txt`: NPM package metadata.
 * `plugin_state.json`: Recorded runtime state, session traces, and event shape samples.
 * `probe.log`: Full execution log of hook dispatches, token injection, and test passes.
+
+*(Note: In `probe-plugin/`, `package.json` and `openclaw.plugin.json` were renamed to `package.json.txt` and `openclaw.plugin.json.txt` so that the ClawHub scanner does not confuse the probe plugin with the plugin itself.)*
