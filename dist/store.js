@@ -120,7 +120,11 @@ export class FileStore {
         const fd = fs.openSync(temp, "w");
         try {
             try {
-                fs.writeSync(fd, body);
+                let written = 0;
+                const buf = Buffer.from(body);
+                while (written < buf.length) {
+                    written += fs.writeSync(fd, buf, written, buf.length - written);
+                }
                 fs.fsyncSync(fd);
             }
             finally {
@@ -149,7 +153,11 @@ export class FileStore {
                 const token = `${process.pid}-${randomBytes(8).toString("hex")}`;
                 const fd = fs.openSync(file, "wx");
                 try {
-                    fs.writeSync(fd, token);
+                    let written = 0;
+                    const buf = Buffer.from(token);
+                    while (written < buf.length) {
+                        written += fs.writeSync(fd, buf, written, buf.length - written);
+                    }
                 }
                 catch (error) {
                     // A lock we could not sign (a full disk) is not left behind for 30 s.

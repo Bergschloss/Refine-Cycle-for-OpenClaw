@@ -296,6 +296,37 @@ test("a lock that cannot be signed is not left behind", () => {
   store.lock("budget", 0)();
 });
 
+test("a write and a lock handle partial writes", () => {
+  const root = tempDir();
+  const store = new FileStore(root);
+  const writeSync = fs.writeSync;
+  let calls = 0;
+  fs.writeSync = function (fd: number, buffer: any, ...args: any[]) {
+    // Force writeSync to simulate a partial write of 2 bytes if a Buffer is passed.
+    // Ensure we correctly emulate writeSync's signature and advance manually.
+    if (calls === 0 && Buffer.isBuffer(buffer)) {
+      calls++;
+      const offset = args[0] !== undefined && args[0] !== null ? args[0] : 0;
+      return (writeSync as any).call(fs, fd, buffer, offset, 2, args[2] ?? null) as number;
+    }
+    return (writeSync as any).call(fs, fd, buffer, ...args);
+  } as typeof fs.writeSync;
+
+  try {
+    store.write("a.json", { hello: "world" });
+    const content = JSON.parse(fs.readFileSync(path.join(root, "a.json"), "utf8"));
+    assert.equal(content.hello, "world");
+
+    calls = 0;
+    const release = store.lock("lockname", 1000);
+    const lockContent = fs.readFileSync(path.join(root, "lockname.lock"), "utf8");
+    assert.ok(lockContent.length > 5);
+    release();
+  } finally {
+    fs.writeSync = writeSync;
+  }
+});
+
 test("a write that fails leaves no temp file behind", () => {
   const root = tempDir();
   const store = new FileStore(root);
