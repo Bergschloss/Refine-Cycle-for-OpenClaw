@@ -1,6 +1,6 @@
 {
   "name": "refine-cycle",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "type": "module",
   "description": "An OpenClaw plugin that learns from the agent's own repeated failures.",
   "license": "MIT",
