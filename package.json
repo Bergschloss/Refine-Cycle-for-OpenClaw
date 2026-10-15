@@ -1,6 +1,6 @@
 {
   "name": "refine-cycle",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "type": "module",
   "description": "An OpenClaw plugin that learns from the agent's own repeated failures.",
   "license": "MIT",
@@ -12,7 +12,13 @@
   "bugs": {
     "url": "https://github.com/Bergschloss/Refine-Cycle-for-OpenClaw/issues"
   },
-  "keywords": ["openclaw", "openclaw-plugin", "agent", "lessons", "tool-failures"],
+  "keywords": [
+    "openclaw",
+    "openclaw-plugin",
+    "agent",
+    "lessons",
+    "tool-failures"
+  ],
   "engines": {
     "node": ">=24.16.0 <25 || >=26.1.0"
   },

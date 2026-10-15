@@ -2,13 +2,17 @@
   "id": "refine-cycle",
   "name": "Refine Cycle",
   "description": "Learns from the agent's own repeated tool failures: finds a mistake that keeps coming back, writes one short lesson, and puts it in front of the agent in later sessions.",
-  "version": "1.0.3",
-  "categories": ["memory"],
+  "version": "1.0.4",
+  "categories": [
+    "memory"
+  ],
   "activation": {
     "onStartup": true
   },
   "contracts": {
-    "tools": ["refine_run"]
+    "tools": [
+      "refine_run"
+    ]
   },
   "toolMetadata": {
     "refine_run": {
