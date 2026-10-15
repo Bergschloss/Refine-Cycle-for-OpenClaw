@@ -296,6 +296,77 @@ test("a lock that cannot be signed is not left behind", () => {
   store.lock("budget", 0)();
 });
 
+test("partial writes preserve the complete UTF-8 JSON record", () => {
+  const root = tempDir();
+  const store = new FileStore(root);
+  const original = fs.writeSync;
+  let calls = 0;
+  fs.writeSync = ((fd: number, data: string | Buffer, offset: number = 0, length?: number, position: number | null = null) => {
+    calls++;
+    const buffer = typeof data === "string" ? Buffer.from(data) : data;
+    return original(fd, buffer, offset, Math.min(2, length ?? buffer.length - offset), position);
+  }) as typeof fs.writeSync;
+  try {
+    const value = { text: "Привіт 🧪" };
+    store.write("a.json", value);
+    assert.deepEqual(store.read("a.json"), { ...value, $v: 1 });
+    assert.ok(calls > 1);
+  } finally {
+    fs.writeSync = original;
+  }
+});
+
+test("a partially written lock token is completed and can be released", () => {
+  const root = tempDir();
+  const store = new FileStore(root);
+  const original = fs.writeSync;
+  fs.writeSync = ((fd: number, data: string | Buffer, offset: number = 0, length?: number, position: number | null = null) => {
+    const buffer = typeof data === "string" ? Buffer.from(data) : data;
+    return original(fd, buffer, offset, Math.min(2, length ?? buffer.length - offset), position);
+  }) as typeof fs.writeSync;
+  let release: (() => void) | undefined;
+  try {
+    release = store.lock("budget", 0);
+    assert.match(fs.readFileSync(path.join(root, "budget.lock"), "utf8"), /^\d+-[a-f0-9]{16}$/);
+    release();
+    release = undefined;
+    assert.equal(fs.existsSync(path.join(root, "budget.lock")), false);
+    store.lock("budget", 0)();
+  } finally {
+    fs.writeSync = original;
+    release?.();
+  }
+});
+
+test("a zero-byte write preserves the old record and removes its temp file", () => {
+  const root = tempDir();
+  const store = new FileStore(root);
+  store.write("a.json", { text: "original" });
+  const original = fs.writeSync;
+  fs.writeSync = (() => 0) as typeof fs.writeSync;
+  try {
+    assert.throws(() => store.write("a.json", { text: "replacement" }), /no progress/);
+  } finally {
+    fs.writeSync = original;
+  }
+  assert.equal(store.read<{ text: string }>("a.json")?.text, "original");
+  assert.deepEqual(fs.readdirSync(root), ["a.json"]);
+});
+
+test("a zero-byte lock write fails promptly without leaving a lock", () => {
+  const root = tempDir();
+  const store = new FileStore(root);
+  const original = fs.writeSync;
+  fs.writeSync = (() => 0) as typeof fs.writeSync;
+  try {
+    assert.throws(() => store.lock("budget", 0), /no progress/);
+  } finally {
+    fs.writeSync = original;
+  }
+  assert.equal(fs.existsSync(path.join(root, "budget.lock")), false);
+  store.lock("budget", 0)();
+});
+
 test("a write that fails leaves no temp file behind", () => {
   const root = tempDir();
   const store = new FileStore(root);

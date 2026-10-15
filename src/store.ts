@@ -34,6 +34,17 @@ export const SCHEMA_VERSION = 1;
 
 export class StoreError extends Error {}
 
+/** Complete a record or lock token even when the filesystem accepts only part of it. */
+function writeAll(fd: number, text: string): void {
+  const bytes = Buffer.from(text);
+  let offset = 0;
+  while (offset < bytes.length) {
+    const written = fs.writeSync(fd, bytes, offset, bytes.length - offset);
+    if (written <= 0) throw new StoreError("file write made no progress");
+    offset += written;
+  }
+}
+
 /** A lock older than this is from a process that died holding it. */
 const STALE_LOCK_MS = 30_000;
 const SLEEP = new Int32Array(new SharedArrayBuffer(4));
@@ -124,7 +135,7 @@ export class FileStore {
     const fd = fs.openSync(temp, "w");
     try {
       try {
-        fs.writeSync(fd, body);
+        writeAll(fd, body);
         fs.fsyncSync(fd);
       } finally {
         fs.closeSync(fd);
@@ -152,7 +163,7 @@ export class FileStore {
         const token = `${process.pid}-${randomBytes(8).toString("hex")}`;
         const fd = fs.openSync(file, "wx");
         try {
-          fs.writeSync(fd, token);
+          writeAll(fd, token);
         } catch (error) {
           // A lock we could not sign (a full disk) is not left behind for 30 s.
           fs.closeSync(fd);
