@@ -39,7 +39,7 @@ export interface Settings {
   notifyOnLesson: boolean;
   /** Once a day, look for a newer release and tell the user once, with an Update button. */
   checkForUpdates: boolean;
-  /** Install a newer release found by that check by itself (the host's own update, no restart), once per version; off: the notice with the button. */
+  /** Install a newer release found by that check by itself (the host's own update, followed by a restart when idle), once per version; off: the notice with the button. */
   autoUpdate: boolean;
   /** Over the soft limit, switch off lessons the audit judges useless (`did not help`, then `unused`) until the block fits. */
   autoTidy: boolean;

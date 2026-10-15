@@ -904,7 +904,7 @@ export default function register(api: PluginApi): void {
 
   /**
    * `autoUpdate`: install the newer release the check found, with the host's own update
-   * (no restart), once per version whatever the result, then one line about it. The version
+   * (followed by a restart when idle), once per version whatever the result, then one line about it. The version
    * is recorded as tried before the update starts, so a crash under it never loops. Called
    * only when the gateway is quiet (`whenQuiet`): the host's update reloads plugins, which
    * breaks a conversation in progress.

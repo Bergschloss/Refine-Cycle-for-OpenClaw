@@ -124,7 +124,7 @@
       "autoUpdate": {
         "type": "boolean",
         "default": true,
-        "description": "Install a newer release the daily check finds by itself, through OpenClaw's own plugins update (no restart), once per version, and say so in one line. Off: the message with the Update button instead."
+        "description": "Install a newer release the daily check finds by itself, through OpenClaw's own plugins update (followed by a restart when idle), once per version, and say so in one line. Off: the message with the Update button instead."
       },
       "autoTidy": {
         "type": "boolean",
