@@ -1578,14 +1578,16 @@ test("L3: a cached 'installed' older than the running version is not an update",
   assert.doesNotMatch(((await setup.commands.get("refine")!({ args: "status", agentId: "main" })) as { text: string }).text, /is available/);
 });
 
-test("L3: the automatic update waits for a quiet gateway, and every run postpones it", async () => {
+test("L3: the automatic update waits for a quiet gateway, and every run postpones it", async (t) => {
   const saved = timing.quietMs;
   timing.quietMs = 150;
+  t.mock.timers.enable({ apis: ["setTimeout"] });
   try {
     const setup = updateSetup(gitHost(), { sendText: async (ctx: Record<string, unknown>) => void setup.sent.push(ctx) }, { autoUpdate: true });
     const updates = () => setup.host.runs.filter((argv) => argv.slice(2).join(" ") === "plugins update refine-cycle").length;
     const pause = async (ms: number) => {
-      await new Promise((resolve) => setTimeout(resolve, ms));
+      for (let i = 0; i < 10; i++) await settle();
+      t.mock.timers.tick(ms);
       for (let i = 0; i < 10; i++) await settle();
     };
     setup.end({ sessionId: "s1", agentId: "main", channel: "telegram", chatId: "4242", runId: "r1" });
@@ -1594,12 +1596,13 @@ test("L3: the automatic update waits for a quiet gateway, and every run postpone
     assert.equal(updates(), 0, "not inside the turn's own agent_end chain");
     // A new run starts before the quiet period is over, and is still going when it would fire.
     setup.prompt({ sessionId: "s2", agentId: "main", runId: "r2", trigger: "user" });
-    await pause(250);
+    await pause(150);
+    await pause(50); // end between polls, so failing to reset the timer is observable
     assert.equal(updates(), 0, "never while a run is in progress");
     setup.end({ sessionId: "s2", agentId: "main", runId: "r2" });
-    await pause(60);
+    await pause(149);
     assert.equal(updates(), 0, "the quiet period starts again when the run ends");
-    await pause(250);
+    await pause(1);
     assert.equal(updates(), 1);
     assert.deepEqual(setup.sent.map((m) => m.text), [`♾️ Refine Cycle — updated to ${V1}.`]);
   } finally {
